@@ -1,0 +1,8 @@
+date,type,account,amount,remark
+2025-01-15,Income,Harsh,150000,Salary
+2025-01-10,Other Income,Harsh,5000,Bonus
+2025-01-20,Major,Harsh,50000,Electronics
+2025-01-05,Non-Recurring,Harsh,2000,One-time repair
+2025-01-01,Regular,Harsh,25000,Monthly bills
+2025-01-01,EMI,Harsh,15000,Home loan
+2025-01-12,Trips,Harsh,30000,Vacation

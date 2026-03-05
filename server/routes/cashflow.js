@@ -3,10 +3,9 @@ const pool = require('../db');
 const auth = require('../middleware/auth');
 
 // GET all cashflow - optional ?person=Harsh|Kirti
-// This endpoint now aggregates transactional data into the monthly view.
-// - Income comes from the fixed monthly_cashflow row (CTC-level)
-// - Major / Non-Recurring / Trips expenses are summed from transactions by month/person
-// - Actual saving is derived as: income + other_income - net_expense
+// Aggregates transactions by month/person; each transaction type maps to a cashflow column.
+// Types: Income, Other Income, Major, Non-Recurring, Regular, EMI, Trips
+// When a type has transaction data for that month, it overrides the monthly_cashflow row.
 router.get('/', auth, async (req, res) => {
   try {
     const { person } = req.query;
@@ -18,8 +17,12 @@ router.get('/', auth, async (req, res) => {
         SELECT
           date_trunc('month', date)::date AS month,
           account AS person,
+          SUM(CASE WHEN type = 'Income' THEN amount ELSE 0 END) AS income,
+          SUM(CASE WHEN type = 'Other Income' THEN amount ELSE 0 END) AS other_income,
           SUM(CASE WHEN type = 'Major' THEN amount ELSE 0 END) AS major_expense,
           SUM(CASE WHEN type = 'Non-Recurring' THEN amount ELSE 0 END) AS non_recurring_expense,
+          SUM(CASE WHEN type = 'Regular' THEN amount ELSE 0 END) AS regular_expense,
+          SUM(CASE WHEN type = 'EMI' THEN amount ELSE 0 END) AS emi,
           SUM(CASE WHEN type = 'Trips' THEN amount ELSE 0 END) AS trips_expense
         FROM transactions
         GROUP BY 1, 2
@@ -28,48 +31,31 @@ router.get('/', auth, async (req, res) => {
         m.id,
         COALESCE(m.month, t.month) AS month,
         COALESCE(m.person, t.person) AS person,
-        COALESCE(m.income, 0) AS income,
-        COALESCE(m.other_income, 0) AS other_income,
-        CASE
-          WHEN COALESCE(t.major_expense, 0) <> 0 THEN t.major_expense
-          ELSE COALESCE(m.major_expense, 0)
-        END AS major_expense,
-        CASE
-          WHEN COALESCE(t.non_recurring_expense, 0) <> 0 THEN t.non_recurring_expense
-          ELSE COALESCE(m.non_recurring_expense, 0)
-        END AS non_recurring_expense,
-        COALESCE(m.regular_expense, 0) AS regular_expense,
-        COALESCE(m.emi, 0) AS emi,
-        CASE
-          WHEN COALESCE(t.trips_expense, 0) <> 0 THEN t.trips_expense
-          ELSE COALESCE(m.trips_expense, 0)
-        END AS trips_expense,
-        CASE
-          WHEN COALESCE(t.major_expense, 0) <> 0
-            OR COALESCE(t.non_recurring_expense, 0) <> 0
-            OR COALESCE(t.trips_expense, 0) <> 0
-          THEN
-            COALESCE(t.major_expense, 0)
-            + COALESCE(t.non_recurring_expense, 0)
-            + COALESCE(m.regular_expense, 0)
-            + COALESCE(m.emi, 0)
-            + COALESCE(t.trips_expense, 0)
-          ELSE COALESCE(m.net_expense, 0)
-        END AS net_expense,
+        CASE WHEN COALESCE(t.income, 0) <> 0 THEN t.income ELSE COALESCE(m.income, 0) END AS income,
+        CASE WHEN COALESCE(t.other_income, 0) <> 0 THEN t.other_income ELSE COALESCE(m.other_income, 0) END AS other_income,
+        CASE WHEN COALESCE(t.major_expense, 0) <> 0 THEN t.major_expense ELSE COALESCE(m.major_expense, 0) END AS major_expense,
+        CASE WHEN COALESCE(t.non_recurring_expense, 0) <> 0 THEN t.non_recurring_expense ELSE COALESCE(m.non_recurring_expense, 0) END AS non_recurring_expense,
+        CASE WHEN COALESCE(t.regular_expense, 0) <> 0 THEN t.regular_expense ELSE COALESCE(m.regular_expense, 0) END AS regular_expense,
+        CASE WHEN COALESCE(t.emi, 0) <> 0 THEN t.emi ELSE COALESCE(m.emi, 0) END AS emi,
+        CASE WHEN COALESCE(t.trips_expense, 0) <> 0 THEN t.trips_expense ELSE COALESCE(m.trips_expense, 0) END AS trips_expense,
+        (
+          CASE WHEN COALESCE(t.major_expense, 0) <> 0 THEN t.major_expense ELSE COALESCE(m.major_expense, 0) END
+          + CASE WHEN COALESCE(t.non_recurring_expense, 0) <> 0 THEN t.non_recurring_expense ELSE COALESCE(m.non_recurring_expense, 0) END
+          + CASE WHEN COALESCE(t.regular_expense, 0) <> 0 THEN t.regular_expense ELSE COALESCE(m.regular_expense, 0) END
+          + CASE WHEN COALESCE(t.emi, 0) <> 0 THEN t.emi ELSE COALESCE(m.emi, 0) END
+          + CASE WHEN COALESCE(t.trips_expense, 0) <> 0 THEN t.trips_expense ELSE COALESCE(m.trips_expense, 0) END
+        ) AS net_expense,
         COALESCE(m.ideal_saving, 100000) AS ideal_saving,
-        COALESCE(m.income, 0) + COALESCE(m.other_income, 0)
-          - CASE
-              WHEN COALESCE(t.major_expense, 0) <> 0
-                OR COALESCE(t.non_recurring_expense, 0) <> 0
-                OR COALESCE(t.trips_expense, 0) <> 0
-              THEN
-                COALESCE(t.major_expense, 0)
-                + COALESCE(t.non_recurring_expense, 0)
-                + COALESCE(m.regular_expense, 0)
-                + COALESCE(m.emi, 0)
-                + COALESCE(t.trips_expense, 0)
-              ELSE COALESCE(m.net_expense, 0)
-            END AS actual_saving,
+        (
+          CASE WHEN COALESCE(t.income, 0) <> 0 THEN t.income ELSE COALESCE(m.income, 0) END
+          + CASE WHEN COALESCE(t.other_income, 0) <> 0 THEN t.other_income ELSE COALESCE(m.other_income, 0) END
+        ) - (
+          CASE WHEN COALESCE(t.major_expense, 0) <> 0 THEN t.major_expense ELSE COALESCE(m.major_expense, 0) END
+          + CASE WHEN COALESCE(t.non_recurring_expense, 0) <> 0 THEN t.non_recurring_expense ELSE COALESCE(m.non_recurring_expense, 0) END
+          + CASE WHEN COALESCE(t.regular_expense, 0) <> 0 THEN t.regular_expense ELSE COALESCE(m.regular_expense, 0) END
+          + CASE WHEN COALESCE(t.emi, 0) <> 0 THEN t.emi ELSE COALESCE(m.emi, 0) END
+          + CASE WHEN COALESCE(t.trips_expense, 0) <> 0 THEN t.trips_expense ELSE COALESCE(m.trips_expense, 0) END
+        ) AS actual_saving,
         COALESCE(m.target, 0) AS target,
         COALESCE(m.corpus, 0) AS corpus,
         COALESCE(m.cash, 0) AS cash,

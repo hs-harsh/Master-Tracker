@@ -3,7 +3,7 @@ const pool = require('../db');
 const auth = require('../middleware/auth');
 const { parse } = require('csv-parse/sync');
 
-const TYPES = ['Income', 'Major', 'Non-Recurring', 'Trips'];
+const TYPES = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
 const ACCOUNTS = ['Harsh', 'Kirti'];
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const SIDES = ['BUY', 'SELL'];

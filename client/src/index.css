@@ -36,8 +36,11 @@
     @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-mono;
   }
   .tag-income { @apply bg-emerald-500/10 text-emerald-400; }
+  .tag-other-income { @apply bg-green-500/10 text-green-400; }
   .tag-major { @apply bg-rose/10 text-rose; }
   .tag-non-recurring { @apply bg-amber-500/10 text-amber-400; }
+  .tag-regular { @apply bg-slate-500/10 text-slate-400; }
+  .tag-emi { @apply bg-violet-500/10 text-violet-400; }
   .tag-trips { @apply bg-teal/10 text-teal; }
   .tag-harsh { @apply bg-accent/10 text-accent; }
   .tag-kirti { @apply bg-purple-400/10 text-purple-300; }

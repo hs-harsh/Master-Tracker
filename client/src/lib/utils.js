@@ -56,7 +56,10 @@ export const ASSET_COLORS = {
 
 export const TYPE_COLORS = {
   Income: '#4ade80',
+  'Other Income': '#22c55e',
   Major: '#fb7185',
   'Non-Recurring': '#fbbf24',
+  Regular: '#94a3b8',
+  EMI: '#a78bfa',
   Trips: '#2dd4bf',
 };

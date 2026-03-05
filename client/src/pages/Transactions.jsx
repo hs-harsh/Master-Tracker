@@ -4,7 +4,7 @@ import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save, RefreshCw } from 'lucide-react';
 import SyncResultModal from '../components/SyncResultModal';
 
-const TYPES = ['Income', 'Major', 'Non-Recurring', 'Trips'];
+const TYPES = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
 const ACCOUNTS = ['Harsh', 'Kirti'];
 
 const EMPTY = { date: '', type: 'Major', account: 'Harsh', amount: 0, remark: '' };
@@ -211,10 +211,18 @@ export default function Transactions() {
                     <td className="py-3 px-4">
                       <span
                         className={`tag ${
-                          row.type === 'Major'
+                          row.type === 'Income'
+                            ? 'tag-income'
+                            : row.type === 'Other Income'
+                            ? 'tag-other-income'
+                            : row.type === 'Major'
                             ? 'tag-major'
                             : row.type === 'Non-Recurring'
                             ? 'tag-non-recurring'
+                            : row.type === 'Regular'
+                            ? 'tag-regular'
+                            : row.type === 'EMI'
+                            ? 'tag-emi'
                             : row.type === 'Trips'
                             ? 'tag-trips'
                             : 'tag-income'
