@@ -105,6 +105,12 @@ CREATE TABLE IF NOT EXISTS regular_expenses (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- App settings (e.g. linked Google Sheet CSV URLs)
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_cashflow_month_person ON monthly_cashflow(month, person);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);

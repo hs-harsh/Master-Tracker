@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, LogOut } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, LogOut, Settings } from 'lucide-react';
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -8,6 +8,7 @@ const NAV = [
   { to: '/investments', icon: Briefcase, label: 'Investments' },
   { to: '/cashflow', icon: TrendingUp, label: 'Cashflow' },
   { to: '/transactions', icon: Receipt, label: 'Transactions' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
 export default function Layout() {

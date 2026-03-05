@@ -21,12 +21,32 @@ router.get('/export-template', auth, (req, res) => {
   res.send(csv);
 });
 
-// Import CSV: validate and insert rows
+// Import CSV: validate and insert rows (body: { csv } or { importUrl })
 router.post('/import', auth, async (req, res) => {
   try {
-    const { csv: csvRaw } = req.body;
+    let csvRaw = req.body.csv;
+    const importUrl = req.body.importUrl;
+    if (importUrl && typeof importUrl === 'string') {
+      const url = importUrl.trim();
+      if (!url.startsWith('https://')) {
+        return res.status(400).json({ error: 'Import URL must use https' });
+      }
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        try {
+          const resp = await fetch(url, { signal: controller.signal, redirect: 'follow' });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          csvRaw = await resp.text();
+        } finally {
+          clearTimeout(timeout);
+        }
+      } catch (e) {
+        return res.status(400).json({ error: 'Could not fetch URL: ' + (e.message || 'request failed') });
+      }
+    }
     if (!csvRaw || typeof csvRaw !== 'string') {
-      return res.status(400).json({ error: 'Missing or invalid csv in body' });
+      return res.status(400).json({ error: 'Missing or invalid csv in body, or provide importUrl' });
     }
     const rows = parse(csvRaw, { columns: true, skip_empty_lines: true, trim: true });
     const errors = [];

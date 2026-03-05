@@ -20,6 +20,7 @@ app.use('/api/cashflow', require('./routes/cashflow'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/investments', require('./routes/investments'));
 app.use('/api/portfolio', require('./routes/portfolio'));
+app.use('/api/settings', require('./routes/settings'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));

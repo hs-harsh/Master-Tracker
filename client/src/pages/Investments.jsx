@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, Download, Upload, Check, AlertCircle } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, Download, Upload, Check, AlertCircle, Link2 } from 'lucide-react';
 
 function ImportResultModal({ result, onClose }) {
   const { added, errors = [], totalRows } = result;
@@ -255,6 +255,8 @@ export default function Investments() {
 
   const fileInputRef = useRef(null);
   const [importResult, setImportResult] = useState(null);
+  const [importUrl, setImportUrl] = useState('');
+  const [importUrlLoading, setImportUrlLoading] = useState(false);
 
   const handleImport = async e => {
     const file = e.target?.files?.[0];
@@ -267,6 +269,25 @@ export default function Investments() {
       load();
     } catch (err) {
       alert(err.response?.data?.error || 'Import failed');
+    }
+  };
+
+  const handleImportFromUrl = async () => {
+    const url = importUrl.trim();
+    if (!url) {
+      alert('Paste a link first (e.g. published Google Sheets CSV link)');
+      return;
+    }
+    setImportUrlLoading(true);
+    try {
+      const r = await api.post('/investments/import', { importUrl: url });
+      setImportResult(r.data);
+      setImportUrl('');
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Import from link failed');
+    } finally {
+      setImportUrlLoading(false);
     }
   };
 
@@ -320,6 +341,27 @@ export default function Investments() {
             <Plus size={14} /> Add Investment
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-muted">Import from link:</span>
+        <input
+          type="url"
+          className="input flex-1 min-w-48 max-w-md"
+          placeholder="Paste Google Sheets / Docs published CSV link (https://...)"
+          value={importUrl}
+          onChange={e => setImportUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleImportFromUrl()}
+        />
+        <button
+          onClick={handleImportFromUrl}
+          disabled={importUrlLoading || !importUrl.trim()}
+          className="btn-ghost flex items-center gap-2"
+          title="Fetch CSV from URL and import"
+        >
+          <Link2 size={14} />
+          {importUrlLoading ? 'Fetching…' : 'Fetch & import'}
+        </button>
       </div>
 
       {importResult && (
