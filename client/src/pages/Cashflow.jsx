@@ -40,7 +40,6 @@ function Field({ label, name, form, onChange, type = 'number' }) {
 
 function EntryForm({ initial, defaultIdealSaving, defaultIncome, onSave, onCancel }) {
   const [form, setForm] = useState(initial || emptyDefaults(defaultIdealSaving, defaultIncome));
-  const [section, setSection] = useState('cashflow');
 
   const onChange = e => {
     const { name, value } = e.target;
@@ -54,69 +53,26 @@ function EntryForm({ initial, defaultIdealSaving, defaultIncome, onSave, onCance
         <button onClick={onCancel} className="text-muted hover:text-white transition-colors"><X size={18} /></button>
       </div>
 
-      {/* Section tabs */}
-      <div className="flex gap-2 text-xs font-mono">
-        {['cashflow', 'assets', 'liabilities'].map(s => (
-          <button key={s} onClick={() => setSection(s)}
-            className={`px-3 py-1.5 rounded-md capitalize transition-colors ${section === s ? 'bg-accent text-ink font-bold' : 'bg-surface text-soft hover:text-white'}`}>
-            {s}
-          </button>
-        ))}
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Month" name="month" form={form} onChange={onChange} type="date" />
+        <div>
+          <label className="label">Person</label>
+          <select name="person" value={form.person} onChange={onChange} className="input">
+            {PERSONS.map(p => <option key={p}>{p}</option>)}
+          </select>
+        </div>
+        <Field label="Income" name="income" form={form} onChange={onChange} />
+        <Field label="Other Income" name="other_income" form={form} onChange={onChange} />
+        <Field label="Major Expense" name="major_expense" form={form} onChange={onChange} />
+        <Field label="Non-Recurring" name="non_recurring_expense" form={form} onChange={onChange} />
+        <Field label="Regular Expense" name="regular_expense" form={form} onChange={onChange} />
+        <Field label="EMI" name="emi" form={form} onChange={onChange} />
+        <Field label="Trips Expense" name="trips_expense" form={form} onChange={onChange} />
+        <Field label="Net Expense" name="net_expense" form={form} onChange={onChange} />
+        <Field label="Ideal Saving" name="ideal_saving" form={form} onChange={onChange} />
+        <Field label="Target" name="target" form={form} onChange={onChange} />
       </div>
-
-      {section === 'cashflow' && (
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Month" name="month" form={form} onChange={onChange} type="date" />
-          <div>
-            <label className="label">Person</label>
-            <select name="person" value={form.person} onChange={onChange} className="input">
-              {PERSONS.map(p => <option key={p}>{p}</option>)}
-            </select>
-          </div>
-          <Field label="Income" name="income" form={form} onChange={onChange} />
-          <Field label="Other Income" name="other_income" form={form} onChange={onChange} />
-          <Field label="Major Expense" name="major_expense" form={form} onChange={onChange} />
-          <Field label="Non-Recurring" name="non_recurring_expense" form={form} onChange={onChange} />
-          <Field label="Regular Expense" name="regular_expense" form={form} onChange={onChange} />
-          <Field label="EMI" name="emi" form={form} onChange={onChange} />
-          <Field label="Trips Expense" name="trips_expense" form={form} onChange={onChange} />
-          <Field label="Net Expense" name="net_expense" form={form} onChange={onChange} />
-          <Field label="Ideal Saving (₹)" name="ideal_saving" form={form} onChange={onChange} />
-          <Field label="Target" name="target" form={form} onChange={onChange} />
-          <Field label="Corpus" name="corpus" form={form} onChange={onChange} />
-        </div>
-      )}
-
-      {section === 'assets' && (
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Cash / Splitwise" name="cash" form={form} onChange={onChange} />
-          <Field label="Gold / Silver" name="gold_silver" form={form} onChange={onChange} />
-          <Field label="DEBT - PF" name="debt_pf" form={form} onChange={onChange} />
-          <Field label="DEBT - PPF" name="debt_ppf" form={form} onChange={onChange} />
-          <Field label="DEBT - Mutual Fund" name="debt_mf" form={form} onChange={onChange} />
-          <Field label="Equity - Indian" name="equity_indian" form={form} onChange={onChange} />
-          <Field label="Equity - International" name="equity_intl" form={form} onChange={onChange} />
-          <Field label="Equity - NPS" name="equity_nps" form={form} onChange={onChange} />
-          <Field label="Equity - Trading" name="equity_trading" form={form} onChange={onChange} />
-          <Field label="Equity - Smallcase" name="equity_smallcase" form={form} onChange={onChange} />
-          <Field label="Real Estate" name="real_estate" form={form} onChange={onChange} />
-          <Field label="Total Asset" name="total_asset" form={form} onChange={onChange} />
-          <Field label="Net Asset" name="net_asset" form={form} onChange={onChange} />
-        </div>
-      )}
-
-      {section === 'liabilities' && (
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Home Loan" name="home_loan" form={form} onChange={onChange} />
-          <Field label="Personal Loan" name="personal_loan" form={form} onChange={onChange} />
-          <Field label="Owed Friends" name="owed_friends" form={form} onChange={onChange} />
-          <Field label="Total Liability" name="liability" form={form} onChange={onChange} />
-          <Field label="Net Total" name="net_total" form={form} onChange={onChange} />
-          <Field label="Low Risk %" name="low_risk_pct" form={form} onChange={onChange} />
-          <Field label="Medium Risk %" name="medium_risk_pct" form={form} onChange={onChange} />
-          <Field label="High Risk %" name="high_risk_pct" form={form} onChange={onChange} />
-        </div>
-      )}
+      <p className="text-xs text-muted">Corpus is computed as running total of actual saving.</p>
 
       <div className="flex gap-2 pt-2">
         <button onClick={() => onSave(form)} className="btn-primary flex items-center gap-2">

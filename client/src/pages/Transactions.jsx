@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save, RefreshCw } from 'lucide-react';
-import SyncResultModal from '../components/SyncResultModal';
+import SyncResultModal, { downloadBackupCsv } from '../components/SyncResultModal';
 
 const TYPES = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
 const ACCOUNTS = ['Harsh', 'Kirti'];
@@ -106,6 +106,7 @@ export default function Transactions() {
     setSyncing(true);
     setSyncResult(null);
     try {
+      await downloadBackupCsv();
       const r = await api.post('/settings/sync-from-sheet');
       setSyncResult(r.data);
       load();
@@ -147,7 +148,7 @@ export default function Transactions() {
         </div>
       </div>
 
-      {syncResult && <SyncResultModal result={syncResult} onClose={() => setSyncResult(null)} />}
+      {syncResult && <SyncResultModal result={syncResult} onClose={() => setSyncResult(null)} onRemoved={load} />}
 
       {(showForm || editing) && (
         <TransactionForm

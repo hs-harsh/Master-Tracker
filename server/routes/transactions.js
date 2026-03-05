@@ -2,6 +2,24 @@ const router = require('express').Router();
 const pool = require('../db');
 const auth = require('../middleware/auth');
 
+const CSV_HEADER = 'date,type,account,amount,remark';
+function escapeCsvField(v) {
+  const s = String(v ?? '');
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+router.get('/export', auth, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT date, type, account, amount, remark FROM transactions ORDER BY date DESC, id DESC');
+    const lines = [CSV_HEADER, ...rows.map(r => [r.date, r.type, r.account, r.amount, r.remark ?? ''].map(escapeCsvField).join(','))];
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="transactions_backup_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(lines.join('\n'));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/', auth, async (req, res) => {
   try {
     const { account, type, from, to } = req.query;

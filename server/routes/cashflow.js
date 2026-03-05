@@ -26,64 +26,69 @@ router.get('/', auth, async (req, res) => {
           SUM(CASE WHEN type = 'Trips' THEN amount ELSE 0 END) AS trips_expense
         FROM transactions
         GROUP BY 1, 2
+      ),
+      base AS (
+        SELECT
+          m.id,
+          COALESCE(m.month, t.month) AS month,
+          COALESCE(m.person, t.person) AS person,
+          CASE WHEN COALESCE(t.income, 0) <> 0 THEN t.income ELSE COALESCE(m.income, 0) END AS income,
+          CASE WHEN COALESCE(t.other_income, 0) <> 0 THEN t.other_income ELSE COALESCE(m.other_income, 0) END AS other_income,
+          CASE WHEN COALESCE(t.major_expense, 0) <> 0 THEN t.major_expense ELSE COALESCE(m.major_expense, 0) END AS major_expense,
+          CASE WHEN COALESCE(t.non_recurring_expense, 0) <> 0 THEN t.non_recurring_expense ELSE COALESCE(m.non_recurring_expense, 0) END AS non_recurring_expense,
+          CASE WHEN COALESCE(t.regular_expense, 0) <> 0 THEN t.regular_expense ELSE COALESCE(m.regular_expense, 0) END AS regular_expense,
+          CASE WHEN COALESCE(t.emi, 0) <> 0 THEN t.emi ELSE COALESCE(m.emi, 0) END AS emi,
+          CASE WHEN COALESCE(t.trips_expense, 0) <> 0 THEN t.trips_expense ELSE COALESCE(m.trips_expense, 0) END AS trips_expense,
+          (
+            CASE WHEN COALESCE(t.major_expense, 0) <> 0 THEN t.major_expense ELSE COALESCE(m.major_expense, 0) END
+            + CASE WHEN COALESCE(t.non_recurring_expense, 0) <> 0 THEN t.non_recurring_expense ELSE COALESCE(m.non_recurring_expense, 0) END
+            + CASE WHEN COALESCE(t.regular_expense, 0) <> 0 THEN t.regular_expense ELSE COALESCE(m.regular_expense, 0) END
+            + CASE WHEN COALESCE(t.emi, 0) <> 0 THEN t.emi ELSE COALESCE(m.emi, 0) END
+            + CASE WHEN COALESCE(t.trips_expense, 0) <> 0 THEN t.trips_expense ELSE COALESCE(m.trips_expense, 0) END
+          ) AS net_expense,
+          COALESCE(m.ideal_saving, 100000) AS ideal_saving,
+          (
+            CASE WHEN COALESCE(t.income, 0) <> 0 THEN t.income ELSE COALESCE(m.income, 0) END
+            + CASE WHEN COALESCE(t.other_income, 0) <> 0 THEN t.other_income ELSE COALESCE(m.other_income, 0) END
+          ) - (
+            CASE WHEN COALESCE(t.major_expense, 0) <> 0 THEN t.major_expense ELSE COALESCE(m.major_expense, 0) END
+            + CASE WHEN COALESCE(t.non_recurring_expense, 0) <> 0 THEN t.non_recurring_expense ELSE COALESCE(m.non_recurring_expense, 0) END
+            + CASE WHEN COALESCE(t.regular_expense, 0) <> 0 THEN t.regular_expense ELSE COALESCE(m.regular_expense, 0) END
+            + CASE WHEN COALESCE(t.emi, 0) <> 0 THEN t.emi ELSE COALESCE(m.emi, 0) END
+            + CASE WHEN COALESCE(t.trips_expense, 0) <> 0 THEN t.trips_expense ELSE COALESCE(m.trips_expense, 0) END
+          ) AS actual_saving,
+          COALESCE(m.target, 0) AS target,
+          COALESCE(m.cash, 0) AS cash,
+          COALESCE(m.gold_silver, 0) AS gold_silver,
+          COALESCE(m.debt_pf, 0) AS debt_pf,
+          COALESCE(m.debt_ppf, 0) AS debt_ppf,
+          COALESCE(m.debt_mf, 0) AS debt_mf,
+          COALESCE(m.equity_indian, 0) AS equity_indian,
+          COALESCE(m.equity_intl, 0) AS equity_intl,
+          COALESCE(m.equity_nps, 0) AS equity_nps,
+          COALESCE(m.equity_trading, 0) AS equity_trading,
+          COALESCE(m.equity_smallcase, 0) AS equity_smallcase,
+          COALESCE(m.real_estate, 0) AS real_estate,
+          COALESCE(m.home_loan, 0) AS home_loan,
+          COALESCE(m.personal_loan, 0) AS personal_loan,
+          COALESCE(m.owed_friends, 0) AS owed_friends,
+          COALESCE(m.net_total, 0) AS net_total,
+          COALESCE(m.total_asset, 0) AS total_asset,
+          COALESCE(m.liability, 0) AS liability,
+          COALESCE(m.net_asset, 0) AS net_asset,
+          COALESCE(m.low_risk_pct, 0) AS low_risk_pct,
+          COALESCE(m.medium_risk_pct, 0) AS medium_risk_pct,
+          COALESCE(m.high_risk_pct, 0) AS high_risk_pct
+        FROM tx t
+        FULL OUTER JOIN monthly_cashflow m
+          ON m.month = t.month AND m.person = t.person
+        ${person ? 'WHERE COALESCE(m.person, t.person) = $1' : ''}
       )
       SELECT
-        m.id,
-        COALESCE(m.month, t.month) AS month,
-        COALESCE(m.person, t.person) AS person,
-        CASE WHEN COALESCE(t.income, 0) <> 0 THEN t.income ELSE COALESCE(m.income, 0) END AS income,
-        CASE WHEN COALESCE(t.other_income, 0) <> 0 THEN t.other_income ELSE COALESCE(m.other_income, 0) END AS other_income,
-        CASE WHEN COALESCE(t.major_expense, 0) <> 0 THEN t.major_expense ELSE COALESCE(m.major_expense, 0) END AS major_expense,
-        CASE WHEN COALESCE(t.non_recurring_expense, 0) <> 0 THEN t.non_recurring_expense ELSE COALESCE(m.non_recurring_expense, 0) END AS non_recurring_expense,
-        CASE WHEN COALESCE(t.regular_expense, 0) <> 0 THEN t.regular_expense ELSE COALESCE(m.regular_expense, 0) END AS regular_expense,
-        CASE WHEN COALESCE(t.emi, 0) <> 0 THEN t.emi ELSE COALESCE(m.emi, 0) END AS emi,
-        CASE WHEN COALESCE(t.trips_expense, 0) <> 0 THEN t.trips_expense ELSE COALESCE(m.trips_expense, 0) END AS trips_expense,
-        (
-          CASE WHEN COALESCE(t.major_expense, 0) <> 0 THEN t.major_expense ELSE COALESCE(m.major_expense, 0) END
-          + CASE WHEN COALESCE(t.non_recurring_expense, 0) <> 0 THEN t.non_recurring_expense ELSE COALESCE(m.non_recurring_expense, 0) END
-          + CASE WHEN COALESCE(t.regular_expense, 0) <> 0 THEN t.regular_expense ELSE COALESCE(m.regular_expense, 0) END
-          + CASE WHEN COALESCE(t.emi, 0) <> 0 THEN t.emi ELSE COALESCE(m.emi, 0) END
-          + CASE WHEN COALESCE(t.trips_expense, 0) <> 0 THEN t.trips_expense ELSE COALESCE(m.trips_expense, 0) END
-        ) AS net_expense,
-        COALESCE(m.ideal_saving, 100000) AS ideal_saving,
-        (
-          CASE WHEN COALESCE(t.income, 0) <> 0 THEN t.income ELSE COALESCE(m.income, 0) END
-          + CASE WHEN COALESCE(t.other_income, 0) <> 0 THEN t.other_income ELSE COALESCE(m.other_income, 0) END
-        ) - (
-          CASE WHEN COALESCE(t.major_expense, 0) <> 0 THEN t.major_expense ELSE COALESCE(m.major_expense, 0) END
-          + CASE WHEN COALESCE(t.non_recurring_expense, 0) <> 0 THEN t.non_recurring_expense ELSE COALESCE(m.non_recurring_expense, 0) END
-          + CASE WHEN COALESCE(t.regular_expense, 0) <> 0 THEN t.regular_expense ELSE COALESCE(m.regular_expense, 0) END
-          + CASE WHEN COALESCE(t.emi, 0) <> 0 THEN t.emi ELSE COALESCE(m.emi, 0) END
-          + CASE WHEN COALESCE(t.trips_expense, 0) <> 0 THEN t.trips_expense ELSE COALESCE(m.trips_expense, 0) END
-        ) AS actual_saving,
-        COALESCE(m.target, 0) AS target,
-        COALESCE(m.corpus, 0) AS corpus,
-        COALESCE(m.cash, 0) AS cash,
-        COALESCE(m.gold_silver, 0) AS gold_silver,
-        COALESCE(m.debt_pf, 0) AS debt_pf,
-        COALESCE(m.debt_ppf, 0) AS debt_ppf,
-        COALESCE(m.debt_mf, 0) AS debt_mf,
-        COALESCE(m.equity_indian, 0) AS equity_indian,
-        COALESCE(m.equity_intl, 0) AS equity_intl,
-        COALESCE(m.equity_nps, 0) AS equity_nps,
-        COALESCE(m.equity_trading, 0) AS equity_trading,
-        COALESCE(m.equity_smallcase, 0) AS equity_smallcase,
-        COALESCE(m.real_estate, 0) AS real_estate,
-        COALESCE(m.home_loan, 0) AS home_loan,
-        COALESCE(m.personal_loan, 0) AS personal_loan,
-        COALESCE(m.owed_friends, 0) AS owed_friends,
-        COALESCE(m.net_total, 0) AS net_total,
-        COALESCE(m.total_asset, 0) AS total_asset,
-        COALESCE(m.liability, 0) AS liability,
-        COALESCE(m.net_asset, 0) AS net_asset,
-        COALESCE(m.low_risk_pct, 0) AS low_risk_pct,
-        COALESCE(m.medium_risk_pct, 0) AS medium_risk_pct,
-        COALESCE(m.high_risk_pct, 0) AS high_risk_pct
-      FROM tx t
-      FULL OUTER JOIN monthly_cashflow m
-        ON m.month = t.month AND m.person = t.person
-      ${person ? 'WHERE COALESCE(m.person, t.person) = $1' : ''}
-      ORDER BY COALESCE(m.month, t.month) ASC, COALESCE(m.person, t.person) ASC
+        base.*,
+        SUM(actual_saving) OVER (PARTITION BY person ORDER BY month) AS corpus
+      FROM base
+      ORDER BY month ASC, person ASC
     `, params);
 
     res.json(rows);

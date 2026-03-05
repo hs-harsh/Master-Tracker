@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save, RefreshCw } from 'lucide-react';
-import SyncResultModal from '../components/SyncResultModal';
+import SyncResultModal, { downloadBackupCsv } from '../components/SyncResultModal';
 
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const SIDES = ['BUY', 'SELL'];
@@ -205,6 +205,7 @@ export default function Investments() {
     setSyncing(true);
     setSyncResult(null);
     try {
+      await downloadBackupCsv();
       const r = await api.post('/settings/sync-from-sheet');
       setSyncResult(r.data);
       load();
@@ -266,7 +267,7 @@ export default function Investments() {
         </div>
       </div>
 
-      {syncResult && <SyncResultModal result={syncResult} onClose={() => setSyncResult(null)} />}
+      {syncResult && <SyncResultModal result={syncResult} onClose={() => setSyncResult(null)} onRemoved={load} />}
 
       {(showForm || editing) && (
         <InvestmentForm

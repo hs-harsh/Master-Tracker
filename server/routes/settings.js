@@ -161,7 +161,13 @@ router.post('/sync-from-sheet', auth, async (req, res) => {
       return res.status(400).json({ error: 'Add at least one sheet URL in Settings' });
     }
 
-    const result = { transactions: { added: 0, errors: [], totalRows: 0 }, investments: { added: 0, errors: [], totalRows: 0 } };
+    const result = {
+      transactions: { added: 0, errors: [], totalRows: 0, removedFromSheet: [], removedCount: 0 },
+      investments: { added: 0, errors: [], totalRows: 0, removedFromSheet: [], removedCount: 0 },
+    };
+
+    const sheetTxKeys = new Set();
+    const sheetInvKeys = new Set();
 
     // --- Transactions ---
     if (sheetUrlTransactions) {
@@ -186,6 +192,8 @@ router.post('/sync-from-sheet', auth, async (req, res) => {
           if (!ACCOUNTS.includes(account)) { result.transactions.errors.push({ row: rowNum, message: `account must be one of: ${ACCOUNTS.join(', ')}` }); continue; }
           const amount = parseInt(amountRaw, 10);
           if (isNaN(amount) || amount < 0) { result.transactions.errors.push({ row: rowNum, message: 'amount must be a non-negative number' }); continue; }
+
+          sheetTxKeys.add(`${date}|${type}|${account}|${amount}|${remark || ''}`);
 
           const { rows: existing } = await pool.query(
             'SELECT 1 FROM transactions WHERE date = $1 AND type = $2 AND account = $3 AND amount = $4 AND (remark IS NOT DISTINCT FROM $5) LIMIT 1',
@@ -232,6 +240,8 @@ router.post('/sync-from-sheet', auth, async (req, res) => {
           const amount = parseInt(amountRaw, 10);
           if (isNaN(amount) || amount < 0) { result.investments.errors.push({ row: rowNum, message: 'amount must be a non-negative number' }); continue; }
 
+          sheetInvKeys.add(`${date}|${account}|${goal}|${asset_class}|${instrument}|${side}|${amount}`);
+
           const { rows: existing } = await pool.query(
             'SELECT 1 FROM investments WHERE date = $1 AND account = $2 AND goal = $3 AND asset_class = $4 AND instrument = $5 AND side = $6 AND amount = $7 LIMIT 1',
             [date, account, goal, asset_class, instrument, side, amount]
@@ -245,6 +255,45 @@ router.post('/sync-from-sheet', auth, async (req, res) => {
           result.investments.added++;
         }
       }
+    }
+
+    // --- Removed from sheet: in DB but not in sheet ---
+    if (sheetUrlTransactions) {
+      const { rows: dbRows } = await pool.query('SELECT id, date, type, account, amount, remark FROM transactions');
+      for (const row of dbRows) {
+        const key = `${row.date}|${row.type}|${row.account}|${Number(row.amount)}|${row.remark || ''}`;
+        if (!sheetTxKeys.has(key)) {
+          result.transactions.removedFromSheet.push({
+            id: row.id,
+            date: row.date,
+            type: row.type,
+            account: row.account,
+            amount: row.amount,
+            remark: row.remark,
+          });
+        }
+      }
+      result.transactions.removedCount = result.transactions.removedFromSheet.length;
+    }
+    if (sheetUrlInvestments) {
+      const { rows: dbRows } = await pool.query('SELECT id, date, account, goal, asset_class, instrument, side, amount, broker FROM investments');
+      for (const row of dbRows) {
+        const key = `${row.date}|${row.account}|${row.goal}|${row.asset_class}|${row.instrument}|${row.side}|${Number(row.amount)}`;
+        if (!sheetInvKeys.has(key)) {
+          result.investments.removedFromSheet.push({
+            id: row.id,
+            date: row.date,
+            account: row.account,
+            goal: row.goal,
+            asset_class: row.asset_class,
+            instrument: row.instrument,
+            side: row.side,
+            amount: row.amount,
+            broker: row.broker,
+          });
+        }
+      }
+      result.investments.removedCount = result.investments.removedFromSheet.length;
     }
 
     res.json(result);

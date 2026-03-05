@@ -3,6 +3,23 @@ const pool = require('../db');
 const auth = require('../middleware/auth');
 
 const ACCOUNTS = ['Harsh', 'Kirti'];
+const CSV_HEADER = 'date,account,goal,asset_class,instrument,side,amount,broker';
+function escapeCsvField(v) {
+  const s = String(v ?? '');
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+router.get('/export', auth, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT date, account, goal, asset_class, instrument, side, amount, broker FROM investments ORDER BY date DESC, id DESC');
+    const lines = [CSV_HEADER, ...rows.map(r => [r.date, r.account, r.goal, r.asset_class, r.instrument, r.side, r.amount, r.broker ?? ''].map(escapeCsvField).join(','))];
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="investments_backup_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(lines.join('\n'));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // List investments with optional filters: account, goal, asset_class, side, from, to
 router.get('/', auth, async (req, res) => {
