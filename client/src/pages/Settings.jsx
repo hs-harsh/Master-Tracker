@@ -1,18 +1,27 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { Settings as SettingsIcon, Save, RefreshCw, X } from 'lucide-react';
+import { applyTheme } from '../lib/theme';
 
 export default function Settings() {
   const [sheetUrlTransactions, setSheetUrlTransactions] = useState('');
   const [sheetUrlInvestments, setSheetUrlInvestments] = useState('');
+  const [defaultIdealSaving, setDefaultIdealSaving] = useState(100000);
+  const [defaultIncome, setDefaultIncome] = useState(0);
+  const [theme, setTheme] = useState('dark');
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
 
   const load = () => {
-    api.get('/settings/sheet-urls').then(r => {
-      setSheetUrlTransactions(r.data.sheetUrlTransactions || '');
-      setSheetUrlInvestments(r.data.sheetUrlInvestments || '');
+    api.get('/settings').then(r => {
+      const d = r.data;
+      setSheetUrlTransactions(d.sheetUrlTransactions || '');
+      setSheetUrlInvestments(d.sheetUrlInvestments || '');
+      setDefaultIdealSaving(d.defaultIdealSaving ?? 100000);
+      setDefaultIncome(d.defaultIncome ?? 0);
+      setTheme(d.theme || 'dark');
+      applyTheme(d.theme || 'dark');
     }).catch(() => {});
   };
 
@@ -21,10 +30,14 @@ export default function Settings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.put('/settings/sheet-urls', {
+      await api.put('/settings', {
         sheetUrlTransactions: sheetUrlTransactions.trim(),
         sheetUrlInvestments: sheetUrlInvestments.trim(),
+        defaultIdealSaving: Number(defaultIdealSaving) || 0,
+        defaultIncome: Number(defaultIncome) || 0,
+        theme,
       });
+      applyTheme(theme);
       load();
     } catch (e) {
       alert(e.response?.data?.error || 'Failed to save');
@@ -50,16 +63,17 @@ export default function Settings() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="font-display text-2xl font-bold text-white">Settings</h1>
-        <p className="text-muted text-sm mt-0.5">Link a Google Sheet and sync new rows into the app</p>
+        <p className="text-muted text-sm mt-0.5">Google Sheet links, defaults, and appearance</p>
       </div>
 
+      {/* Linked Google Sheet */}
       <div className="card max-w-2xl">
         <div className="flex items-center gap-2 mb-4">
           <SettingsIcon size={18} className="text-accent" />
           <h2 className="font-display font-bold text-white">Linked Google Sheet</h2>
         </div>
         <p className="text-sm text-soft mb-4">
-          Use one Google Sheet with two tabs: <strong>Transactions</strong> and <strong>Investments</strong>. Publish each tab to the web as CSV (File → Share → Publish to web → pick sheet → CSV), then paste the two links below. Sync will add only new rows that don’t already exist in the DB.
+          Use one Google Sheet with two tabs: <strong>Transactions</strong> and <strong>Investments</strong>. Publish each tab to the web as CSV (File → Share → Publish to web → pick sheet → CSV), then paste the two links below. You can change and save new links anytime. Sync adds only new rows that don’t already exist in the DB.
         </p>
         <div className="space-y-3">
           <div>
@@ -84,9 +98,6 @@ export default function Settings() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2 mt-4">
-          <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">
-            <Save size={14} /> {saving ? 'Saving…' : 'Save links'}
-          </button>
           <button
             onClick={handleSync}
             disabled={syncing || (!sheetUrlTransactions && !sheetUrlInvestments)}
@@ -97,6 +108,58 @@ export default function Settings() {
             {syncing ? 'Syncing…' : 'Sync with sheet'}
           </button>
         </div>
+      </div>
+
+      {/* Defaults */}
+      <div className="card max-w-2xl">
+        <h2 className="font-display font-bold text-white mb-4">Defaults</h2>
+        <p className="text-sm text-soft mb-4">
+          Default values used when adding a new Cashflow month entry (ideal saving and income/salary).
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Ideal saving (₹)</label>
+            <input
+              type="number"
+              className="input w-full"
+              min={0}
+              value={defaultIdealSaving}
+              onChange={e => setDefaultIdealSaving(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label">Income / Salary (₹)</label>
+            <input
+              type="number"
+              className="input w-full"
+              min={0}
+              value={defaultIncome}
+              onChange={e => setDefaultIncome(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Theme */}
+      <div className="card max-w-2xl">
+        <h2 className="font-display font-bold text-white mb-4">Theme</h2>
+        <div className="flex flex-wrap gap-2">
+          {['dark', 'light'].map(t => (
+            <button
+              key={t}
+              onClick={() => setTheme(t)}
+              className={`px-4 py-2 rounded-lg text-sm font-mono capitalize ${theme === t ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">
+          <Save size={14} /> {saving ? 'Saving…' : 'Save all'}
+        </button>
       </div>
 
       {syncResult && (

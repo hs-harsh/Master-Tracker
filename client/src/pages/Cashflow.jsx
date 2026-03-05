@@ -4,18 +4,24 @@ import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { Plus, Edit2, Trash2, ChevronDown, ChevronUp, Save, X } from 'lucide-react';
 
+const DEFAULT_IDEAL_SAVING = 100000;
+const DEFAULT_INCOME = 0;
+
 const PERSONS = ['Harsh', 'Kirti'];
-const EMPTY = {
-  month: '', person: 'Harsh', income: 0, other_income: 0,
-  major_expense: 0, non_recurring_expense: 0, regular_expense: 0,
-  emi: 0, trips_expense: 0, net_expense: 0, ideal_saving: 100000,
-  actual_saving: 0, target: 0, corpus: 0,
-  cash: 0, gold_silver: 0, debt_pf: 0, debt_ppf: 0, debt_mf: 0,
-  equity_indian: 0, equity_intl: 0, equity_nps: 0, equity_trading: 0,
-  equity_smallcase: 0, real_estate: 0, home_loan: 0, personal_loan: 0,
-  owed_friends: 0, net_total: 0, total_asset: 0, liability: 0, net_asset: 0,
-  low_risk_pct: 0, medium_risk_pct: 0, high_risk_pct: 0,
-};
+function emptyDefaults(idealSaving = DEFAULT_IDEAL_SAVING, income = DEFAULT_INCOME) {
+  return {
+    month: '', person: 'Harsh', income, other_income: 0,
+    major_expense: 0, non_recurring_expense: 0, regular_expense: 0,
+    emi: 0, trips_expense: 0, net_expense: 0, ideal_saving: idealSaving,
+    actual_saving: 0, target: 0, corpus: 0,
+    cash: 0, gold_silver: 0, debt_pf: 0, debt_ppf: 0, debt_mf: 0,
+    equity_indian: 0, equity_intl: 0, equity_nps: 0, equity_trading: 0,
+    equity_smallcase: 0, real_estate: 0, home_loan: 0, personal_loan: 0,
+    owed_friends: 0, net_total: 0, total_asset: 0, liability: 0, net_asset: 0,
+    low_risk_pct: 0, medium_risk_pct: 0, high_risk_pct: 0,
+  };
+}
+const EMPTY = emptyDefaults();
 
 function Field({ label, name, form, onChange, type = 'number' }) {
   return (
@@ -32,8 +38,8 @@ function Field({ label, name, form, onChange, type = 'number' }) {
   );
 }
 
-function EntryForm({ initial, onSave, onCancel }) {
-  const [form, setForm] = useState(initial || EMPTY);
+function EntryForm({ initial, defaultIdealSaving, defaultIncome, onSave, onCancel }) {
+  const [form, setForm] = useState(initial || emptyDefaults(defaultIdealSaving, defaultIncome));
   const [section, setSection] = useState('cashflow');
 
   const onChange = e => {
@@ -75,7 +81,7 @@ function EntryForm({ initial, onSave, onCancel }) {
           <Field label="EMI" name="emi" form={form} onChange={onChange} />
           <Field label="Trips Expense" name="trips_expense" form={form} onChange={onChange} />
           <Field label="Net Expense" name="net_expense" form={form} onChange={onChange} />
-          <Field label="Ideal Saving (₹1L default)" name="ideal_saving" form={form} onChange={onChange} />
+          <Field label="Ideal Saving (₹)" name="ideal_saving" form={form} onChange={onChange} />
           <Field label="Target" name="target" form={form} onChange={onChange} />
           <Field label="Corpus" name="corpus" form={form} onChange={onChange} />
         </div>
@@ -128,6 +134,15 @@ export default function Cashflow() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [defaultIdealSaving, setDefaultIdealSaving] = useState(DEFAULT_IDEAL_SAVING);
+  const [defaultIncome, setDefaultIncome] = useState(DEFAULT_INCOME);
+
+  useEffect(() => {
+    api.get('/settings').then(r => {
+      if (r.data?.defaultIdealSaving != null) setDefaultIdealSaving(r.data.defaultIdealSaving);
+      if (r.data?.defaultIncome != null) setDefaultIncome(r.data.defaultIncome);
+    }).catch(() => {});
+  }, []);
 
   const load = () => {
     setLoading(true);
@@ -191,6 +206,8 @@ export default function Cashflow() {
       {(showForm || editing) && (
         <EntryForm
           initial={editing}
+          defaultIdealSaving={defaultIdealSaving}
+          defaultIncome={defaultIncome}
           onSave={handleSave}
           onCancel={() => { setShowForm(false); setEditing(null); }}
         />

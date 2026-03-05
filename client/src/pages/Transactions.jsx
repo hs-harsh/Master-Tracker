@@ -1,56 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, Download, Upload, Check, AlertCircle, Link2 } from 'lucide-react';
-
-function ImportResultModal({ result, onClose }) {
-  const { added, errors = [], totalRows } = result;
-  const errorByRow = Object.fromEntries((errors || []).map(e => [e.row, e.message]));
-  const rowStatus = Array.from({ length: totalRows }, (_, i) => {
-    const rowNum = i + 2;
-    const message = errorByRow[rowNum];
-    return { rowNum, ok: !message, message };
-  });
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/80" onClick={onClose}>
-      <div className="card max-w-lg w-full max-h-[80vh] flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-display font-bold text-white">Import result</h3>
-          <button onClick={onClose} className="text-muted hover:text-white"><X size={20} /></button>
-        </div>
-        <p className="text-sm text-soft mb-3">
-          Added <strong className="text-teal">{added}</strong> of {totalRows} rows.
-          {errors.length > 0 && <span className="text-rose ml-1">{errors.length} error(s)</span>}
-        </p>
-        <div className="overflow-y-auto flex-1 min-h-0 border border-border rounded-lg bg-surface/50">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-surface">
-              <tr className="border-b border-border">
-                <th className="text-left py-2 px-3 text-muted font-display text-xs uppercase">Row</th>
-                <th className="text-left py-2 px-3 text-muted font-display text-xs uppercase">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rowStatus.map(({ rowNum, ok, message }) => (
-                <tr key={rowNum} className="border-b border-border/50">
-                  <td className="py-2 px-3 font-mono text-soft">{rowNum}</td>
-                  <td className="py-2 px-3">
-                    {ok ? (
-                      <span className="flex items-center gap-1.5 text-teal"><Check size={14} /> Passed</span>
-                    ) : (
-                      <span className="flex items-center gap-1.5 text-rose"><AlertCircle size={14} /> {message}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <button onClick={onClose} className="btn-primary mt-3 w-full">Close</button>
-      </div>
-    </div>
-  );
-}
+import { Plus, Search, Trash2, Edit2, X, Save } from 'lucide-react';
 
 const TYPES = ['Income', 'Major', 'Non-Recurring', 'Trips'];
 const ACCOUNTS = ['Harsh', 'Kirti'];
@@ -140,58 +91,6 @@ export default function Transactions() {
     load();
   };
 
-  const exportTemplate = async () => {
-    try {
-      const r = await api.get('/transactions/export-template', { responseType: 'text' });
-      const blob = new Blob([r.data], { type: 'text/csv' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'transactions_template.csv';
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch (e) {
-      alert(e.response?.data?.error || 'Export failed');
-    }
-  };
-
-  const fileInputRef = useRef(null);
-  const [importResult, setImportResult] = useState(null);
-  const [importUrl, setImportUrl] = useState('');
-  const [importUrlLoading, setImportUrlLoading] = useState(false);
-
-  const handleImport = async (e) => {
-    const file = e.target?.files?.[0];
-    if (!file) return;
-    e.target.value = '';
-    try {
-      const text = await file.text();
-      const r = await api.post('/transactions/import', { csv: text });
-      setImportResult(r.data);
-      load();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Import failed');
-    }
-  };
-
-  const handleImportFromUrl = async () => {
-    const url = importUrl.trim();
-    if (!url) {
-      alert('Paste a link first (e.g. published Google Sheets CSV link)');
-      return;
-    }
-    setImportUrlLoading(true);
-    try {
-      const r = await api.post('/transactions/import', { importUrl: url });
-      setImportResult(r.data);
-      setImportUrl('');
-      load();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Import from link failed');
-    } finally {
-      setImportUrlLoading(false);
-    }
-  };
-
   const filtered = data.filter(t =>
     !filters.search ||
     t.remark?.toLowerCase().includes(filters.search.toLowerCase()) ||
@@ -208,46 +107,11 @@ export default function Transactions() {
           <p className="text-muted text-sm mt-0.5">All income, major, non-recurring & trip expenses</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={exportTemplate} className="btn-ghost flex items-center gap-2" title="Download CSV template with column headers">
-            <Download size={14} /> Export CSV
-          </button>
-          <button onClick={() => fileInputRef.current?.click()} className="btn-ghost flex items-center gap-2" title="Upload filled CSV to import rows">
-            <Upload size={14} /> Import CSV
-          </button>
-          <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
             <Plus size={14} /> Add Transaction
           </button>
         </div>
       </div>
-
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-muted">Import from link:</span>
-        <input
-          type="url"
-          className="input flex-1 min-w-48 max-w-md"
-          placeholder="Paste Google Sheets / Docs published CSV link (https://...)"
-          value={importUrl}
-          onChange={e => setImportUrl(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleImportFromUrl()}
-        />
-        <button
-          onClick={handleImportFromUrl}
-          disabled={importUrlLoading || !importUrl.trim()}
-          className="btn-ghost flex items-center gap-2"
-          title="Fetch CSV from URL and import"
-        >
-          <Link2 size={14} />
-          {importUrlLoading ? 'Fetching…' : 'Fetch & import'}
-        </button>
-      </div>
-
-      {importResult && (
-        <ImportResultModal
-          result={importResult}
-          onClose={() => setImportResult(null)}
-        />
-      )}
 
       {(showForm || editing) && (
         <TransactionForm

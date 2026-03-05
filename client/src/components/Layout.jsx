@@ -1,6 +1,9 @@
+import { useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, LogOut, Settings } from 'lucide-react';
+import api from '../lib/api';
+import { applyTheme } from '../lib/theme';
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -14,6 +17,10 @@ const NAV = [
 export default function Layout() {
   const { logout } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    api.get('/settings').then(r => applyTheme(r.data?.theme)).catch(() => {});
+  }, []);
 
   const handleLogout = () => { logout(); navigate('/login'); };
 

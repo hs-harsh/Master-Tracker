@@ -11,6 +11,9 @@ const SIDES = ['BUY', 'SELL'];
 const SETTINGS_KEYS = {
   sheetUrlTransactions: 'sheet_url_transactions',
   sheetUrlInvestments: 'sheet_url_investments',
+  defaultIdealSaving: 'default_ideal_saving',
+  defaultIncome: 'default_income',
+  theme: 'theme',
 };
 
 async function getSetting(key) {
@@ -38,38 +41,67 @@ async function fetchUrl(url) {
   }
 }
 
-// GET sheet URLs
-router.get('/sheet-urls', auth, async (req, res) => {
+// GET all settings (sheet URLs + defaults + theme)
+router.get('/', auth, async (req, res) => {
   try {
     const sheetUrlTransactions = await getSetting(SETTINGS_KEYS.sheetUrlTransactions);
     const sheetUrlInvestments = await getSetting(SETTINGS_KEYS.sheetUrlInvestments);
-    res.json({ sheetUrlTransactions, sheetUrlInvestments });
+    const defaultIdealSaving = await getSetting(SETTINGS_KEYS.defaultIdealSaving);
+    const defaultIncome = await getSetting(SETTINGS_KEYS.defaultIncome);
+    const theme = await getSetting(SETTINGS_KEYS.theme);
+    res.json({
+      sheetUrlTransactions,
+      sheetUrlInvestments,
+      defaultIdealSaving: defaultIdealSaving ? parseInt(defaultIdealSaving, 10) : 100000,
+      defaultIncome: defaultIncome ? parseInt(defaultIncome, 10) : 0,
+      theme: theme || 'dark',
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// PUT sheet URLs
-router.put('/sheet-urls', auth, async (req, res) => {
+// PUT all settings
+router.put('/', auth, async (req, res) => {
   try {
-    const { sheetUrlTransactions, sheetUrlInvestments } = req.body || {};
-    if (sheetUrlTransactions !== undefined) {
-      const v = typeof sheetUrlTransactions === 'string' ? sheetUrlTransactions.trim() : '';
+    const body = req.body || {};
+    if (body.sheetUrlTransactions !== undefined) {
+      const v = typeof body.sheetUrlTransactions === 'string' ? body.sheetUrlTransactions.trim() : '';
       if (v && !v.startsWith('https://')) {
         return res.status(400).json({ error: 'Transactions sheet URL must use https' });
       }
       await setSetting(SETTINGS_KEYS.sheetUrlTransactions, v);
     }
-    if (sheetUrlInvestments !== undefined) {
-      const v = typeof sheetUrlInvestments === 'string' ? sheetUrlInvestments.trim() : '';
+    if (body.sheetUrlInvestments !== undefined) {
+      const v = typeof body.sheetUrlInvestments === 'string' ? body.sheetUrlInvestments.trim() : '';
       if (v && !v.startsWith('https://')) {
         return res.status(400).json({ error: 'Investments sheet URL must use https' });
       }
       await setSetting(SETTINGS_KEYS.sheetUrlInvestments, v);
     }
+    if (body.defaultIdealSaving !== undefined) {
+      const v = Math.max(0, parseInt(body.defaultIdealSaving, 10) || 0);
+      await setSetting(SETTINGS_KEYS.defaultIdealSaving, String(v));
+    }
+    if (body.defaultIncome !== undefined) {
+      const v = Math.max(0, parseInt(body.defaultIncome, 10) || 0);
+      await setSetting(SETTINGS_KEYS.defaultIncome, String(v));
+    }
+    if (body.theme !== undefined) {
+      const v = ['dark', 'light'].includes(body.theme) ? body.theme : 'dark';
+      await setSetting(SETTINGS_KEYS.theme, v);
+    }
+    const sheetUrlTransactions = await getSetting(SETTINGS_KEYS.sheetUrlTransactions);
+    const sheetUrlInvestments = await getSetting(SETTINGS_KEYS.sheetUrlInvestments);
+    const defaultIdealSaving = await getSetting(SETTINGS_KEYS.defaultIdealSaving);
+    const defaultIncome = await getSetting(SETTINGS_KEYS.defaultIncome);
+    const theme = await getSetting(SETTINGS_KEYS.theme);
     res.json({
-      sheetUrlTransactions: await getSetting(SETTINGS_KEYS.sheetUrlTransactions),
-      sheetUrlInvestments: await getSetting(SETTINGS_KEYS.sheetUrlInvestments),
+      sheetUrlTransactions,
+      sheetUrlInvestments,
+      defaultIdealSaving: defaultIdealSaving ? parseInt(defaultIdealSaving, 10) : 100000,
+      defaultIncome: defaultIncome ? parseInt(defaultIncome, 10) : 0,
+      theme: theme || 'dark',
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

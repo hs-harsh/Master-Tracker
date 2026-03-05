@@ -43,6 +43,25 @@
   .tag-kirti { @apply bg-purple-400/10 text-purple-300; }
 }
 
+/* Light theme */
+[data-theme="light"] body {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+[data-theme="light"] .bg-ink { background: #f1f5f9; }
+[data-theme="light"] .bg-surface { background: #e2e8f0; }
+[data-theme="light"] .bg-card { background: #ffffff; border-color: #cbd5e1; }
+[data-theme="light"] .border-border { border-color: #cbd5e1; }
+[data-theme="light"] .text-white { color: #0f172a; }
+[data-theme="light"] .text-soft { color: #475569; }
+[data-theme="light"] .text-muted { color: #64748b; }
+[data-theme="light"] .input { background: #e2e8f0; border-color: #cbd5e1; color: #0f172a; }
+[data-theme="light"] .btn-ghost { color: #475569; }
+[data-theme="light"] .btn-ghost:hover { color: #0f172a; }
+[data-theme="light"] ::-webkit-scrollbar-track { background: #e2e8f0; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #94a3b8; }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #161920; }
