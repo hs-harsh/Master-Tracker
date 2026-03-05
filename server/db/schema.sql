@@ -62,6 +62,18 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS investments (
+  id SERIAL PRIMARY KEY,
+  date DATE NOT NULL,
+  goal VARCHAR(100) NOT NULL,
+  asset_class VARCHAR(30) NOT NULL,
+  instrument VARCHAR(100) NOT NULL,
+  side VARCHAR(4) NOT NULL CHECK (side IN ('BUY', 'SELL')),
+  amount BIGINT NOT NULL DEFAULT 0,
+  broker VARCHAR(50),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS portfolio_holdings (
   id SERIAL PRIMARY KEY,
   portfolio_name VARCHAR(50) NOT NULL,
@@ -88,3 +100,5 @@ CREATE TABLE IF NOT EXISTS regular_expenses (
 CREATE INDEX IF NOT EXISTS idx_cashflow_month_person ON monthly_cashflow(month, person);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account);
+CREATE INDEX IF NOT EXISTS idx_investments_goal ON investments(goal);
+CREATE INDEX IF NOT EXISTS idx_investments_date ON investments(date);

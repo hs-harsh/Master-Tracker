@@ -1,11 +1,12 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { LayoutDashboard, TrendingUp, Receipt, PieChart, LogOut } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, LogOut } from 'lucide-react';
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/cashflow', icon: TrendingUp, label: 'Cashflow' },
   { to: '/transactions', icon: Receipt, label: 'Transactions' },
+  { to: '/investments', icon: Briefcase, label: 'Investments' },
   { to: '/portfolio', icon: PieChart, label: 'Portfolio' },
 ];
 

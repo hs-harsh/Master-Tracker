@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Cashflow from './pages/Cashflow';
 import Transactions from './pages/Transactions';
 import Portfolio from './pages/Portfolio';
+import Investments from './pages/Investments';
 
 function Protected({ children }) {
   const { isAuth } = useAuth();
@@ -22,6 +23,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="cashflow" element={<Cashflow />} />
             <Route path="transactions" element={<Transactions />} />
+            <Route path="investments" element={<Investments />} />
             <Route path="portfolio" element={<Portfolio />} />
           </Route>
         </Routes>
