@@ -205,8 +205,8 @@ export default function Investments() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      await downloadBackupCsv();
-      const r = await api.post('/settings/sync-from-sheet');
+      await downloadBackupCsv('investments');
+      const r = await api.post('/settings/sync-from-sheet', { type: 'investments' });
       setSyncResult(r.data);
       load();
     } catch (e) {
@@ -267,7 +267,7 @@ export default function Investments() {
         </div>
       </div>
 
-      {syncResult && <SyncResultModal result={syncResult} onClose={() => setSyncResult(null)} onRemoved={load} />}
+      {syncResult && <SyncResultModal result={syncResult} syncType="investments" onClose={() => setSyncResult(null)} />}
 
       {(showForm || editing) && (
         <InvestmentForm

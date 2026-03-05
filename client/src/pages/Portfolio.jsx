@@ -3,7 +3,6 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 
-const ACCOUNTS = ['Harsh', 'Kirti'];
 const RISK_COLORS = { Low: '#60a5fa', Medium: '#fbbf24', High: '#f97316' };
 const ASSET_COLORS = { Equity: '#f97316', Debt: '#60a5fa', Gold: '#fbbf24', Cash: '#6b7280', 'Real Estate': '#a78bfa', Crypto: '#ec4899' };
 
@@ -22,16 +21,20 @@ const riskForAsset = asset => {
   }
 };
 
+const PERSON_OPTIONS = ['Harsh', 'Kirti', 'Both'];
+
 export default function Portfolio() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [person, setPerson] = useState('Harsh');
-  const [activeGoal, setActiveGoal] = useState('');
+  const [goalFilter, setGoalFilter] = useState('');
 
   const load = () => {
     setLoading(true);
+    const params = new URLSearchParams();
+    if (person !== 'Both') params.set('account', person);
     api
-      .get(`/investments?account=${person}`)
+      .get(`/investments?${params}`)
       .then(r => setData(r.data))
       .finally(() => setLoading(false));
   };
@@ -45,13 +48,9 @@ export default function Portfolio() {
     [data]
   );
 
-  useEffect(() => {
-    if (!activeGoal && goals.length) {
-      setActiveGoal(goals[0]);
-    }
-  }, [goals, activeGoal]);
-
-  const goalInvestments = data.filter(d => (activeGoal ? d.goal === activeGoal : true));
+  const goalInvestments = goalFilter
+    ? data.filter(d => d.goal === goalFilter)
+    : data;
 
   const totalNet = goalInvestments.reduce(
     (sum, inv) => sum + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)),
@@ -85,39 +84,46 @@ export default function Portfolio() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-white">Goal Portfolio</h1>
-          <p className="text-muted text-sm mt-0.5">
-            Select a goal to see all investments and risk breakdown
-          </p>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="font-display text-2xl font-bold text-white">Goal Portfolio</h1>
+            <p className="text-muted text-sm mt-0.5">
+              View by account and filter by goal
+            </p>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {ACCOUNTS.map(p => (
-            <button
-              key={p}
-              onClick={() => setPerson(p)}
-              className={`px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
-                person === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'
-              }`}
-            >
-              {p}
-            </button>
-          ))}
-          {goals.length === 0 ? (
-            <span className="text-muted text-xs">Add investments with goals to see portfolio.</span>
-          ) : (
-            goals.map(g => (
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-muted text-xs uppercase tracking-wider">Account</span>
+            {PERSON_OPTIONS.map(p => (
               <button
-                key={g}
-                onClick={() => setActiveGoal(g)}
+                key={p}
+                onClick={() => setPerson(p)}
                 className={`px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
-                  activeGoal === g ? 'bg-accent/50 text-white' : 'btn-ghost'
+                  person === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'
                 }`}
               >
-                {g}
+                {p}
               </button>
-            ))
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="portfolio-goal" className="text-muted text-xs uppercase tracking-wider">Goal</label>
+            <select
+              id="portfolio-goal"
+              value={goalFilter}
+              onChange={e => setGoalFilter(e.target.value)}
+              className="input py-2 text-sm min-w-[160px]"
+            >
+              <option value="">All goals</option>
+              {goals.map(g => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </div>
+          {goals.length === 0 && (
+            <span className="text-muted text-xs">Add investments with goals to see portfolio.</span>
           )}
         </div>
       </div>
@@ -132,7 +138,8 @@ export default function Portfolio() {
               {fmt(totalNet)}
             </p>
             <p className="text-muted text-xs mt-1">
-              {goalInvestments.length} investments for this goal
+              {goalInvestments.length} investment{goalInvestments.length !== 1 ? 's' : ''}
+              {goalFilter ? ` for ${goalFilter}` : ''}
             </p>
           </div>
         </div>
@@ -161,7 +168,10 @@ export default function Portfolio() {
                   border: '1px solid #2a3040',
                   borderRadius: 8,
                   fontSize: 12,
+                  color: '#e5e7eb',
                 }}
+                labelStyle={{ color: '#e5e7eb' }}
+                itemStyle={{ color: '#e5e7eb' }}
                 formatter={v => [fmt(v), '']}
               />
             </PieChart>
@@ -190,7 +200,10 @@ export default function Portfolio() {
                   border: '1px solid #2a3040',
                   borderRadius: 8,
                   fontSize: 12,
+                  color: '#e5e7eb',
                 }}
+                labelStyle={{ color: '#e5e7eb' }}
+                itemStyle={{ color: '#e5e7eb' }}
                 formatter={v => [`${Number(v).toFixed(2)}L`, '']}
               />
               <Bar dataKey="ValueL" radius={[3, 3, 0, 0]}>
@@ -237,7 +250,7 @@ export default function Portfolio() {
               ) : goalInvestments.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-muted">
-                    No investments for this goal yet
+                    {goalFilter ? `No investments for ${goalFilter} yet` : 'No investments yet'}
                   </td>
                 </tr>
               ) : (

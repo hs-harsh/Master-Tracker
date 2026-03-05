@@ -152,151 +152,90 @@ router.put('/', auth, async (req, res) => {
   }
 });
 
-// POST sync-from-sheet: fetch CSVs from linked URLs, compare with DB, insert only new rows
+// POST sync-from-sheet: body { type: 'transactions' | 'investments' }. Backup is done by client.
+// Replaces DB with sheet: delete all of that type, then insert all valid rows from sheet.
 router.post('/sync-from-sheet', auth, async (req, res) => {
   try {
-    const sheetUrlTransactions = await getSetting(SETTINGS_KEYS.sheetUrlTransactions);
-    const sheetUrlInvestments = await getSetting(SETTINGS_KEYS.sheetUrlInvestments);
-    if (!sheetUrlTransactions && !sheetUrlInvestments) {
-      return res.status(400).json({ error: 'Add at least one sheet URL in Settings' });
+    const { type } = req.body || {};
+    if (!type || !['transactions', 'investments'].includes(type)) {
+      return res.status(400).json({ error: 'Body must include type: "transactions" or "investments"' });
     }
 
-    const result = {
-      transactions: { added: 0, errors: [], totalRows: 0, removedFromSheet: [], removedCount: 0 },
-      investments: { added: 0, errors: [], totalRows: 0, removedFromSheet: [], removedCount: 0 },
-    };
+    const result = { added: 0, errors: [], totalRows: 0 };
 
-    const sheetTxKeys = new Set();
-    const sheetInvKeys = new Set();
-
-    // --- Transactions ---
-    if (sheetUrlTransactions) {
-      const csvRaw = await fetchUrl(sheetUrlTransactions);
+    if (type === 'transactions') {
+      const sheetUrl = await getSetting(SETTINGS_KEYS.sheetUrlTransactions);
+      if (!sheetUrl) return res.status(400).json({ error: 'Add Transactions sheet URL in Settings' });
+      const csvRaw = await fetchUrl(sheetUrl);
       if (!csvRaw) {
-        result.transactions.errors.push({ row: 0, message: 'Could not fetch transactions sheet URL' });
-      } else {
-        const rows = parse(csvRaw, { columns: true, skip_empty_lines: true, trim: true });
-        result.transactions.totalRows = rows.length;
-        for (let i = 0; i < rows.length; i++) {
-          const r = rows[i];
-          const rowNum = i + 2;
-          const date = (r.date || '').trim();
-          const type = (r.type || '').trim();
-          const account = (r.account || '').trim();
-          const amountRaw = (r.amount ?? '').toString().trim();
-          const remark = (r.remark ?? '').trim();
-
-          if (!date) { result.transactions.errors.push({ row: rowNum, message: 'date is required' }); continue; }
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { result.transactions.errors.push({ row: rowNum, message: 'date must be YYYY-MM-DD' }); continue; }
-          if (!TYPES.includes(type)) { result.transactions.errors.push({ row: rowNum, message: `type must be one of: ${TYPES.join(', ')}` }); continue; }
-          if (!ACCOUNTS.includes(account)) { result.transactions.errors.push({ row: rowNum, message: `account must be one of: ${ACCOUNTS.join(', ')}` }); continue; }
-          const amount = parseInt(amountRaw, 10);
-          if (isNaN(amount) || amount < 0) { result.transactions.errors.push({ row: rowNum, message: 'amount must be a non-negative number' }); continue; }
-
-          sheetTxKeys.add(`${date}|${type}|${account}|${amount}|${remark || ''}`);
-
-          const { rows: existing } = await pool.query(
-            'SELECT 1 FROM transactions WHERE date = $1 AND type = $2 AND account = $3 AND amount = $4 AND (remark IS NOT DISTINCT FROM $5) LIMIT 1',
-            [date, type, account, amount, remark || null]
-          );
-          if (existing.length > 0) continue;
-
-          await pool.query(
-            'INSERT INTO transactions (date, type, account, amount, remark) VALUES ($1,$2,$3,$4,$5)',
-            [date, type, account, amount, remark || null]
-          );
-          result.transactions.added++;
-        }
+        result.errors.push({ row: 0, message: 'Could not fetch sheet URL' });
+        return res.json({ transactions: result });
       }
+      await pool.query('DELETE FROM transactions');
+      const rows = parse(csvRaw, { columns: true, skip_empty_lines: true, trim: true });
+      result.totalRows = rows.length;
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const rowNum = i + 2;
+        const date = (r.date || '').trim();
+        const txType = (r.type || '').trim();
+        const account = (r.account || '').trim();
+        const amountRaw = (r.amount ?? '').toString().trim();
+        const remark = (r.remark ?? '').trim();
+        if (!date) { result.errors.push({ row: rowNum, message: 'date is required' }); continue; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { result.errors.push({ row: rowNum, message: 'date must be YYYY-MM-DD' }); continue; }
+        if (!TYPES.includes(txType)) { result.errors.push({ row: rowNum, message: `type must be one of: ${TYPES.join(', ')}` }); continue; }
+        if (!ACCOUNTS.includes(account)) { result.errors.push({ row: rowNum, message: `account must be one of: ${ACCOUNTS.join(', ')}` }); continue; }
+        const amount = parseInt(amountRaw, 10);
+        if (isNaN(amount) || amount < 0) { result.errors.push({ row: rowNum, message: 'amount must be a non-negative number' }); continue; }
+        await pool.query(
+          'INSERT INTO transactions (date, type, account, amount, remark) VALUES ($1,$2,$3,$4,$5)',
+          [date, txType, account, amount, remark || null]
+        );
+        result.added++;
+      }
+      return res.json({ transactions: result });
     }
 
-    // --- Investments ---
-    if (sheetUrlInvestments) {
-      const csvRaw = await fetchUrl(sheetUrlInvestments);
+    if (type === 'investments') {
+      const sheetUrl = await getSetting(SETTINGS_KEYS.sheetUrlInvestments);
+      if (!sheetUrl) return res.status(400).json({ error: 'Add Investments sheet URL in Settings' });
+      const csvRaw = await fetchUrl(sheetUrl);
       if (!csvRaw) {
-        result.investments.errors.push({ row: 0, message: 'Could not fetch investments sheet URL' });
-      } else {
-        const rows = parse(csvRaw, { columns: true, skip_empty_lines: true, trim: true });
-        result.investments.totalRows = rows.length;
-        for (let i = 0; i < rows.length; i++) {
-          const r = rows[i];
-          const rowNum = i + 2;
-          const date = (r.date || '').trim();
-          const account = (r.account || '').trim() || 'Harsh';
-          const goal = (r.goal || '').trim();
-          const asset_class = (r.asset_class || '').trim();
-          const instrument = (r.instrument || '').trim();
-          const side = (r.side || '').trim().toUpperCase();
-          const amountRaw = (r.amount ?? '').toString().trim();
-          const broker = (r.broker ?? '').trim() || null;
-
-          if (!date) { result.investments.errors.push({ row: rowNum, message: 'date is required' }); continue; }
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { result.investments.errors.push({ row: rowNum, message: 'date must be YYYY-MM-DD' }); continue; }
-          if (!ACCOUNTS.includes(account)) { result.investments.errors.push({ row: rowNum, message: `account must be one of: ${ACCOUNTS.join(', ')}` }); continue; }
-          if (!goal) { result.investments.errors.push({ row: rowNum, message: 'goal is required' }); continue; }
-          if (!ASSET_CLASSES.includes(asset_class)) { result.investments.errors.push({ row: rowNum, message: `asset_class must be one of: ${ASSET_CLASSES.join(', ')}` }); continue; }
-          if (!instrument) { result.investments.errors.push({ row: rowNum, message: 'instrument is required' }); continue; }
-          if (!SIDES.includes(side)) { result.investments.errors.push({ row: rowNum, message: 'side must be BUY or SELL' }); continue; }
-          const amount = parseInt(amountRaw, 10);
-          if (isNaN(amount) || amount < 0) { result.investments.errors.push({ row: rowNum, message: 'amount must be a non-negative number' }); continue; }
-
-          sheetInvKeys.add(`${date}|${account}|${goal}|${asset_class}|${instrument}|${side}|${amount}`);
-
-          const { rows: existing } = await pool.query(
-            'SELECT 1 FROM investments WHERE date = $1 AND account = $2 AND goal = $3 AND asset_class = $4 AND instrument = $5 AND side = $6 AND amount = $7 LIMIT 1',
-            [date, account, goal, asset_class, instrument, side, amount]
-          );
-          if (existing.length > 0) continue;
-
-          await pool.query(
-            `INSERT INTO investments (date, account, goal, asset_class, instrument, side, amount, broker) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [date, account, goal, asset_class, instrument, side, amount, broker]
-          );
-          result.investments.added++;
-        }
+        result.errors.push({ row: 0, message: 'Could not fetch sheet URL' });
+        return res.json({ investments: result });
       }
-    }
-
-    // --- Removed from sheet: in DB but not in sheet ---
-    if (sheetUrlTransactions) {
-      const { rows: dbRows } = await pool.query('SELECT id, date, type, account, amount, remark FROM transactions');
-      for (const row of dbRows) {
-        const key = `${row.date}|${row.type}|${row.account}|${Number(row.amount)}|${row.remark || ''}`;
-        if (!sheetTxKeys.has(key)) {
-          result.transactions.removedFromSheet.push({
-            id: row.id,
-            date: row.date,
-            type: row.type,
-            account: row.account,
-            amount: row.amount,
-            remark: row.remark,
-          });
-        }
+      await pool.query('DELETE FROM investments');
+      const rows = parse(csvRaw, { columns: true, skip_empty_lines: true, trim: true });
+      result.totalRows = rows.length;
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const rowNum = i + 2;
+        const date = (r.date || '').trim();
+        const account = (r.account || '').trim() || 'Harsh';
+        const goal = (r.goal || '').trim();
+        const asset_class = (r.asset_class || '').trim();
+        const instrument = (r.instrument || '').trim();
+        const side = (r.side || '').trim().toUpperCase();
+        const amountRaw = (r.amount ?? '').toString().trim();
+        const broker = (r.broker ?? '').trim() || null;
+        if (!date) { result.errors.push({ row: rowNum, message: 'date is required' }); continue; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { result.errors.push({ row: rowNum, message: 'date must be YYYY-MM-DD' }); continue; }
+        if (!ACCOUNTS.includes(account)) { result.errors.push({ row: rowNum, message: `account must be one of: ${ACCOUNTS.join(', ')}` }); continue; }
+        if (!goal) { result.errors.push({ row: rowNum, message: 'goal is required' }); continue; }
+        if (!ASSET_CLASSES.includes(asset_class)) { result.errors.push({ row: rowNum, message: `asset_class must be one of: ${ASSET_CLASSES.join(', ')}` }); continue; }
+        if (!instrument) { result.errors.push({ row: rowNum, message: 'instrument is required' }); continue; }
+        if (!SIDES.includes(side)) { result.errors.push({ row: rowNum, message: 'side must be BUY or SELL' }); continue; }
+        const amount = parseInt(amountRaw, 10);
+        if (isNaN(amount) || amount < 0) { result.errors.push({ row: rowNum, message: 'amount must be a non-negative number' }); continue; }
+        await pool.query(
+          `INSERT INTO investments (date, account, goal, asset_class, instrument, side, amount, broker) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [date, account, goal, asset_class, instrument, side, amount, broker]
+        );
+        result.added++;
       }
-      result.transactions.removedCount = result.transactions.removedFromSheet.length;
+      return res.json({ investments: result });
     }
-    if (sheetUrlInvestments) {
-      const { rows: dbRows } = await pool.query('SELECT id, date, account, goal, asset_class, instrument, side, amount, broker FROM investments');
-      for (const row of dbRows) {
-        const key = `${row.date}|${row.account}|${row.goal}|${row.asset_class}|${row.instrument}|${row.side}|${Number(row.amount)}`;
-        if (!sheetInvKeys.has(key)) {
-          result.investments.removedFromSheet.push({
-            id: row.id,
-            date: row.date,
-            account: row.account,
-            goal: row.goal,
-            asset_class: row.asset_class,
-            instrument: row.instrument,
-            side: row.side,
-            amount: row.amount,
-            broker: row.broker,
-          });
-        }
-      }
-      result.investments.removedCount = result.investments.removedFromSheet.length;
-    }
-
-    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

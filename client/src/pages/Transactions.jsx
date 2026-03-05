@@ -106,8 +106,8 @@ export default function Transactions() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      await downloadBackupCsv();
-      const r = await api.post('/settings/sync-from-sheet');
+      await downloadBackupCsv('transactions');
+      const r = await api.post('/settings/sync-from-sheet', { type: 'transactions' });
       setSyncResult(r.data);
       load();
     } catch (e) {
@@ -148,7 +148,7 @@ export default function Transactions() {
         </div>
       </div>
 
-      {syncResult && <SyncResultModal result={syncResult} onClose={() => setSyncResult(null)} onRemoved={load} />}
+      {syncResult && <SyncResultModal result={syncResult} syncType="transactions" onClose={() => setSyncResult(null)} />}
 
       {(showForm || editing) && (
         <TransactionForm

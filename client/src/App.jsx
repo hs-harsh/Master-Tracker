@@ -7,6 +7,7 @@ import Cashflow from './pages/Cashflow';
 import Transactions from './pages/Transactions';
 import Portfolio from './pages/Portfolio';
 import Investments from './pages/Investments';
+import FinSight from './pages/FinSight';
 import Settings from './pages/Settings';
 
 function Protected({ children }) {
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="investments" element={<Investments />} />
             <Route path="cashflow" element={<Cashflow />} />
             <Route path="transactions" element={<Transactions />} />
+            <Route path="finsight" element={<FinSight />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>

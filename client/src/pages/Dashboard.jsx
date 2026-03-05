@@ -119,7 +119,7 @@ function PersonPanel({ person, cashflowData, investments, compact }) {
             <BarChart data={cashflowChartData} barGap={2} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
               <XAxis dataKey="month" tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false} />
               <YAxis hide />
-              <Tooltip contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 11 }} formatter={v => [fmt(v), '']} />
+              <Tooltip contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 11, color: '#e5e7eb' }} labelStyle={{ color: '#e5e7eb' }} itemStyle={{ color: '#e5e7eb' }} formatter={v => [fmt(v), '']} />
               <Bar dataKey="Income" fill="#f0c040" radius={[2, 2, 0, 0]} />
               <Bar dataKey="Expense" fill="#fb7185" radius={[2, 2, 0, 0]} />
               <Bar dataKey="Saving" fill="#2dd4bf" radius={[2, 2, 0, 0]} />
@@ -174,7 +174,7 @@ function PersonPanel({ person, cashflowData, investments, compact }) {
             <BarChart data={cashflowChartData} barGap={4} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <XAxis dataKey="month" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => fmt(v)} width={55} />
-              <Tooltip contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12 }} formatter={v => [fmt(v), '']} />
+              <Tooltip contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }} labelStyle={{ color: '#e5e7eb' }} itemStyle={{ color: '#e5e7eb' }} formatter={v => [fmt(v), '']} />
               <ReferenceLine y={0} stroke="#2a3040" />
               <Bar dataKey="Income" fill="#f0c040" radius={[3, 3, 0, 0]} />
               <Bar dataKey="Expense" fill="#fb7185" radius={[3, 3, 0, 0]} />
@@ -196,7 +196,7 @@ function PersonPanel({ person, cashflowData, investments, compact }) {
                 </defs>
                 <XAxis dataKey="month" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} />
                 <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => fmt(v)} width={55} />
-                <Tooltip contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12 }} formatter={v => [fmt(v), '']} />
+                <Tooltip contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }} labelStyle={{ color: '#e5e7eb' }} itemStyle={{ color: '#e5e7eb' }} formatter={v => [fmt(v), '']} />
                 <Area type="monotone" dataKey="Cumulative" stroke={color} fill={`url(#inv-grad-${person})`} strokeWidth={2} dot={false} />
               </AreaChart>
             ) : (
@@ -212,7 +212,7 @@ function PersonPanel({ person, cashflowData, investments, compact }) {
           <BarChart data={momData} barGap={2} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <XAxis dataKey="month" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} />
             <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => fmt(v)} width={55} />
-            <Tooltip contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12 }} formatter={v => [fmt(v), '']} />
+            <Tooltip contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }} labelStyle={{ color: '#e5e7eb' }} itemStyle={{ color: '#e5e7eb' }} formatter={v => [fmt(v), '']} />
             <ReferenceLine y={0} stroke="#2a3040" />
             <Bar dataKey="Income" fill="#f0c040" radius={[3, 3, 0, 0]} />
             <Bar dataKey="Expense" fill="#fb7185" radius={[3, 3, 0, 0]} />
@@ -233,7 +233,7 @@ function PersonPanel({ person, cashflowData, investments, compact }) {
                       <Cell key={i} fill={Object.values(ASSET_COLORS)[i % 10]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 11 }} formatter={v => [fmt(v), '']} />
+                  <Tooltip contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 11, color: '#e5e7eb' }} labelStyle={{ color: '#e5e7eb' }} itemStyle={{ color: '#e5e7eb' }} formatter={v => [fmt(v), '']} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -248,7 +248,7 @@ function PersonPanel({ person, cashflowData, investments, compact }) {
                       <Cell key={i} fill={RISK_COLORS[i]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 11 }} formatter={v => [`${Number(v).toFixed(1)}%`, '']} />
+                  <Tooltip contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 11, color: '#e5e7eb' }} labelStyle={{ color: '#e5e7eb' }} itemStyle={{ color: '#e5e7eb' }} formatter={v => [`${Number(v).toFixed(1)}%`, '']} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
