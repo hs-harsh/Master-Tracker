@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, Filter } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, Download, Upload } from 'lucide-react';
 
 const TYPES = ['Income', 'Major', 'Non-Recurring', 'Trips'];
 const ACCOUNTS = ['Harsh', 'Kirti'];
@@ -91,6 +91,37 @@ export default function Transactions() {
     load();
   };
 
+  const exportTemplate = async () => {
+    try {
+      const r = await api.get('/transactions/export-template', { responseType: 'text' });
+      const blob = new Blob([r.data], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'transactions_template.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      alert(e.response?.data?.error || 'Export failed');
+    }
+  };
+
+  const fileInputRef = useRef(null);
+  const [importResult, setImportResult] = useState(null);
+
+  const handleImport = async (e) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    try {
+      const text = await file.text();
+      const r = await api.post('/transactions/import', { csv: text });
+      setImportResult(r.data);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Import failed');
+    }
+  };
+
   const filtered = data.filter(t =>
     !filters.search ||
     t.remark?.toLowerCase().includes(filters.search.toLowerCase()) ||
@@ -106,10 +137,39 @@ export default function Transactions() {
           <h1 className="font-display text-2xl font-bold text-white">Transactions</h1>
           <p className="text-muted text-sm mt-0.5">All income, major, non-recurring & trip expenses</p>
         </div>
-        <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
-          <Plus size={14} /> Add Transaction
-        </button>
+        <div className="flex gap-2">
+          <button onClick={exportTemplate} className="btn-ghost flex items-center gap-2" title="Download CSV template with column headers">
+            <Download size={14} /> Export CSV
+          </button>
+          <button onClick={() => fileInputRef.current?.click()} className="btn-ghost flex items-center gap-2" title="Upload filled CSV to import rows">
+            <Upload size={14} /> Import CSV
+          </button>
+          <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
+          <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
+            <Plus size={14} /> Add Transaction
+          </button>
+        </div>
       </div>
+
+      {importResult && (
+        <div className="card border-accent/20 bg-accent/5 flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm text-white">
+            Imported <strong>{importResult.added}</strong> of {importResult.totalRows} rows.
+            {importResult.errors?.length > 0 && (
+              <span className="text-rose ml-2">{importResult.errors.length} row(s) had errors.</span>
+            )}
+          </span>
+          {importResult.errors?.length > 0 && (
+            <ul className="text-xs text-rose list-disc list-inside">
+              {importResult.errors.slice(0, 5).map((err, i) => (
+                <li key={i}>Row {err.row}: {err.message}</li>
+              ))}
+              {importResult.errors.length > 5 && <li>… and {importResult.errors.length - 5} more</li>}
+            </ul>
+          )}
+          <button onClick={() => setImportResult(null)} className="text-muted hover:text-white"><X size={16} /></button>
+        </div>
+      )}
 
       {(showForm || editing) && (
         <TransactionForm

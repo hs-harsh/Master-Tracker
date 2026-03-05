@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE TABLE IF NOT EXISTS investments (
   id SERIAL PRIMARY KEY,
   date DATE NOT NULL,
+  account VARCHAR(10) NOT NULL DEFAULT 'Harsh' CHECK (account IN ('Harsh', 'Kirti')),
   goal VARCHAR(100) NOT NULL,
   asset_class VARCHAR(30) NOT NULL,
   instrument VARCHAR(100) NOT NULL,
@@ -73,6 +74,14 @@ CREATE TABLE IF NOT EXISTS investments (
   broker VARCHAR(50),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Backfill account for existing rows (no-op if column already exists)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'investments' AND column_name = 'account') THEN
+    ALTER TABLE investments ADD COLUMN account VARCHAR(10) NOT NULL DEFAULT 'Harsh' CHECK (account IN ('Harsh', 'Kirti'));
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS portfolio_holdings (
   id SERIAL PRIMARY KEY,
@@ -102,3 +111,4 @@ CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account);
 CREATE INDEX IF NOT EXISTS idx_investments_goal ON investments(goal);
 CREATE INDEX IF NOT EXISTS idx_investments_date ON investments(date);
+CREATE INDEX IF NOT EXISTS idx_investments_account ON investments(account);

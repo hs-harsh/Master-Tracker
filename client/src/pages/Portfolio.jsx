@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 
+const ACCOUNTS = ['Harsh', 'Kirti'];
 const RISK_COLORS = { Low: '#60a5fa', Medium: '#fbbf24', High: '#f97316' };
 const ASSET_COLORS = { Equity: '#f97316', Debt: '#60a5fa', Gold: '#fbbf24', Cash: '#6b7280', 'Real Estate': '#a78bfa', Crypto: '#ec4899' };
 
@@ -24,19 +25,20 @@ const riskForAsset = asset => {
 export default function Portfolio() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [person, setPerson] = useState('Harsh');
   const [activeGoal, setActiveGoal] = useState('');
 
   const load = () => {
     setLoading(true);
     api
-      .get('/investments')
+      .get(`/investments?account=${person}`)
       .then(r => setData(r.data))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     load();
-  }, []);
+  }, [person]);
 
   const goals = useMemo(
     () => Array.from(new Set(data.map(d => d.goal))).sort(),
@@ -90,7 +92,18 @@ export default function Portfolio() {
             Select a goal to see all investments and risk breakdown
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {ACCOUNTS.map(p => (
+            <button
+              key={p}
+              onClick={() => setPerson(p)}
+              className={`px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
+                person === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'
+              }`}
+            >
+              {p}
+            </button>
+          ))}
           {goals.length === 0 ? (
             <span className="text-muted text-xs">Add investments with goals to see portfolio.</span>
           ) : (
@@ -99,7 +112,7 @@ export default function Portfolio() {
                 key={g}
                 onClick={() => setActiveGoal(g)}
                 className={`px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
-                  activeGoal === g ? 'bg-accent text-ink font-bold' : 'btn-ghost'
+                  activeGoal === g ? 'bg-accent/50 text-white' : 'btn-ghost'
                 }`}
               >
                 {g}

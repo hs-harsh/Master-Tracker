@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, Download, Upload } from 'lucide-react';
 
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const SIDES = ['BUY', 'SELL'];
+const ACCOUNTS = ['Harsh', 'Kirti'];
 
 const EMPTY = {
   date: '',
+  account: 'Harsh',
   goal: '',
   asset_class: 'Equity',
   instrument: '',
@@ -47,6 +49,19 @@ function InvestmentForm({ initial, onSave, onCancel }) {
             onChange={onChange}
             className="input"
           />
+        </div>
+        <div>
+          <label className="label">Account</label>
+          <select
+            name="account"
+            value={form.account}
+            onChange={onChange}
+            className="input"
+          >
+            {ACCOUNTS.map(a => (
+              <option key={a}>{a}</option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="label">Goal</label>
@@ -135,11 +150,13 @@ export default function Investments() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [person, setPerson] = useState('Harsh');
   const [filters, setFilters] = useState({ goal: '', asset_class: '', search: '' });
 
   const load = () => {
     setLoading(true);
     const params = new URLSearchParams();
+    params.append('account', person);
     if (filters.goal) params.append('goal', filters.goal);
     if (filters.asset_class) params.append('asset_class', filters.asset_class);
     api
@@ -151,7 +168,7 @@ export default function Investments() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.goal, filters.asset_class]);
+  }, [person, filters.goal, filters.asset_class]);
 
   const handleSave = async form => {
     try {
@@ -172,6 +189,37 @@ export default function Investments() {
     if (!confirm('Delete this investment?')) return;
     await api.delete(`/investments/${id}`);
     load();
+  };
+
+  const exportTemplate = async () => {
+    try {
+      const r = await api.get('/investments/export-template', { responseType: 'text' });
+      const blob = new Blob([r.data], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'investments_template.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      alert(e.response?.data?.error || 'Export failed');
+    }
+  };
+
+  const fileInputRef = useRef(null);
+  const [importResult, setImportResult] = useState(null);
+
+  const handleImport = async e => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    try {
+      const text = await file.text();
+      const res = await api.post('/investments/import', { csv: text });
+      setImportResult(res.data);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Import failed');
+    }
   };
 
   const filtered = data.filter(inv => {
@@ -206,16 +254,54 @@ export default function Investments() {
             Raw investment entries powering your goal-based portfolio
           </p>
         </div>
-        <button
-          onClick={() => {
-            setEditing(null);
-            setShowForm(true);
-          }}
-          className="btn-primary flex items-center gap-2"
-        >
-          <Plus size={14} /> Add Investment
-        </button>
+        <div className="flex gap-2">
+          {ACCOUNTS.map(p => (
+            <button
+              key={p}
+              onClick={() => setPerson(p)}
+              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${person === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}
+            >
+              {p}
+            </button>
+          ))}
+          <button onClick={exportTemplate} className="btn-ghost flex items-center gap-2" title="Download CSV template with column headers">
+            <Download size={14} /> Export CSV
+          </button>
+          <button onClick={() => fileInputRef.current?.click()} className="btn-ghost flex items-center gap-2" title="Upload filled CSV to import rows">
+            <Upload size={14} /> Import CSV
+          </button>
+          <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} />
+          <button
+            onClick={() => {
+              setEditing(null);
+              setShowForm(true);
+            }}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Plus size={14} /> Add Investment
+          </button>
+        </div>
       </div>
+
+      {importResult && (
+        <div className="card border-accent/20 bg-accent/5 flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm text-white">
+            Imported <strong>{importResult.added}</strong> of {importResult.totalRows} rows.
+            {importResult.errors?.length > 0 && (
+              <span className="text-rose ml-2">{importResult.errors.length} row(s) had errors.</span>
+            )}
+          </span>
+          {importResult.errors?.length > 0 && (
+            <ul className="text-xs text-rose list-disc list-inside">
+              {importResult.errors.slice(0, 5).map((err, i) => (
+                <li key={i}>Row {err.row}: {err.message}</li>
+              ))}
+              {importResult.errors.length > 5 && <li>… and {importResult.errors.length - 5} more</li>}
+            </ul>
+          )}
+          <button onClick={() => setImportResult(null)} className="text-muted hover:text-white"><X size={16} /></button>
+        </div>
+      )}
 
       {(showForm || editing) && (
         <InvestmentForm
@@ -284,6 +370,7 @@ export default function Investments() {
               <tr className="border-b border-border">
                 {[
                   'Date',
+                  'Account',
                   'Goal',
                   'Asset Class',
                   'Instrument',
@@ -305,7 +392,7 @@ export default function Investments() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="py-8 text-center text-muted font-mono text-sm animate-pulse"
                   >
                     Loading…
@@ -313,7 +400,7 @@ export default function Investments() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-muted">
+                  <td colSpan={9} className="py-8 text-center text-muted">
                     No investments yet
                   </td>
                 </tr>
@@ -325,6 +412,11 @@ export default function Investments() {
                   >
                     <td className="py-3 px-4 font-mono text-xs text-soft">
                       {fmtDate(row.date)}
+                    </td>
+                    <td className="py-3 px-4 text-xs">
+                      <span className={`tag tag-${(row.account || 'Harsh').toLowerCase()}`}>
+                        {row.account || 'Harsh'}
+                      </span>
                     </td>
                     <td className="py-3 px-4 text-soft text-xs">{row.goal}</td>
                     <td className="py-3 px-4 text-xs">
