@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, LogOut, Settings } from 'lucide-react';
 import api from '../lib/api';
 import { applyTheme } from '../lib/theme';
+import { setCurrencySymbol } from '../lib/utils';
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -19,7 +20,11 @@ export default function Layout() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    api.get('/settings').then(r => applyTheme(r.data?.theme)).catch(() => {});
+    api.get('/settings').then(r => {
+      const d = r.data;
+      applyTheme(d?.themeMode ?? d?.theme ?? 'dark', d?.accent ?? 'gold');
+      if (d?.currencyDisplay) setCurrencySymbol(d.currencyDisplay);
+    }).catch(() => {});
   }, []);
 
   const handleLogout = () => { logout(); navigate('/login'); };

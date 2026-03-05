@@ -262,6 +262,13 @@ function PersonPanel({ person, cashflowData, investments, compact }) {
 export default function Dashboard() {
   const [profile, setProfile] = useState('Both');
   const [harshCashflow, setHarshCashflow] = useState([]);
+
+  useEffect(() => {
+    api.get('/settings').then(r => {
+      const p = r.data?.dashboardDefaultProfile;
+      if (p && PROFILES.includes(p)) setProfile(p);
+    }).catch(() => {});
+  }, []);
   const [kirtiCashflow, setKirtiCashflow] = useState([]);
   const [harshInvestments, setHarshInvestments] = useState([]);
   const [kirtiInvestments, setKirtiInvestments] = useState([]);

@@ -59,6 +59,15 @@ router.put('/:id', auth, async (req, res) => {
   }
 });
 
+router.delete('/clear-all', auth, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM investments');
+    res.json({ success: true, deleted: result.rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Delete investment
 router.delete('/:id', auth, async (req, res) => {
   try {

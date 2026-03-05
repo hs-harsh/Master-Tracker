@@ -13,7 +13,11 @@ const SETTINGS_KEYS = {
   sheetUrlInvestments: 'sheet_url_investments',
   defaultIdealSaving: 'default_ideal_saving',
   defaultIncome: 'default_income',
-  theme: 'theme',
+  defaultAccount: 'default_account',
+  themeMode: 'theme_mode',
+  accent: 'accent',
+  currencyDisplay: 'currency_display',
+  dashboardDefaultProfile: 'dashboard_default_profile',
 };
 
 async function getSetting(key) {
@@ -41,20 +45,30 @@ async function fetchUrl(url) {
   }
 }
 
-// GET all settings (sheet URLs + defaults + theme)
+// GET all settings
 router.get('/', auth, async (req, res) => {
   try {
     const sheetUrlTransactions = await getSetting(SETTINGS_KEYS.sheetUrlTransactions);
     const sheetUrlInvestments = await getSetting(SETTINGS_KEYS.sheetUrlInvestments);
     const defaultIdealSaving = await getSetting(SETTINGS_KEYS.defaultIdealSaving);
     const defaultIncome = await getSetting(SETTINGS_KEYS.defaultIncome);
-    const theme = await getSetting(SETTINGS_KEYS.theme);
+    const defaultAccount = await getSetting(SETTINGS_KEYS.defaultAccount);
+    let themeMode = await getSetting(SETTINGS_KEYS.themeMode);
+    if (!themeMode) themeMode = await getSetting('theme') || 'dark';
+    const accent = await getSetting(SETTINGS_KEYS.accent);
+    const currencyDisplay = await getSetting(SETTINGS_KEYS.currencyDisplay);
+    const dashboardDefaultProfile = await getSetting(SETTINGS_KEYS.dashboardDefaultProfile);
     res.json({
       sheetUrlTransactions,
       sheetUrlInvestments,
       defaultIdealSaving: defaultIdealSaving ? parseInt(defaultIdealSaving, 10) : 100000,
       defaultIncome: defaultIncome ? parseInt(defaultIncome, 10) : 0,
-      theme: theme || 'dark',
+      defaultAccount: defaultAccount || 'Harsh',
+      themeMode: themeMode || 'dark',
+      theme: themeMode || 'dark',
+      accent: accent || 'gold',
+      currencyDisplay: currencyDisplay || 'INR',
+      dashboardDefaultProfile: dashboardDefaultProfile || 'Both',
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -87,21 +101,51 @@ router.put('/', auth, async (req, res) => {
       const v = Math.max(0, parseInt(body.defaultIncome, 10) || 0);
       await setSetting(SETTINGS_KEYS.defaultIncome, String(v));
     }
+    if (body.defaultAccount !== undefined) {
+      const v = ['Harsh', 'Kirti'].includes(body.defaultAccount) ? body.defaultAccount : 'Harsh';
+      await setSetting(SETTINGS_KEYS.defaultAccount, v);
+    }
+    if (body.themeMode !== undefined) {
+      const v = ['dark', 'light'].includes(body.themeMode) ? body.themeMode : 'dark';
+      await setSetting(SETTINGS_KEYS.themeMode, v);
+    }
     if (body.theme !== undefined) {
       const v = ['dark', 'light'].includes(body.theme) ? body.theme : 'dark';
-      await setSetting(SETTINGS_KEYS.theme, v);
+      await setSetting(SETTINGS_KEYS.themeMode, v);
+    }
+    if (body.accent !== undefined) {
+      const v = ['gold', 'teal', 'blue', 'purple', 'rose'].includes(body.accent) ? body.accent : 'gold';
+      await setSetting(SETTINGS_KEYS.accent, v);
+    }
+    if (body.currencyDisplay !== undefined) {
+      const v = ['INR', 'USD'].includes(body.currencyDisplay) ? body.currencyDisplay : 'INR';
+      await setSetting(SETTINGS_KEYS.currencyDisplay, v);
+    }
+    if (body.dashboardDefaultProfile !== undefined) {
+      const v = ['Harsh', 'Kirti', 'Both'].includes(body.dashboardDefaultProfile) ? body.dashboardDefaultProfile : 'Both';
+      await setSetting(SETTINGS_KEYS.dashboardDefaultProfile, v);
     }
     const sheetUrlTransactions = await getSetting(SETTINGS_KEYS.sheetUrlTransactions);
     const sheetUrlInvestments = await getSetting(SETTINGS_KEYS.sheetUrlInvestments);
     const defaultIdealSaving = await getSetting(SETTINGS_KEYS.defaultIdealSaving);
     const defaultIncome = await getSetting(SETTINGS_KEYS.defaultIncome);
-    const theme = await getSetting(SETTINGS_KEYS.theme);
+    const defaultAccount = await getSetting(SETTINGS_KEYS.defaultAccount);
+    let themeMode = await getSetting(SETTINGS_KEYS.themeMode);
+    if (!themeMode) themeMode = await getSetting('theme') || 'dark';
+    const accent = await getSetting(SETTINGS_KEYS.accent);
+    const currencyDisplay = await getSetting(SETTINGS_KEYS.currencyDisplay);
+    const dashboardDefaultProfile = await getSetting(SETTINGS_KEYS.dashboardDefaultProfile);
     res.json({
       sheetUrlTransactions,
       sheetUrlInvestments,
       defaultIdealSaving: defaultIdealSaving ? parseInt(defaultIdealSaving, 10) : 100000,
       defaultIncome: defaultIncome ? parseInt(defaultIncome, 10) : 0,
-      theme: theme || 'dark',
+      defaultAccount: defaultAccount || 'Harsh',
+      themeMode: themeMode || 'dark',
+      theme: themeMode || 'dark',
+      accent: accent || 'gold',
+      currencyDisplay: currencyDisplay || 'INR',
+      dashboardDefaultProfile: dashboardDefaultProfile || 'Both',
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

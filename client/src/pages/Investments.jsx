@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, RefreshCw } from 'lucide-react';
+import SyncResultModal from '../components/SyncResultModal';
 
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const SIDES = ['BUY', 'SELL'];
@@ -18,8 +19,11 @@ const EMPTY = {
   broker: '',
 };
 
-function InvestmentForm({ initial, onSave, onCancel }) {
-  const [form, setForm] = useState(initial || EMPTY);
+function InvestmentForm({ initial, defaultAccount, onSave, onCancel }) {
+  const [form, setForm] = useState(initial || { ...EMPTY, account: defaultAccount || 'Harsh' });
+  useEffect(() => {
+    setForm(initial || { ...EMPTY, account: defaultAccount || 'Harsh' });
+  }, [initial?.id, defaultAccount]);
 
   const onChange = e => {
     const { name, value } = e.target;
@@ -151,6 +155,13 @@ export default function Investments() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [filters, setFilters] = useState({ account: '', goal: '', asset_class: '', search: '' });
+  const [defaultAccount, setDefaultAccount] = useState('Harsh');
+  const [syncResult, setSyncResult] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    api.get('/settings').then(r => { if (r.data?.defaultAccount) setDefaultAccount(r.data.defaultAccount); }).catch(() => {});
+  }, []);
 
   const load = () => {
     setLoading(true);
@@ -190,6 +201,20 @@ export default function Investments() {
     load();
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const r = await api.post('/settings/sync-from-sheet');
+      setSyncResult(r.data);
+      load();
+    } catch (e) {
+      alert(e.response?.data?.error || 'Sync failed. Add sheet URLs in Settings.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const filtered = data.filter(inv => {
     if (filters.search) {
       const q = filters.search.toLowerCase();
@@ -224,10 +249,16 @@ export default function Investments() {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => {
-              setEditing(null);
-              setShowForm(true);
-            }}
+            onClick={handleSync}
+            disabled={syncing}
+            className="btn-ghost flex items-center gap-2"
+            title="Pull new rows from linked Google Sheet"
+          >
+            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing…' : 'Sync with sheet'}
+          </button>
+          <button
+            onClick={() => { setEditing(null); setShowForm(true); }}
             className="btn-primary flex items-center gap-2"
           >
             <Plus size={14} /> Add Investment
@@ -235,14 +266,14 @@ export default function Investments() {
         </div>
       </div>
 
+      {syncResult && <SyncResultModal result={syncResult} onClose={() => setSyncResult(null)} />}
+
       {(showForm || editing) && (
         <InvestmentForm
           initial={editing}
+          defaultAccount={defaultAccount}
           onSave={handleSave}
-          onCancel={() => {
-            setShowForm(false);
-            setEditing(null);
-          }}
+          onCancel={() => { setShowForm(false); setEditing(null); }}
         />
       )}
 

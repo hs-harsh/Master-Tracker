@@ -1,16 +1,24 @@
+const CURRENCY_SYMBOLS = { INR: '₹', USD: '$' };
+let _currencySymbol = '₹';
+
+export function setCurrencySymbol(currencyDisplay) {
+  _currencySymbol = CURRENCY_SYMBOLS[currencyDisplay] || '₹';
+}
+
 export const fmt = (n) => {
   if (n === null || n === undefined) return '—';
   const num = Number(n);
   if (isNaN(num)) return '—';
-  if (Math.abs(num) >= 10000000) return `₹${(num / 10000000).toFixed(2)}Cr`;
-  if (Math.abs(num) >= 100000) return `₹${(num / 100000).toFixed(2)}L`;
-  if (Math.abs(num) >= 1000) return `₹${(num / 1000).toFixed(1)}K`;
-  return `₹${num.toLocaleString('en-IN')}`;
+  const s = _currencySymbol;
+  if (Math.abs(num) >= 10000000) return `${s}${(num / 10000000).toFixed(2)}Cr`;
+  if (Math.abs(num) >= 100000) return `${s}${(num / 100000).toFixed(2)}L`;
+  if (Math.abs(num) >= 1000) return `${s}${(num / 1000).toFixed(1)}K`;
+  return `${s}${num.toLocaleString('en-IN')}`;
 };
 
 export const fmtFull = (n) => {
   if (n === null || n === undefined) return '—';
-  return `₹${Number(n).toLocaleString('en-IN')}`;
+  return `${_currencySymbol}${Number(n).toLocaleString('en-IN')}`;
 };
 
 export const fmtPct = (n) => {

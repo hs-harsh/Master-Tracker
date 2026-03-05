@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, RefreshCw } from 'lucide-react';
+import SyncResultModal from '../components/SyncResultModal';
 
 const TYPES = ['Income', 'Major', 'Non-Recurring', 'Trips'];
 const ACCOUNTS = ['Harsh', 'Kirti'];
 
 const EMPTY = { date: '', type: 'Major', account: 'Harsh', amount: 0, remark: '' };
 
-function TransactionForm({ initial, onSave, onCancel }) {
-  const [form, setForm] = useState(initial || EMPTY);
+function TransactionForm({ initial, defaultAccount, onSave, onCancel }) {
+  const [form, setForm] = useState(initial || { ...EMPTY, account: defaultAccount || 'Harsh' });
+  useEffect(() => {
+    setForm(initial || { ...EMPTY, account: defaultAccount || 'Harsh' });
+  }, [initial?.id, defaultAccount]);
   const onChange = e => {
     const { name, value } = e.target;
     setForm(p => ({ ...p, [name]: name === 'amount' ? Number(value) : value }));
@@ -62,6 +66,13 @@ export default function Transactions() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [filters, setFilters] = useState({ account: '', type: '', search: '' });
+  const [defaultAccount, setDefaultAccount] = useState('Harsh');
+  const [syncResult, setSyncResult] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    api.get('/settings').then(r => { if (r.data?.defaultAccount) setDefaultAccount(r.data.defaultAccount); }).catch(() => {});
+  }, []);
 
   const load = () => {
     setLoading(true);
@@ -91,6 +102,20 @@ export default function Transactions() {
     load();
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const r = await api.post('/settings/sync-from-sheet');
+      setSyncResult(r.data);
+      load();
+    } catch (e) {
+      alert(e.response?.data?.error || 'Sync failed. Add sheet URLs in Settings.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const filtered = data.filter(t =>
     !filters.search ||
     t.remark?.toLowerCase().includes(filters.search.toLowerCase()) ||
@@ -107,15 +132,27 @@ export default function Transactions() {
           <p className="text-muted text-sm mt-0.5">All income, major, non-recurring & trip expenses</p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="btn-ghost flex items-center gap-2"
+            title="Pull new rows from linked Google Sheet"
+          >
+            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing…' : 'Sync with sheet'}
+          </button>
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
             <Plus size={14} /> Add Transaction
           </button>
         </div>
       </div>
 
+      {syncResult && <SyncResultModal result={syncResult} onClose={() => setSyncResult(null)} />}
+
       {(showForm || editing) && (
         <TransactionForm
           initial={editing}
+          defaultAccount={defaultAccount}
           onSave={handleSave}
           onCancel={() => { setShowForm(false); setEditing(null); }}
         />

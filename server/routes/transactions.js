@@ -46,6 +46,15 @@ router.put('/:id', auth, async (req, res) => {
   }
 });
 
+router.delete('/clear-all', auth, async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM transactions');
+    res.json({ success: true, deleted: result.rowCount ?? 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.delete('/:id', auth, async (req, res) => {
   try {
     await pool.query('DELETE FROM transactions WHERE id = $1', [req.params.id]);

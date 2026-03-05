@@ -1,8 +1,5 @@
-export function applyTheme(theme) {
+export function applyTheme(mode, accent = 'gold') {
   const root = document.documentElement;
-  if (theme === 'light') {
-    root.setAttribute('data-theme', 'light');
-  } else {
-    root.setAttribute('data-theme', 'dark');
-  }
+  root.setAttribute('data-theme', mode === 'light' ? 'light' : 'dark');
+  root.setAttribute('data-accent', accent || 'gold');
 }
