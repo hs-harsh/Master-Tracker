@@ -25,7 +25,7 @@ export default function Layout() {
             <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center">
               <span className="text-ink font-display font-bold text-xs">H·K</span>
             </div>
-            <span className="font-display font-700 text-white text-sm tracking-tight">InvestTrack</span>
+            <span className="font-display font-bold text-white text-sm tracking-tight">InvestTrack</span>
           </div>
           <p className="text-muted text-xs mt-1 font-body">Harsh & Kirti</p>
         </div>

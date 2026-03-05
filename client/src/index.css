@@ -15,7 +15,7 @@
     @apply bg-card border border-border rounded-xl p-5;
   }
   .btn-primary {
-    @apply bg-accent text-ink font-display font-700 px-4 py-2 rounded-lg text-sm hover:bg-accent-dim transition-colors;
+    @apply bg-accent text-ink font-display font-bold px-4 py-2 rounded-lg text-sm hover:bg-accent-dim transition-colors;
   }
   .btn-ghost {
     @apply border border-border text-soft px-4 py-2 rounded-lg text-sm hover:border-accent hover:text-accent transition-colors;
@@ -27,7 +27,7 @@
     @apply text-muted text-xs font-display uppercase tracking-wider mb-1 block;
   }
   .stat-value {
-    @apply font-mono text-2xl font-500 text-white;
+    @apply font-mono text-2xl font-medium text-white;
   }
   .stat-label {
     @apply text-muted text-xs font-display uppercase tracking-wider;

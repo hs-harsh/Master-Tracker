@@ -33,9 +33,9 @@ export default function Login() {
         {/* Header */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-accent mb-4">
-            <span className="text-ink font-display font-800 text-lg">H·K</span>
+            <span className="text-ink font-display font-extrabold text-lg">H·K</span>
           </div>
-          <h1 className="font-display text-2xl font-700 text-white">InvestTrack</h1>
+          <h1 className="font-display text-2xl font-bold text-white">InvestTrack</h1>
           <p className="text-muted text-sm mt-1">Harsh & Kirti · Private</p>
         </div>
 

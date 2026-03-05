@@ -44,7 +44,7 @@ function EntryForm({ initial, onSave, onCancel }) {
   return (
     <div className="card space-y-5">
       <div className="flex items-center justify-between">
-        <h3 className="font-display font-700 text-white">{initial?.id ? 'Edit Entry' : 'New Month Entry'}</h3>
+        <h3 className="font-display font-bold text-white">{initial?.id ? 'Edit Entry' : 'New Month Entry'}</h3>
         <button onClick={onCancel} className="text-muted hover:text-white transition-colors"><X size={18} /></button>
       </div>
 
@@ -172,7 +172,7 @@ export default function Cashflow() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-700 text-white">Cashflow</h1>
+          <h1 className="font-display text-2xl font-bold text-white">Cashflow</h1>
           <p className="text-muted text-sm mt-0.5">Monthly income, expenses & savings</p>
         </div>
         <div className="flex gap-2">

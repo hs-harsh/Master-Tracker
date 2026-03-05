@@ -102,7 +102,7 @@ export default function Portfolio() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-700 text-white">Portfolio</h1>
+          <h1 className="font-display text-2xl font-bold text-white">Portfolio</h1>
           <p className="text-muted text-sm mt-0.5">Broker allocations & performance</p>
         </div>
         <div className="flex gap-2">
@@ -121,7 +121,7 @@ export default function Portfolio() {
         <div className="card col-span-1 flex flex-col justify-between">
           <div>
             <p className="stat-label">Total Value (Jan 26)</p>
-            <p className="font-mono text-2xl font-500 text-accent mt-2">{totalJan26.toFixed(2)}L</p>
+            <p className="font-mono text-2xl font-medium text-accent mt-2">{totalJan26.toFixed(2)}L</p>
             <p className="text-muted text-xs mt-1">₹{(totalJan26 * 100000).toLocaleString('en-IN')}</p>
           </div>
           <div className="mt-4 space-y-2">
@@ -202,7 +202,7 @@ export default function Portfolio() {
                       <td className="py-3 px-4 text-white text-sm">{row.sub_type || '—'}</td>
                       <td className="py-3 px-4 font-mono text-soft">{Number(row.initial_amount || 0).toFixed(2)}</td>
                       <td className="py-3 px-4 font-mono text-soft">{Number(row.amount_sep25 || 0).toFixed(2)}</td>
-                      <td className="py-3 px-4 font-mono text-white font-500">{Number(row.amount_jan26 || 0).toFixed(2)}</td>
+                      <td className="py-3 px-4 font-mono text-white font-medium">{Number(row.amount_jan26 || 0).toFixed(2)}</td>
                       <td className="py-3 px-4 text-xs text-muted">{row.broker || '—'}</td>
                       <td className="py-3 px-4"><ReturnBadge pct={row.return_pct} /></td>
                       <td className="py-3 px-4">

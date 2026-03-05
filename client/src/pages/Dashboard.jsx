@@ -66,7 +66,7 @@ function PersonPanel({ person, data }) {
       <div className="flex items-center gap-3">
         <div className="w-2 h-8 rounded-full" style={{ backgroundColor: color }} />
         <div>
-          <h2 className="font-display text-xl font-700 text-white">{person}</h2>
+          <h2 className="font-display text-xl font-bold text-white">{person}</h2>
           <p className="text-muted text-xs">{latest ? fmtDate(latest.month) : 'No data'}</p>
         </div>
       </div>
@@ -210,7 +210,7 @@ export default function Dashboard() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="font-display text-2xl font-700 text-white">Dashboard</h1>
+        <h1 className="font-display text-2xl font-bold text-white">Dashboard</h1>
         <p className="text-muted text-sm mt-0.5">Combined wealth overview · Harsh & Kirti</p>
       </div>
 
@@ -220,7 +220,7 @@ export default function Dashboard() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="stat-label text-accent/70">Combined Net Asset</p>
-              <p className="font-display text-3xl font-800 text-accent mt-1">
+              <p className="font-display text-3xl font-extrabold text-accent mt-1">
                 {fmt((Number(harshData[harshData.length-1]?.net_asset || 0)) + (Number(kirtiData[kirtiData.length-1]?.net_asset || 0)))}
               </p>
             </div>

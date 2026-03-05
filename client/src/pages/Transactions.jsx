@@ -17,7 +17,7 @@ function TransactionForm({ initial, onSave, onCancel }) {
   return (
     <div className="card space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-display font-700 text-white">{initial?.id ? 'Edit Transaction' : 'New Transaction'}</h3>
+        <h3 className="font-display font-bold text-white">{initial?.id ? 'Edit Transaction' : 'New Transaction'}</h3>
         <button onClick={onCancel} className="text-muted hover:text-white"><X size={18} /></button>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -103,7 +103,7 @@ export default function Transactions() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-700 text-white">Transactions</h1>
+          <h1 className="font-display text-2xl font-bold text-white">Transactions</h1>
           <p className="text-muted text-sm mt-0.5">All major, non-recurring & trip expenses</p>
         </div>
         <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
