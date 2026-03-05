@@ -246,7 +246,10 @@ export default function Cashflow() {
                 [...data].reverse().map(row => {
                   const savingOk = Number(row.actual_saving) >= Number(row.target);
                   return (
-                    <tr key={row.id} className="border-b border-border/50 hover:bg-surface/50 transition-colors">
+                    <tr
+                      key={row.id || `${row.person}-${row.month}`}
+                      className="border-b border-border/50 hover:bg-surface/50 transition-colors"
+                    >
                       <td className="py-3 px-3 font-mono text-xs text-soft">{fmtDate(row.month)}</td>
                       <td className="py-3 px-3 font-mono text-accent">{fmt(row.income)}</td>
                       <td className="py-3 px-3 font-mono text-rose">{fmt(row.major_expense)}</td>
@@ -256,10 +259,24 @@ export default function Cashflow() {
                       <td className={`py-3 px-3 font-mono ${savingOk ? 'text-teal' : 'text-rose'}`}>{fmt(row.actual_saving)}</td>
                       <td className="py-3 px-3 font-mono text-white">{fmt(row.corpus)}</td>
                       <td className="py-3 px-3">
-                        <div className="flex gap-2">
-                          <button onClick={() => { setEditing(row); setShowForm(false); }} className="text-muted hover:text-accent transition-colors"><Edit2 size={14} /></button>
-                          <button onClick={() => handleDelete(row.id)} className="text-muted hover:text-rose transition-colors"><Trash2 size={14} /></button>
-                        </div>
+                        {row.id ? (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => { setEditing(row); setShowForm(false); }}
+                              className="text-muted hover:text-accent transition-colors"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(row.id)}
+                              className="text-muted hover:text-rose transition-colors"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-muted text-xs">From transactions</span>
+                        )}
                       </td>
                     </tr>
                   );

@@ -3,7 +3,7 @@ import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save, Filter } from 'lucide-react';
 
-const TYPES = ['Major', 'Non-Recurring', 'Trips'];
+const TYPES = ['Income', 'Major', 'Non-Recurring', 'Trips'];
 const ACCOUNTS = ['Harsh', 'Kirti'];
 
 const EMPTY = { date: '', type: 'Major', account: 'Harsh', amount: 0, remark: '' };
@@ -104,7 +104,7 @@ export default function Transactions() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-white">Transactions</h1>
-          <p className="text-muted text-sm mt-0.5">All major, non-recurring & trip expenses</p>
+          <p className="text-muted text-sm mt-0.5">All income, major, non-recurring & trip expenses</p>
         </div>
         <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
           <Plus size={14} /> Add Transaction
@@ -170,7 +170,17 @@ export default function Transactions() {
                   <tr key={row.id} className="border-b border-border/40 hover:bg-surface/50 transition-colors">
                     <td className="py-3 px-4 font-mono text-xs text-soft">{fmtDate(row.date)}</td>
                     <td className="py-3 px-4">
-                      <span className={`tag tag-${row.type === 'Major' ? 'major' : row.type === 'Non-Recurring' ? 'non-recurring' : 'trips'}`}>
+                      <span
+                        className={`tag ${
+                          row.type === 'Major'
+                            ? 'tag-major'
+                            : row.type === 'Non-Recurring'
+                            ? 'tag-non-recurring'
+                            : row.type === 'Trips'
+                            ? 'tag-trips'
+                            : 'tag-income'
+                        }`}
+                      >
                         {row.type}
                       </span>
                     </td>

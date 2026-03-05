@@ -35,6 +35,7 @@
   .tag {
     @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-mono;
   }
+  .tag-income { @apply bg-emerald-500/10 text-emerald-400; }
   .tag-major { @apply bg-rose/10 text-rose; }
   .tag-non-recurring { @apply bg-amber-500/10 text-amber-400; }
   .tag-trips { @apply bg-teal/10 text-teal; }
