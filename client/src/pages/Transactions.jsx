@@ -1,7 +1,56 @@
 import { useEffect, useRef, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, Download, Upload } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, Download, Upload, Check, AlertCircle } from 'lucide-react';
+
+function ImportResultModal({ result, onClose }) {
+  const { added, errors = [], totalRows } = result;
+  const errorByRow = Object.fromEntries((errors || []).map(e => [e.row, e.message]));
+  const rowStatus = Array.from({ length: totalRows }, (_, i) => {
+    const rowNum = i + 2;
+    const message = errorByRow[rowNum];
+    return { rowNum, ok: !message, message };
+  });
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/80" onClick={onClose}>
+      <div className="card max-w-lg w-full max-h-[80vh] flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-display font-bold text-white">Import result</h3>
+          <button onClick={onClose} className="text-muted hover:text-white"><X size={20} /></button>
+        </div>
+        <p className="text-sm text-soft mb-3">
+          Added <strong className="text-teal">{added}</strong> of {totalRows} rows.
+          {errors.length > 0 && <span className="text-rose ml-1">{errors.length} error(s)</span>}
+        </p>
+        <div className="overflow-y-auto flex-1 min-h-0 border border-border rounded-lg bg-surface/50">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-surface">
+              <tr className="border-b border-border">
+                <th className="text-left py-2 px-3 text-muted font-display text-xs uppercase">Row</th>
+                <th className="text-left py-2 px-3 text-muted font-display text-xs uppercase">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rowStatus.map(({ rowNum, ok, message }) => (
+                <tr key={rowNum} className="border-b border-border/50">
+                  <td className="py-2 px-3 font-mono text-soft">{rowNum}</td>
+                  <td className="py-2 px-3">
+                    {ok ? (
+                      <span className="flex items-center gap-1.5 text-teal"><Check size={14} /> Passed</span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-rose"><AlertCircle size={14} /> {message}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <button onClick={onClose} className="btn-primary mt-3 w-full">Close</button>
+      </div>
+    </div>
+  );
+}
 
 const TYPES = ['Income', 'Major', 'Non-Recurring', 'Trips'];
 const ACCOUNTS = ['Harsh', 'Kirti'];
@@ -152,23 +201,10 @@ export default function Transactions() {
       </div>
 
       {importResult && (
-        <div className="card border-accent/20 bg-accent/5 flex flex-wrap items-center justify-between gap-3">
-          <span className="text-sm text-white">
-            Imported <strong>{importResult.added}</strong> of {importResult.totalRows} rows.
-            {importResult.errors?.length > 0 && (
-              <span className="text-rose ml-2">{importResult.errors.length} row(s) had errors.</span>
-            )}
-          </span>
-          {importResult.errors?.length > 0 && (
-            <ul className="text-xs text-rose list-disc list-inside">
-              {importResult.errors.slice(0, 5).map((err, i) => (
-                <li key={i}>Row {err.row}: {err.message}</li>
-              ))}
-              {importResult.errors.length > 5 && <li>… and {importResult.errors.length - 5} more</li>}
-            </ul>
-          )}
-          <button onClick={() => setImportResult(null)} className="text-muted hover:text-white"><X size={16} /></button>
-        </div>
+        <ImportResultModal
+          result={importResult}
+          onClose={() => setImportResult(null)}
+        />
       )}
 
       {(showForm || editing) && (

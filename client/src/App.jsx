@@ -21,10 +21,10 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<Protected><Layout /></Protected>}>
             <Route index element={<Dashboard />} />
+            <Route path="portfolio" element={<Portfolio />} />
+            <Route path="investments" element={<Investments />} />
             <Route path="cashflow" element={<Cashflow />} />
             <Route path="transactions" element={<Transactions />} />
-            <Route path="investments" element={<Investments />} />
-            <Route path="portfolio" element={<Portfolio />} />
           </Route>
         </Routes>
       </BrowserRouter>

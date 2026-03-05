@@ -4,10 +4,10 @@ import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, LogOut } fro
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/portfolio', icon: PieChart, label: 'Portfolio' },
+  { to: '/investments', icon: Briefcase, label: 'Investments' },
   { to: '/cashflow', icon: TrendingUp, label: 'Cashflow' },
   { to: '/transactions', icon: Receipt, label: 'Transactions' },
-  { to: '/investments', icon: Briefcase, label: 'Investments' },
-  { to: '/portfolio', icon: PieChart, label: 'Portfolio' },
 ];
 
 export default function Layout() {
