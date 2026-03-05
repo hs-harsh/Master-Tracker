@@ -67,9 +67,10 @@ router.put('/sheet-urls', auth, async (req, res) => {
       }
       await setSetting(SETTINGS_KEYS.sheetUrlInvestments, v);
     }
-    const sheetUrlTransactions = await getSetting(SETTINGS_KEYS.sheetUrlTransactions);
-    const sheetUrlInvestments = await getSetting(SETTINGS_KEYS.sheetUrlInvestments);
-    res.json({ sheetUrlTransactions, sheetUrlInvestments });
+    res.json({
+      sheetUrlTransactions: await getSetting(SETTINGS_KEYS.sheetUrlTransactions),
+      sheetUrlInvestments: await getSetting(SETTINGS_KEYS.sheetUrlInvestments),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
