@@ -4,9 +4,9 @@ const auth = require('../middleware/auth');
 
 // GET all cashflow - optional ?person=Harsh|Kirti
 // This endpoint now aggregates transactional data into the monthly view.
-// - Income is driven by transactions of type 'Income' when present
+// - Income comes from the fixed monthly_cashflow row (CTC-level)
 // - Major / Non-Recurring / Trips expenses are summed from transactions by month/person
-// - Regular expenses, EMI, assets, liabilities etc. still come from monthly_cashflow rows
+// - Actual saving is derived as: income + other_income - net_expense
 router.get('/', auth, async (req, res) => {
   try {
     const { person } = req.query;
@@ -18,7 +18,6 @@ router.get('/', auth, async (req, res) => {
         SELECT
           date_trunc('month', date)::date AS month,
           account AS person,
-          SUM(CASE WHEN type = 'Income' THEN amount ELSE 0 END) AS income,
           SUM(CASE WHEN type = 'Major' THEN amount ELSE 0 END) AS major_expense,
           SUM(CASE WHEN type = 'Non-Recurring' THEN amount ELSE 0 END) AS non_recurring_expense,
           SUM(CASE WHEN type = 'Trips' THEN amount ELSE 0 END) AS trips_expense
@@ -29,10 +28,7 @@ router.get('/', auth, async (req, res) => {
         m.id,
         COALESCE(m.month, t.month) AS month,
         COALESCE(m.person, t.person) AS person,
-        CASE
-          WHEN COALESCE(t.income, 0) <> 0 THEN t.income
-          ELSE COALESCE(m.income, 0)
-        END AS income,
+        COALESCE(m.income, 0) AS income,
         COALESCE(m.other_income, 0) AS other_income,
         CASE
           WHEN COALESCE(t.major_expense, 0) <> 0 THEN t.major_expense
@@ -60,8 +56,20 @@ router.get('/', auth, async (req, res) => {
             + COALESCE(t.trips_expense, 0)
           ELSE COALESCE(m.net_expense, 0)
         END AS net_expense,
-        COALESCE(m.ideal_saving, 0) AS ideal_saving,
-        COALESCE(m.actual_saving, 0) AS actual_saving,
+        COALESCE(m.ideal_saving, 100000) AS ideal_saving,
+        COALESCE(m.income, 0) + COALESCE(m.other_income, 0)
+          - CASE
+              WHEN COALESCE(t.major_expense, 0) <> 0
+                OR COALESCE(t.non_recurring_expense, 0) <> 0
+                OR COALESCE(t.trips_expense, 0) <> 0
+              THEN
+                COALESCE(t.major_expense, 0)
+                + COALESCE(t.non_recurring_expense, 0)
+                + COALESCE(m.regular_expense, 0)
+                + COALESCE(m.emi, 0)
+                + COALESCE(t.trips_expense, 0)
+              ELSE COALESCE(m.net_expense, 0)
+            END AS actual_saving,
         COALESCE(m.target, 0) AS target,
         COALESCE(m.corpus, 0) AS corpus,
         COALESCE(m.cash, 0) AS cash,
