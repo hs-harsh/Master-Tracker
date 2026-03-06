@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, Calculator, LineChart, LogOut, Settings, BarChart3, Menu, X } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, Calculator, LineChart, LogOut, Settings, BarChart3, Menu, X, LogIn } from 'lucide-react';
 import api from '../lib/api';
 import { applyTheme } from '../lib/theme';
 import { setCurrencySymbol } from '../lib/utils';
 
-const NAV = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+const PUBLIC_NAV = [
   { to: '/trade', icon: LineChart, label: 'Trade Ideas' },
   { to: '/stock-trade', icon: BarChart3, label: 'Stock Trade' },
+];
+
+const PRIVATE_NAV = [
+  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/portfolio', icon: PieChart, label: 'Portfolio' },
   { to: '/investments', icon: Briefcase, label: 'Investments' },
   { to: '/cashflow', icon: TrendingUp, label: 'Cashflow' },
@@ -19,26 +22,29 @@ const NAV = [
 ];
 
 export default function Layout() {
-  const { logout } = useAuth();
+  const { logout, isAuth } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
+    if (!isAuth) return;
     api.get('/settings').then(r => {
       const d = r.data;
       applyTheme(d?.themeMode ?? d?.theme ?? 'dark', d?.accent ?? 'gold');
       if (d?.currencyDisplay) setCurrencySymbol(d.currencyDisplay);
     }).catch(() => {});
-  }, []);
+  }, [isAuth]);
 
   const handleLogout = () => { logout(); navigate('/login'); setSidebarOpen(false); };
-
+  const handleLogin = () => { navigate('/login'); setSidebarOpen(false); };
   const closeSidebar = () => setSidebarOpen(false);
 
   const navLinkClass = ({ isActive }) =>
     `flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-body transition-all min-h-[44px] ${
       isActive ? 'bg-accent/10 text-accent border border-accent/20' : 'text-soft hover:text-white hover:bg-card'
     }`;
+
+  const navItems = isAuth ? [...PUBLIC_NAV, ...PRIVATE_NAV] : PUBLIC_NAV;
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -52,7 +58,7 @@ export default function Layout() {
         onKeyDown={(e) => e.key === 'Escape' && closeSidebar()}
       />
 
-      {/* Sidebar: drawer on mobile, fixed on desktop */}
+      {/* Sidebar */}
       <aside
         className={`
           w-56 bg-surface border-r border-border flex flex-col shrink-0
@@ -77,10 +83,10 @@ export default function Layout() {
             <X size={20} />
           </button>
         </div>
-        <p className="text-muted text-xs px-5 pb-2 font-body hidden md:block">Harsh & Kirti</p>
+        {isAuth && <p className="text-muted text-xs px-5 pb-2 font-body hidden md:block">Harsh & Kirti</p>}
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {NAV.map(({ to, icon: Icon, label }) => (
+          {navItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
@@ -92,20 +98,36 @@ export default function Layout() {
               {label}
             </NavLink>
           ))}
+
+          {!isAuth && (
+            <div className="pt-2 border-t border-border mt-2">
+              <p className="text-muted text-xs px-3 pb-2">Sign in to access portfolio, investments & more.</p>
+            </div>
+          )}
         </nav>
 
         <div className="px-3 py-4 border-t border-border">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-soft hover:text-rose hover:bg-rose/5 transition-all w-full min-h-[44px]"
-          >
-            <LogOut size={18} />
-            Sign Out
-          </button>
+          {isAuth ? (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-soft hover:text-rose hover:bg-rose/5 transition-all w-full min-h-[44px]"
+            >
+              <LogOut size={18} />
+              Sign Out
+            </button>
+          ) : (
+            <button
+              onClick={handleLogin}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-soft hover:text-accent hover:bg-accent/5 transition-all w-full min-h-[44px]"
+            >
+              <LogIn size={18} />
+              Sign In
+            </button>
+          )}
         </div>
       </aside>
 
-      {/* Main: top bar on mobile */}
+      {/* Main */}
       <div className="flex flex-col flex-1 min-w-0">
         <header className="md:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3 bg-ink border-b border-border safe-area-top">
           <button
@@ -116,12 +138,20 @@ export default function Layout() {
           >
             <Menu size={24} />
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1">
             <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
               <span className="text-ink font-display font-bold text-xs">H·K</span>
             </div>
             <span className="font-display font-bold text-white text-sm">InvestTrack</span>
           </div>
+          {!isAuth && (
+            <button
+              onClick={handleLogin}
+              className="text-accent text-sm font-medium hover:underline"
+            >
+              Sign In
+            </button>
+          )}
         </header>
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden bg-ink">

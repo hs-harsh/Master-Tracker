@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -12,9 +12,9 @@ import Trade from './pages/Trade';
 import StockTrade from './pages/StockTrade';
 import Settings from './pages/Settings';
 
-function Protected({ children }) {
+function ProtectedOutlet() {
   const { isAuth } = useAuth();
-  return isAuth ? children : <Navigate to="/login" replace />;
+  return isAuth ? <Outlet /> : <Navigate to="/login" replace />;
 }
 
 export default function App() {
@@ -23,16 +23,21 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/" element={<Protected><Layout /></Protected>}>
-            <Route index element={<Dashboard />} />
-            <Route path="portfolio" element={<Portfolio />} />
-            <Route path="investments" element={<Investments />} />
-            <Route path="cashflow" element={<Cashflow />} />
-            <Route path="transactions" element={<Transactions />} />
-            <Route path="expense-analyser" element={<ExpenseAnalyser />} />
+          {/* All pages share the same Layout */}
+          <Route path="/" element={<Layout />}>
+            {/* Public — no login required */}
             <Route path="trade" element={<Trade />} />
             <Route path="stock-trade" element={<StockTrade />} />
-            <Route path="settings" element={<Settings />} />
+            {/* Private — redirects to /login if not authenticated */}
+            <Route element={<ProtectedOutlet />}>
+              <Route index element={<Dashboard />} />
+              <Route path="portfolio" element={<Portfolio />} />
+              <Route path="investments" element={<Investments />} />
+              <Route path="cashflow" element={<Cashflow />} />
+              <Route path="transactions" element={<Transactions />} />
+              <Route path="expense-analyser" element={<ExpenseAnalyser />} />
+              <Route path="settings" element={<Settings />} />
+            </Route>
           </Route>
         </Routes>
       </BrowserRouter>

@@ -1,5 +1,4 @@
 const express = require('express');
-const auth = require('../middleware/auth');
 const { searchStocks } = require('../services/prices');
 
 const router = express.Router();
@@ -7,8 +6,9 @@ const router = express.Router();
 /**
  * GET /api/stocks/search?q=query
  * Returns up to 15 matching Indian (.NS/.BO) and US equity results from Yahoo Finance search.
+ * Public route — no auth required.
  */
-router.get('/search', auth, async (req, res) => {
+router.get('/search', async (req, res) => {
   try {
     const q = (req.query.q || '').trim();
     if (!q) return res.json([]);

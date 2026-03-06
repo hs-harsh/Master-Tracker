@@ -1,5 +1,4 @@
 const express = require('express');
-const auth = require('../middleware/auth');
 const { getPriceData, getPriceHistory, getSymbol } = require('../services/prices');
 
 const router = express.Router();
@@ -7,8 +6,9 @@ const router = express.Router();
 /**
  * GET /api/prices/:instrumentId
  * Returns live quote data (current price, 52w high/low, last 21 closes).
+ * Public route — no auth required (reads public market data only).
  */
-router.get('/:instrumentId', auth, async (req, res) => {
+router.get('/:instrumentId', async (req, res) => {
   try {
     const { instrumentId } = req.params;
     const symbol = getSymbol(instrumentId);
@@ -24,8 +24,9 @@ router.get('/:instrumentId', auth, async (req, res) => {
 /**
  * GET /api/prices/:instrumentId/chart?range=1m|6m|ytd|1y|5y
  * Returns historical {date, close} array for the given range.
+ * Public route — no auth required.
  */
-router.get('/:instrumentId/chart', auth, async (req, res) => {
+router.get('/:instrumentId/chart', async (req, res) => {
   try {
     const { instrumentId } = req.params;
     const range = ['1m', '6m', 'ytd', '1y', '5y'].includes(req.query.range)
