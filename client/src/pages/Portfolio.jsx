@@ -185,6 +185,7 @@ export default function Portfolio() {
         defaultPortfolioContext={aggregated.length > 0
           ? `Current: ${aggregated.filter((r) => r.net > 0).slice(0, 12).map((r) => `${r.instrument} ₹${fmt(r.net)}`).join(', ')}${aggregated.filter((r) => r.net > 0).length > 12 ? '…' : ''}. Goal: ${goalFilter || 'Balanced'}`
           : ''}
+        holdings={aggregated}
       />
 
       {/* Net invested — horizontal ribbon */}

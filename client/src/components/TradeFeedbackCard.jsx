@@ -1,6 +1,10 @@
 import { useState } from 'react';
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, Legend,
+} from 'recharts';
 import api from '../lib/api';
-import { MessageSquare, Loader2 } from 'lucide-react';
+import { MessageSquare, Loader2, BarChart3, TrendingUp } from 'lucide-react';
 
 const TRADE_INSTRUMENTS = [
   { id: 'nifty50', name: 'Nifty 50', ticker: 'NSE Nifty 50' },
@@ -18,54 +22,246 @@ const TRADE_INSTRUMENTS = [
   { id: 'russell1000', name: 'Russell 1000', ticker: 'IWB / RUI' },
 ];
 
-function buildTradeFeedbackPrompt(portfolioContext, instrument, amount) {
+const YEAR_OPTIONS = [3, 5, 10, 15, 20];
+
+function buildPrompt(mode, portfolioContext, years, instrument, amount, holdingsForSell) {
   const ctx = (portfolioContext || '').trim();
-  return `You are a portfolio advisor. The user is asking for feedback on a potential trade.
+  const base = `You are a portfolio advisor. Return ONLY valid JSON. No markdown, no code fences.
 
-PORTFOLIO / GOAL CONTEXT (user-provided):
-${ctx || '(None provided — give general guidance)'}
+PORTFOLIO / GOAL CONTEXT:
+${ctx || '(None provided)'}
 
-PROPOSED TRADE:
-- Instrument: ${instrument.name} (${instrument.ticker})
-- Amount: ₹${Number(amount || 0).toLocaleString('en-IN')}
+YEARS TO KEEP GOAL PORTFOLIO: ${years} years`;
 
-Provide a concise, actionable response (3–6 short paragraphs or bullets):
-1. Does this trade make sense given their portfolio/goal? Why or why not?
-2. If they have existing positions, how does this add/change allocation?
-3. If they have a goal (e.g. balanced, growth), does this align?
-4. Specific recommendation: GO AHEAD / MODIFY (suggest changes) / AVOID / DEFER (wait for better level).
-5. Any caveats or levels to watch.
+  if (mode === 'general') {
+    return `${base}
 
-Be direct and practical. Use ₹ and % where relevant. Return plain text, no JSON.`;
+MODE: General portfolio insight (no trade). Analyze current holdings only.
+
+Return this JSON:
+{
+  "insight": "2-3 sentence overall assessment",
+  "recommendation": "STRONG" | "GOOD" | "NEEDS_ATTENTION" | "REBALANCE",
+  "riskReturnProjection": [
+    { "years": 3, "expectedReturnPct": number, "riskPct": number },
+    { "years": 5, "expectedReturnPct": number, "riskPct": number },
+    { "years": 10, "expectedReturnPct": number, "riskPct": number },
+    { "years": 15, "expectedReturnPct": number, "riskPct": number },
+    { "years": 20, "expectedReturnPct": number, "riskPct": number }
+  ],
+  "allocationEvolution": [
+    { "year": 3, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+    { "year": 5, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+    { "year": 10, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+    { "year": 15, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+    { "year": 20, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number }
+  ],
+  "keyInsights": ["bullet 1", "bullet 2", "bullet 3"],
+  "caveats": ["caveat 1"]
 }
 
-export default function TradeFeedbackCard({ defaultPortfolioContext = '' }) {
+Use realistic CAGR and volatility based on current allocation.`;
+  }
+
+  if (mode === 'sell') {
+    const holdingsStr = holdingsForSell?.length
+      ? `CURRENT HOLDINGS (can sell):\n${holdingsForSell.map((h) => `- ${h.instrument}: ₹${h.net}`).join('\n')}`
+      : 'No holdings data.';
+    return `${base}
+
+${holdingsStr}
+
+MODE: SELL. User wants to sell ₹${amount} of ${instrument?.name || instrument}.
+
+Return this JSON:
+{
+  "insight": "2-3 sentence: does selling make sense?",
+  "recommendation": "GO_AHEAD" | "MODIFY_AMOUNT" | "AVOID" | "DEFER",
+  "riskReturnProjection": [
+    { "years": 3, "expectedReturnPct": number, "riskPct": number },
+    { "years": 5, "expectedReturnPct": number, "riskPct": number },
+    { "years": 10, "expectedReturnPct": number, "riskPct": number },
+    { "years": 15, "expectedReturnPct": number, "riskPct": number },
+    { "years": 20, "expectedReturnPct": number, "riskPct": number }
+  ],
+  "allocationEvolution": [
+    { "year": 3, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+    { "year": 5, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+    { "year": 10, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+    { "year": 15, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+    { "year": 20, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number }
+  ],
+  "keyInsights": ["bullet 1", "bullet 2"],
+  "caveats": ["caveat 1"]
+}
+
+Show how risk/return changes after the sale over ${years}Y horizon.`;
+  }
+
+  // Buy mode
+  return `${base}
+
+MODE: BUY. User wants to invest ₹${amount} in ${instrument?.name} (${instrument?.ticker}).
+
+Return this JSON:
+{
+  "insight": "2-3 sentence: does this trade make sense?",
+  "recommendation": "GO_AHEAD" | "MODIFY_AMOUNT" | "AVOID" | "DEFER",
+  "riskReturnProjection": [
+    { "years": 3, "expectedReturnPct": number, "riskPct": number },
+    { "years": 5, "expectedReturnPct": number, "riskPct": number },
+    { "years": 10, "expectedReturnPct": number, "riskPct": number },
+    { "years": 15, "expectedReturnPct": number, "riskPct": number },
+    { "years": 20, "expectedReturnPct": number, "riskPct": number }
+  ],
+  "allocationEvolution": [
+    { "year": 3, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+    { "year": 5, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+    { "year": 10, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+    { "year": 15, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+    { "year": 20, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number }
+  ],
+  "keyInsights": ["bullet 1", "bullet 2"],
+  "caveats": ["caveat 1"]
+}
+
+Show how risk/return changes after the buy over ${years}Y horizon.`;
+}
+
+function tryParseJson(raw) {
+  const text = String(raw).trim();
+  try { return JSON.parse(text); } catch (_) {}
+  const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  try { return JSON.parse(cleaned); } catch (_) {}
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) return null;
+  try { return JSON.parse(text.slice(start, end + 1)); } catch (_) {}
+  return null;
+}
+
+const RECOMMENDATION_COLOR = {
+  GO_AHEAD: 'text-green-400',
+  MODIFY_AMOUNT: 'text-amber-400',
+  AVOID: 'text-rose',
+  DEFER: 'text-amber-400',
+  STRONG: 'text-green-400',
+  GOOD: 'text-teal-400',
+  NEEDS_ATTENTION: 'text-amber-400',
+  REBALANCE: 'text-rose',
+};
+
+function RiskReturnChart({ data }) {
+  if (!data?.length) return null;
+  const chartData = data.map((d) => ({
+    ...d,
+    label: `${d.years}Y`,
+    expectedReturnPct: Number(d.expectedReturnPct) ?? 0,
+    riskPct: Number(d.riskPct) ?? 0,
+  }));
+
+  return (
+    <div className="card">
+      <p className="stat-label mb-3 flex items-center gap-2">
+        <TrendingUp size={14} /> Risk vs return over horizon
+      </p>
+      <div className="h-52">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+            <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} width={36} tickFormatter={(v) => `${v}%`} />
+            <Tooltip
+              contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}
+              formatter={(v) => [`${v}%`, '']}
+              labelFormatter={(l) => `Horizon: ${l}`}
+            />
+            <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => <span style={{ color: '#94a3b8' }}>{v}</span>} />
+            <Line type="monotone" dataKey="expectedReturnPct" name="Expected return" stroke="#2dd4bf" strokeWidth={2} dot={{ fill: '#2dd4bf', r: 4 }} />
+            <Line type="monotone" dataKey="riskPct" name="Risk (volatility)" stroke="#f97316" strokeWidth={2} dot={{ fill: '#f97316', r: 4 }} strokeDasharray="4 4" />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+const ALLOC_COLORS = { equityPct: '#2dd4bf', debtPct: '#a78bfa', metalPct: '#f0c040', cashPct: '#6b7280' };
+
+function AllocationChart({ data }) {
+  if (!data?.length) return null;
+  const chartData = data.map((d) => ({
+    ...d,
+    label: `${d.year}Y`,
+    equityPct: Number(d.equityPct) || 0,
+    debtPct: Number(d.debtPct) || 0,
+    metalPct: Number(d.metalPct) || 0,
+    cashPct: Number(d.cashPct) || 0,
+  }));
+
+  return (
+    <div className="card">
+      <p className="stat-label mb-3 flex items-center gap-2">
+        <BarChart3 size={14} /> Allocation evolution
+      </p>
+      <div className="h-52">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }} barCategoryGap="15%">
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+            <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} width={36} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+            <Tooltip
+              contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}
+              formatter={(v) => [`${v}%`, '']}
+            />
+            <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => <span style={{ color: '#94a3b8' }}>{v}</span>} />
+            <Bar dataKey="equityPct" name="Equity" stackId="a" fill={ALLOC_COLORS.equityPct} radius={[0, 0, 0, 0]} />
+            <Bar dataKey="debtPct" name="Debt" stackId="a" fill={ALLOC_COLORS.debtPct} radius={[0, 0, 0, 0]} />
+            <Bar dataKey="metalPct" name="Metal" stackId="a" fill={ALLOC_COLORS.metalPct} radius={[0, 0, 0, 0]} />
+            <Bar dataKey="cashPct" name="Cash" stackId="a" fill={ALLOC_COLORS.cashPct} radius={[0, 0, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdings = [] }) {
+  const [mode, setMode] = useState('general');
   const [portfolioContext, setPortfolioContext] = useState(defaultPortfolioContext);
+  const [years, setYears] = useState(10);
   const [instrumentId, setInstrumentId] = useState(TRADE_INSTRUMENTS[0]?.id || '');
+  const [sellInstrument, setSellInstrument] = useState('');
   const [amount, setAmount] = useState('25000');
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [error, setError] = useState(null);
 
   const instrument = TRADE_INSTRUMENTS.find((i) => i.id === instrumentId) || TRADE_INSTRUMENTS[0];
+  const holdingsForSell = holdings.filter((h) => h.net > 0);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const amt = parseInt(amount, 10);
-    if (!instrument || isNaN(amt) || amt <= 0) return;
+    if (mode !== 'general') {
+      const amt = parseInt(amount, 10);
+      if (isNaN(amt) || amt <= 0) return;
+      if (mode === 'sell' && !sellInstrument) return;
+    }
     setLoading(true);
     setError(null);
     setFeedback(null);
     try {
-      const prompt = buildTradeFeedbackPrompt(portfolioContext, instrument, amt);
+      const inst = mode === 'sell' ? { name: sellInstrument, ticker: sellInstrument } : instrument;
+      const amt = mode === 'general' ? 0 : parseInt(amount, 10);
+      const prompt = buildPrompt(mode, portfolioContext, years, inst, amt, holdingsForSell);
       const res = await api.post('/chat', {
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1500,
+        max_tokens: 2500,
         messages: [{ role: 'user', content: prompt }],
       });
-      const content = res.data.content || [];
-      const text = content.map((c) => c.text || '').join('');
-      setFeedback(text);
+      const text = (res.data.content || []).map((c) => c.text || '').join('');
+      const parsed = tryParseJson(text);
+      setFeedback(parsed || { raw: text });
     } catch (err) {
       setError(err.response?.data?.error || err.message);
     } finally {
@@ -73,72 +269,143 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '' }) {
     }
   };
 
+  const isStructured = feedback && typeof feedback === 'object' && !feedback.raw;
+
   return (
     <div className="card">
       <div className="flex items-center gap-2 mb-4">
         <MessageSquare size={18} className="text-accent" />
-        <h2 className="font-display font-semibold text-white text-lg">Portfolio &amp; trade feedback</h2>
+        <h2 className="font-display font-semibold text-white text-lg">Portfolio feedback</h2>
       </div>
       <p className="text-muted text-sm mb-4">
-        Enter your portfolio or goal, then ask if investing a specific amount in an instrument makes sense. Get a recommendation based on your existing position and goal type.
+        Get insight on your portfolio, or feedback on a buy/sell. Charts show risk-return and allocation over 3–20 years.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
+          <label className="label">Years to keep goal portfolio</label>
+          <select className="input w-auto" value={years} onChange={(e) => setYears(Number(e.target.value))}>
+            {YEAR_OPTIONS.map((y) => (
+              <option key={y} value={y}>{y} years</option>
+            ))}
+          </select>
+        </div>
+        <div>
           <label className="label">Portfolio / goal</label>
           <textarea
-            className="input min-h-[80px] resize-y"
-            placeholder="e.g. Current: 50% Nifty, 30% Gold, 20% US. Goal: Balanced 50-30-20 India-US-Metal"
+            className="input min-h-[72px] resize-y"
+            placeholder="e.g. Current: 50% Nifty, 30% Gold, 20% US. Goal: Balanced."
             value={portfolioContext}
             onChange={(e) => setPortfolioContext(e.target.value)}
-            rows={3}
+            rows={2}
           />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="label">Instrument</label>
-            <select
-              className="input"
-              value={instrumentId}
-              onChange={(e) => setInstrumentId(e.target.value)}
-            >
-              {TRADE_INSTRUMENTS.map((i) => (
-                <option key={i.id} value={i.id}>{i.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Amount (₹)</label>
-            <input
-              type="number"
-              className="input"
-              placeholder="25000"
-              min={1}
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
+        <div>
+          <label className="label">Mode</label>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: 'general', label: 'General insight' },
+              { id: 'buy', label: 'Buy' },
+              { id: 'sell', label: 'Sell' },
+            ].map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setMode(m.id)}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  mode === m.id ? 'bg-accent text-ink' : 'bg-surface text-soft hover:text-white'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
           </div>
         </div>
-        <button
-          type="submit"
-          disabled={loading}
-          className="btn-primary flex items-center gap-2"
-        >
+        {mode === 'buy' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Instrument</label>
+              <select className="input" value={instrumentId} onChange={(e) => setInstrumentId(e.target.value)}>
+                {TRADE_INSTRUMENTS.map((i) => (
+                  <option key={i.id} value={i.id}>{i.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Amount (₹)</label>
+              <input type="number" className="input" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+          </div>
+        )}
+        {mode === 'sell' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Sell from</label>
+              <select className="input" value={sellInstrument} onChange={(e) => setSellInstrument(e.target.value)}>
+                <option value="">Select holding</option>
+                {holdingsForSell.map((h, i) => (
+                  <option key={i} value={h.instrument}>{h.instrument} — ₹{h.net?.toLocaleString('en-IN')}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label">Amount (₹)</label>
+              <input type="number" className="input" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+          </div>
+        )}
+        <button type="submit" disabled={loading} className="btn-primary flex items-center gap-2">
           {loading ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />}
-          {loading ? 'Getting feedback…' : 'Get feedback'}
+          {loading ? 'Analyzing…' : mode === 'general' ? 'Get insight' : 'Get feedback'}
         </button>
       </form>
 
       {error && (
-        <div className="mt-4 p-3 rounded-lg bg-rose/10 border border-rose/30 text-rose text-sm">
-          {error}
-        </div>
+        <div className="mt-4 p-3 rounded-lg bg-rose/10 border border-rose/30 text-rose text-sm">{error}</div>
       )}
 
       {feedback && !loading && (
-        <div className="mt-4 p-4 rounded-xl bg-accent/5 border border-accent/20">
-          <p className="text-xs text-accent font-semibold uppercase tracking-wider mb-2">Recommendation</p>
-          <div className="text-soft text-sm leading-relaxed whitespace-pre-wrap">{feedback}</div>
+        <div className="mt-4 space-y-4">
+          {isStructured ? (
+            <>
+              <div className="p-4 rounded-xl bg-accent/5 border border-accent/20">
+                <p className="text-soft text-sm leading-relaxed">{feedback.insight}</p>
+                {feedback.recommendation && (
+                  <p className={`mt-2 font-semibold ${RECOMMENDATION_COLOR[feedback.recommendation] || 'text-white'}`}>
+                    {feedback.recommendation.replace(/_/g, ' ')}
+                  </p>
+                )}
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <RiskReturnChart data={feedback.riskReturnProjection} />
+                <AllocationChart data={feedback.allocationEvolution} />
+              </div>
+              {feedback.keyInsights?.length > 0 && (
+                <div className="card">
+                  <p className="stat-label mb-2">Key insights</p>
+                  <ul className="space-y-1.5 text-sm text-soft">
+                    {feedback.keyInsights.map((k, i) => (
+                      <li key={i} className="flex gap-2"><span className="text-accent shrink-0">•</span>{k}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {feedback.caveats?.length > 0 && (
+                <div className="card border-amber-400/30">
+                  <p className="text-amber-400 text-xs font-semibold uppercase tracking-wider mb-2">Caveats</p>
+                  <ul className="space-y-1 text-sm text-soft">
+                    {feedback.caveats.map((c, i) => (
+                      <li key={i} className="flex gap-2"><span className="text-amber-400 shrink-0">⚠</span>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="p-4 rounded-xl bg-accent/5 border border-accent/20">
+              <div className="text-soft text-sm whitespace-pre-wrap">{feedback.raw}</div>
+            </div>
+          )}
         </div>
       )}
     </div>

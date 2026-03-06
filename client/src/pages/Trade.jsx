@@ -184,9 +184,11 @@ async function callClaude(prompt) {
 // Balanced ₹1 Lac portfolio across Indian equity, US equity, and Metal
 const FALLBACK_ALLOCATION = {
   buckets: [
-    { label: 'Indian Equity', amount: 50000, pct: 50, color: '#2dd4bf', instruments: [{ name: 'Nifty 50', amount: 25000 }, { name: 'Nifty Bank', amount: 12500 }, { name: 'Others', amount: 12500 }], rationale: 'Core domestic exposure.' },
-    { label: 'US Equity', amount: 30000, pct: 30, color: '#60a5fa', instruments: [{ name: 'S&P 500', amount: 12000 }, { name: 'NASDAQ-100', amount: 10500 }, { name: 'Russell 1000', amount: 7500 }], rationale: 'Global diversification.' },
-    { label: 'Metal', amount: 20000, pct: 20, color: '#f0c040', instruments: [{ name: 'Gold', amount: 12000 }, { name: 'Silver', amount: 8000 }], rationale: 'Hedge and inflation protection.' },
+    { label: 'Indian Equity', amount: 35000, pct: 35, color: '#2dd4bf', instruments: [{ name: 'Nifty 50', amount: 17500 }, { name: 'Nifty Bank', amount: 8750 }, { name: 'Others', amount: 8750 }], rationale: 'Core domestic exposure.' },
+    { label: 'US Equity', amount: 20000, pct: 20, color: '#60a5fa', instruments: [{ name: 'S&P 500', amount: 8000 }, { name: 'NASDAQ-100', amount: 7000 }, { name: 'Russell 1000', amount: 5000 }], rationale: 'Global diversification.' },
+    { label: 'Metal', amount: 15000, pct: 15, color: '#f0c040', instruments: [{ name: 'Gold', amount: 9000 }, { name: 'Silver', amount: 6000 }], rationale: 'Hedge and inflation protection.' },
+    { label: 'Debt', amount: 25000, pct: 25, color: '#a78bfa', instruments: [{ name: 'Short-term debt fund', amount: 10000 }, { name: 'Medium-term debt fund', amount: 10000 }, { name: 'Long-term debt fund', amount: 5000 }], rationale: 'Stability and yield.' },
+    { label: 'Cash', amount: 5000, pct: 5, color: '#6b7280', instruments: [{ name: 'Liquid / Overnight', amount: 5000 }], rationale: 'Emergency buffer and opportunities.' },
   ],
 };
 
@@ -214,7 +216,9 @@ ${dataBlock}
 
 RISK PROFILE: ${riskProfile}. ${riskNote}
 
-Use buy-the-dip (higher dip = consider more allocation), composite/fundamental/technical scores (higher = more), and macro context. Allocate across Indian equity, US equity, and Metal buckets. Total must be 100000.
+Use buy-the-dip (higher dip = consider more allocation), composite/fundamental/technical scores (higher = more), and macro context. Allocate across: Indian equity, US equity, Metal, Debt (short/medium/long-term funds), and Cash. Total must be 100000.
+
+Debt bucket: include short-term (liquid/overnight), medium-term (1–3Y), and long-term (3Y+) debt funds. Cash: liquid buffer for emergencies and opportunities. Higher risk = less debt/cash; lower risk = more debt/cash.
 
 Return ONLY valid JSON. No markdown, no code fences.
 
@@ -243,6 +247,26 @@ Return ONLY valid JSON. No markdown, no code fences.
       "pct": number,
       "color": "#f0c040",
       "instruments": [ { "name": "string", "amount": number } ],
+      "rationale": "one sentence"
+    },
+    {
+      "label": "Debt",
+      "amount": number,
+      "pct": number,
+      "color": "#a78bfa",
+      "instruments": [
+        { "name": "Short-term debt fund", "amount": number },
+        { "name": "Medium-term debt fund", "amount": number },
+        { "name": "Long-term debt fund", "amount": number }
+      ],
+      "rationale": "one sentence"
+    },
+    {
+      "label": "Cash",
+      "amount": number,
+      "pct": number,
+      "color": "#6b7280",
+      "instruments": [ { "name": "Liquid / Overnight", "amount": number } ],
       "rationale": "one sentence"
     }
   ]
@@ -294,12 +318,12 @@ function BalancedPortfolioCard({ onComputeAllocation, loading, allocation, resul
         </div>
       </div>
       <p className="text-muted text-sm mb-4">
-        Dynamic allocation based on risk profile, buy-the-dip, and fundamental/macro scores. Run &quot;Analyze all&quot; for richer scores, or compute with live prices.
+        Dynamic allocation across equity, metal, debt (short/medium/long), and cash. Based on risk profile, buy-the-dip, and fundamental/macro scores.
       </p>
       {allocation?.rationale && (
         <p className="text-soft text-sm mb-4 p-3 rounded-lg bg-surface">{allocation.rationale}</p>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {buckets.map((b) => (
           <div
             key={b.label}
