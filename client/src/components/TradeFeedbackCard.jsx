@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend,
+  CartesianGrid, Legend, PieChart, Pie, Cell,
 } from 'recharts';
 import api from '../lib/api';
 import { MessageSquare, Loader2, BarChart3, TrendingUp, Plus, X } from 'lucide-react';
@@ -35,17 +35,14 @@ const NO_TRADE_SCHEMA = `{
   ],
   "byRiskLevel": {
     "high": {
-      "targetRiskSplit": "e.g. 70% equity, 20% debt, 10% cash — ideal allocation for high risk taker",
-      "riskReturnChange": "1-2 sentences: how risk/return would change from current portfolio if they rebalance to target"
+      "targetRiskSplit": "e.g. 70% equity, 20% debt, 10% cash",
+      "targetAllocation": { "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+      "riskReturnChange": "1-2 sentences: how risk/return would change from current",
+      "expectedReturnPct": number,
+      "riskPct": number
     },
-    "medium": {
-      "targetRiskSplit": "e.g. 50% equity, 35% debt, 15% cash",
-      "riskReturnChange": "1-2 sentences: how risk/return would change from current"
-    },
-    "low": {
-      "targetRiskSplit": "e.g. 30% equity, 50% debt, 20% cash",
-      "riskReturnChange": "1-2 sentences: how risk/return would change from current"
-    }
+    "medium": { "targetRiskSplit": "...", "targetAllocation": {...}, "riskReturnChange": "...", "expectedReturnPct": number, "riskPct": number },
+    "low": { "targetRiskSplit": "...", "targetAllocation": {...}, "riskReturnChange": "...", "expectedReturnPct": number, "riskPct": number }
   },
   "keyInsights": ["bullet 1", "bullet 2"],
   "caveats": ["caveat 1"]
@@ -58,10 +55,12 @@ const TRADE_SCHEMA = `{
       "allocationBefore": { "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
       "allocationAfter": { "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
       "riskReturnProfile": "1-2 sentences: changed risk-return after trades",
-      "optimalAmount": "1-2 sentences: recommended amount for each trade for this risk level (e.g. invest ₹X in Nifty, ₹Y in Gold)"
+      "expectedReturnPct": number,
+      "riskPct": number,
+      "optimalAmount": "1-2 sentences: recommended amount for each trade"
     },
-    "medium": { "allocationBefore": {...}, "allocationAfter": {...}, "riskReturnProfile": "...", "optimalAmount": "..." },
-    "low": { "allocationBefore": {...}, "allocationAfter": {...}, "riskReturnProfile": "...", "optimalAmount": "..." }
+    "medium": { "allocationBefore": {...}, "allocationAfter": {...}, "riskReturnProfile": "...", "expectedReturnPct": number, "riskPct": number, "optimalAmount": "..." },
+    "low": { "allocationBefore": {...}, "allocationAfter": {...}, "riskReturnProfile": "...", "expectedReturnPct": number, "riskPct": number, "optimalAmount": "..." }
   },
   "keyInsights": ["bullet 1", "bullet 2"],
   "caveats": ["caveat 1"]
@@ -87,7 +86,9 @@ ${holdingsStr}`;
 
 MODE: General insight (no trades). For each risk level (high, medium, low), provide:
 1. targetRiskSplit: ideal risk split (equity/debt/cash %) they should target
-2. riskReturnChange: how risk and return would change from current portfolio if they rebalance to that target
+2. targetAllocation: numeric { equityPct, debtPct, metalPct, cashPct } summing to 100
+3. riskReturnChange: how risk and return would change from current
+4. expectedReturnPct, riskPct: projected return % and volatility % at target allocation
 
 Return this JSON:
 ${NO_TRADE_SCHEMA}
@@ -111,7 +112,8 @@ MODE: Trade feedback. For each risk level (high, medium, low), provide:
 1. allocationBefore: current asset allocation (equityPct, debtPct, metalPct, cashPct)
 2. allocationAfter: allocation after applying the proposed trades
 3. riskReturnProfile: how risk-return changes after trades
-4. optimalAmount: recommendation for optimal amount for each trade for this risk level (may suggest scaling up/down)
+4. expectedReturnPct, riskPct: projected return % and volatility % after trades
+5. optimalAmount: recommendation for optimal amount for each trade
 
 Return this JSON:
 ${TRADE_SCHEMA}`;
@@ -176,6 +178,42 @@ function RiskReturnChart({ data }) {
 }
 
 const ALLOC_COLORS = { equityPct: '#2dd4bf', debtPct: '#a78bfa', metalPct: '#f0c040', cashPct: '#6b7280' };
+const ALLOC_KEYS = ['equityPct', 'debtPct', 'metalPct', 'cashPct'];
+const ALLOC_LABELS = { equityPct: 'Equity', debtPct: 'Debt', metalPct: 'Metal', cashPct: 'Cash' };
+
+function MiniAllocationPie({ alloc, title }) {
+  if (!alloc) return null;
+  const data = ALLOC_KEYS
+    .map((k) => ({ name: ALLOC_LABELS[k], value: Number(alloc[k]) || 0, key: k }))
+    .filter((d) => d.value > 0);
+  if (data.length === 0) return null;
+  return (
+    <div>
+      {title && <p className="text-xs text-muted mb-1">{title}</p>}
+      <ResponsiveContainer width="100%" height={80}>
+        <PieChart>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            innerRadius={20}
+            outerRadius={35}
+            paddingAngle={1}
+            dataKey="value"
+          >
+            {data.map((d) => (
+              <Cell key={d.name} fill={ALLOC_COLORS[d.key] || '#6b7280'} />
+            ))}
+          </Pie>
+          <Tooltip
+            contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 6, fontSize: 11 }}
+            formatter={(v) => [`${v}%`, '']}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 function AllocationChart({ data }) {
   if (!data?.length) return null;
@@ -409,24 +447,24 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
               {feedback.byRiskLevel && (
                 <div className="card">
                   <p className="stat-label mb-3">By risk profile</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     {['high', 'medium', 'low'].map((k) => {
                       const r = feedback.byRiskLevel[k];
                       if (!r) return null;
                       const isTradeMode = r.allocationBefore != null && r.allocationAfter != null;
                       return (
-                        <div key={k} className="p-3 rounded-lg bg-surface/50 border border-border space-y-2">
+                        <div key={k} className="p-4 rounded-xl bg-surface/50 border border-border space-y-3">
                           <p className="text-xs font-semibold text-white uppercase tracking-wider capitalize">{k} risk</p>
                           {isTradeMode ? (
                             <>
-                              {r.allocationBefore && r.allocationAfter && (
-                                <div className="text-xs space-y-1">
-                                  <p className="text-muted">Allocation: before → after</p>
-                                  <p className="text-soft">
-                                    E{Number(r.allocationBefore.equityPct) || 0}% D{Number(r.allocationBefore.debtPct) || 0}% M{Number(r.allocationBefore.metalPct) || 0}% C{Number(r.allocationBefore.cashPct) || 0}%
-                                    {' → '}
-                                    E{Number(r.allocationAfter.equityPct) || 0}% D{Number(r.allocationAfter.debtPct) || 0}% M{Number(r.allocationAfter.metalPct) || 0}% C{Number(r.allocationAfter.cashPct) || 0}%
-                                  </p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <MiniAllocationPie alloc={r.allocationBefore} title="Before" />
+                                <MiniAllocationPie alloc={r.allocationAfter} title="After" />
+                              </div>
+                              {(r.expectedReturnPct != null || r.riskPct != null) && (
+                                <div className="flex gap-3 text-xs">
+                                  {r.expectedReturnPct != null && <span className="text-accent">Return: {Number(r.expectedReturnPct).toFixed(1)}%</span>}
+                                  {r.riskPct != null && <span className="text-amber-400">Risk: {Number(r.riskPct).toFixed(1)}%</span>}
                                 </div>
                               )}
                               {r.riskReturnProfile && <p className="text-sm text-soft">{r.riskReturnProfile}</p>}
@@ -434,6 +472,13 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
                             </>
                           ) : (
                             <>
+                              <MiniAllocationPie alloc={r.targetAllocation} title="Target allocation" />
+                              {(r.expectedReturnPct != null || r.riskPct != null) && (
+                                <div className="flex gap-3 text-xs">
+                                  {r.expectedReturnPct != null && <span className="text-accent">Return: {Number(r.expectedReturnPct).toFixed(1)}%</span>}
+                                  {r.riskPct != null && <span className="text-amber-400">Risk: {Number(r.riskPct).toFixed(1)}%</span>}
+                                </div>
+                              )}
                               {r.targetRiskSplit && <p className="text-sm text-soft"><span className="text-muted">Target:</span> {r.targetRiskSplit}</p>}
                               {r.riskReturnChange && <p className="text-sm text-soft"><span className="text-muted">Change:</span> {r.riskReturnChange}</p>}
                             </>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Legend } from 'recharts';
+import { TrendingUp, PieChart as PieIcon, Target, Wallet } from 'lucide-react';
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 import TradeFeedbackCard from '../components/TradeFeedbackCard';
@@ -119,6 +120,18 @@ export default function Portfolio() {
 
   const BROKER_COLORS = ['#2dd4bf', '#f0c040', '#60a5fa', '#a78bfa', '#fb7185', '#34d399', '#f97316', '#6b7280'];
 
+  // Important metrics
+  const equityVal = Math.max(0, assetBuckets.Equity || 0) + Math.max(0, assetBuckets.Crypto || 0);
+  const debtVal = Math.max(0, assetBuckets.Debt || 0);
+  const goldVal = Math.max(0, assetBuckets.Gold || 0) + Math.max(0, assetBuckets['Real Estate'] || 0);
+  const cashVal = Math.max(0, assetBuckets.Cash || 0);
+  const totalAbs = equityVal + debtVal + goldVal + cashVal || 1;
+  const equityPct = (equityVal / totalAbs) * 100;
+  const debtPct = (debtVal / totalAbs) * 100;
+  const goldPct = (goldVal / totalAbs) * 100;
+  const cashPct = (cashVal / totalAbs) * 100;
+  const topHoldings = aggregated.filter((r) => r.net > 0).slice(0, 3);
+
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="space-y-4">
@@ -179,6 +192,70 @@ export default function Portfolio() {
         </div>
       </div>
 
+      {/* Key metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="card flex flex-col">
+          <div className="flex items-center gap-2 text-muted mb-1">
+            <Wallet size={14} />
+            <span className="stat-label text-xs">Net Invested</span>
+          </div>
+          <span className="font-mono text-lg font-bold text-accent">{fmt(totalNet)}</span>
+        </div>
+        <div className="card flex flex-col">
+          <div className="flex items-center gap-2 text-muted mb-1">
+            <Target size={14} />
+            <span className="stat-label text-xs">Positions</span>
+          </div>
+          <span className="font-mono text-lg font-bold text-white">{aggregated.length}</span>
+        </div>
+        <div className="card flex flex-col">
+          <div className="flex items-center gap-2 text-muted mb-1">
+            <PieIcon size={14} />
+            <span className="stat-label text-xs">Equity</span>
+          </div>
+          <span className="font-mono text-lg font-bold" style={{ color: ASSET_COLORS.Equity }}>{equityPct.toFixed(1)}%</span>
+        </div>
+        <div className="card flex flex-col">
+          <div className="flex items-center gap-2 text-muted mb-1">
+            <PieIcon size={14} />
+            <span className="stat-label text-xs">Debt</span>
+          </div>
+          <span className="font-mono text-lg font-bold" style={{ color: ASSET_COLORS.Debt }}>{debtPct.toFixed(1)}%</span>
+        </div>
+        <div className="card flex flex-col">
+          <div className="flex items-center gap-2 text-muted mb-1">
+            <PieIcon size={14} />
+            <span className="stat-label text-xs">Gold / RE</span>
+          </div>
+          <span className="font-mono text-lg font-bold" style={{ color: ASSET_COLORS.Gold }}>{goldPct.toFixed(1)}%</span>
+        </div>
+        <div className="card flex flex-col">
+          <div className="flex items-center gap-2 text-muted mb-1">
+            <PieIcon size={14} />
+            <span className="stat-label text-xs">Cash</span>
+          </div>
+          <span className="font-mono text-lg font-bold" style={{ color: ASSET_COLORS.Cash }}>{cashPct.toFixed(1)}%</span>
+        </div>
+      </div>
+
+      {/* Top holdings */}
+      {topHoldings.length > 0 && (
+        <div className="card">
+          <div className="flex items-center gap-2 text-muted mb-2">
+            <TrendingUp size={14} />
+            <span className="stat-label text-xs">Top holdings</span>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {topHoldings.map((h, i) => (
+              <div key={i} className="px-3 py-2 rounded-lg bg-surface/60 border border-border">
+                <span className="text-sm text-soft">{h.instrument}</span>
+                <span className="ml-2 font-mono text-accent font-semibold">{fmt(h.net)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Trade feedback — portfolio / goal + ask if trade makes sense */}
       <TradeFeedbackCard
         key={`portfolio-${goalFilter}-${aggregated.filter((r) => r.net > 0).length}`}
@@ -187,19 +264,6 @@ export default function Portfolio() {
           : ''}
         holdings={aggregated}
       />
-
-      {/* Net invested — horizontal ribbon */}
-      <div className="rounded-xl bg-accent/10 border border-accent/20 px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-baseline gap-3">
-          <span className="stat-label text-muted">Net Invested (₹)</span>
-          <span className="font-mono text-2xl font-bold text-accent">{fmt(totalNet)}</span>
-        </div>
-        <p className="text-muted text-xs">
-          {aggregated.length} position{aggregated.length !== 1 ? 's' : ''}
-          {goalFilter ? ` · ${goalFilter}` : ''}
-          {brokerFilter ? ` · ${brokerFilter}` : ''}
-        </p>
-      </div>
 
       {/* Three charts in one row: Risk, Asset, Broker */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
