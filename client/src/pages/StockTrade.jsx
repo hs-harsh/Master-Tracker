@@ -88,6 +88,17 @@ Return ONLY valid JSON. No markdown, no code fences. All numbers as JSON numbers
     ],
     "strategy": "2-3 sentence staggered accumulation strategy"
   },
+  "technicalScore": number,
+  "fundamentalScore": number,
+  "compositeScore": number,
+  "finalAssessment": {
+    "highRiskAmount": number,
+    "mediumRiskAmount": number,
+    "lowRiskAmount": number,
+    "levelsToWatch": [ { "level": number, "reason": "string" } ]
+  },
+  "macroNews": [ "headline or summary 1", "headline 2", "headline 3" ],
+  "sectorNews": [ "sector-specific headline 1", "headline 2", "headline 3" ],
   "pros": [ "bullet 1", "bullet 2", "bullet 3" ],
   "cons": [ "bullet 1", "bullet 2" ],
   "risks": [ "bullet 1", "bullet 2" ],
@@ -104,11 +115,20 @@ Return ONLY valid JSON. No markdown, no code fences. All numbers as JSON numbers
   }
 }
 
+SCORING RULES (all out of 10):
+- technicalScore: based on price action, support/resistance, momentum, dip from high, chart structure.
+- fundamentalScore: based on P/E, ROE, margins, growth, balance sheet.
+- compositeScore = (technicalScore * 0.5) + (fundamentalScore * 0.5). Round to 1 decimal.
+- finalAssessment: total budget ₹1,00,000. highRiskAmount = aggressive allocation for risk-tolerant (higher score → more). mediumRiskAmount = balanced. lowRiskAmount = conservative (lower score → less). Sum can be 100000 or split by risk profile.
+- levelsToWatch: key price levels with brief reason (e.g. support, resistance, breakout).
+
 RULES:
 - quarterlyTrend/annualTrend: Indian stocks in Cr, US stocks in M USD. Use best knowledge from training data; mark estimates with E.
 - buyTheDipAnalysis.levels: set levels below current price at meaningful technical support zones.
 - oneLakhAllocation: bigger dip = more today; small dip = less today. Total must be 100000.
-- recentCloses: exactly 21 numbers. pros/cons/risks: 3-4 bullets each. Be specific and actionable.`;
+- recentCloses: exactly 21 numbers. pros/cons/risks: 3-4 bullets each. Be specific and actionable.
+- macroNews: 3-5 recent macro themes (rates, inflation, GDP, policy) relevant to this instrument.
+- sectorNews: 3-5 sector-specific developments (regulations, demand, competition) from your knowledge.`;
 }
 
 function tryParseTradeResponse(raw) {
@@ -126,7 +146,7 @@ function tryParseTradeResponse(raw) {
 async function callClaude(prompt) {
   const res = await api.post('/chat', {
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 5000,
+    max_tokens: 5500,
     messages: [{ role: 'user', content: prompt }],
   });
   const content = res.data.content || [];

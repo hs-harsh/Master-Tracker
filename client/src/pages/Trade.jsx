@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, AreaChart, Area } from 'recharts';
 import api from '../lib/api';
 import { TrendingUp, Loader2, RefreshCw, BarChart3, FileText } from 'lucide-react';
@@ -34,6 +34,8 @@ const INSTRUMENT_GROUPS = [
     ],
   },
 ];
+
+const ALL_INSTRUMENTS = INSTRUMENT_GROUPS.flatMap((g) => g.instruments);
 
 function buildTradePrompt(instrument, priceData) {
   const priceBlock = priceData
@@ -107,6 +109,17 @@ Return ONLY valid JSON. No markdown, no code fences. All numbers as JSON numbers
     ],
     "strategy": "2-3 sentence staggered accumulation strategy"
   },
+  "technicalScore": number,
+  "fundamentalScore": number,
+  "compositeScore": number,
+  "finalAssessment": {
+    "highRiskAmount": number,
+    "mediumRiskAmount": number,
+    "lowRiskAmount": number,
+    "levelsToWatch": [ { "level": number, "reason": "string" } ]
+  },
+  "macroNews": [ "headline or summary 1", "headline 2", "headline 3" ],
+  "sectorNews": [ "sector-specific headline 1", "headline 2", "headline 3" ],
   "pros": [ "bullet 1", "bullet 2", "bullet 3" ],
   "cons": [ "bullet 1", "bullet 2" ],
   "risks": [ "bullet 1", "bullet 2" ],
@@ -123,12 +136,21 @@ Return ONLY valid JSON. No markdown, no code fences. All numbers as JSON numbers
   }
 }
 
+SCORING RULES (all out of 10):
+- technicalScore: based on price action, support/resistance, momentum, dip from high, chart structure.
+- fundamentalScore: based on P/E, ROE, margins, growth, balance sheet.
+- compositeScore = (technicalScore * 0.5) + (fundamentalScore * 0.5). Round to 1 decimal.
+- finalAssessment: total budget ₹1,00,000. highRiskAmount = aggressive allocation for risk-tolerant (higher score → more). mediumRiskAmount = balanced. lowRiskAmount = conservative (lower score → less). Sum can be 100000 or split by risk profile.
+- levelsToWatch: key price levels with brief reason (e.g. support, resistance, breakout).
+
 RULES:
 - quarterlyTrend/annualTrend: use Cr for Indian instruments, M USD for US. Use your best knowledge; label estimated values with "E".
 - fundamentals: for indices use index-level P/E, earnings growth; null for unavailable fields.
 - buyTheDipAnalysis.levels: set levels below current price at meaningful technical support zones.
 - oneLakhAllocation: bigger dip = more today; small dip = less today. Total must be 100000.
-- recentCloses: exactly 21 numbers. pros/cons/risks: 3-4 bullets each. Be specific and actionable.`;
+- recentCloses: exactly 21 numbers. pros/cons/risks: 3-4 bullets each. Be specific and actionable.
+- macroNews: 3-5 recent macro themes (rates, inflation, GDP, policy) relevant to this instrument.
+- sectorNews: 3-5 sector-specific developments (regulations, demand, competition) from your knowledge.`;
 }
 
 function tryParseTradeResponse(raw) {
@@ -152,7 +174,7 @@ function tryParseTradeResponse(raw) {
 async function callClaude(prompt) {
   const res = await api.post('/chat', {
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 5000,
+    max_tokens: 5500,
     messages: [{ role: 'user', content: prompt }],
   });
   const content = res.data.content || [];
@@ -160,86 +182,149 @@ async function callClaude(prompt) {
 }
 
 // Balanced ₹1 Lac portfolio across Indian equity, US equity, and Metal
-const BALANCED_ALLOCATION = {
-  total: 100000,
+const FALLBACK_ALLOCATION = {
   buckets: [
-    {
-      label: 'Indian Equity',
-      amount: 50000,
-      pct: 50,
-      color: '#2dd4bf',
-      instruments: [
-        { name: 'Nifty 50', amount: 25000, pct: 25 },
-        { name: 'Nifty Bank', amount: 12500, pct: 12.5 },
-        { name: 'Nifty IT', amount: 6250, pct: 6.25 },
-        { name: 'Nifty Pharma / FMCG / Auto', amount: 6250, pct: 6.25 },
-      ],
-      rationale: 'Core domestic exposure; diversify across broad index and sectors.',
-    },
-    {
-      label: 'US Equity',
-      amount: 30000,
-      pct: 30,
-      color: '#60a5fa',
-      instruments: [
-        { name: 'S&P 500 (SPY)', amount: 12000, pct: 12 },
-        { name: 'NASDAQ-100 (QQQ)', amount: 10500, pct: 10.5 },
-        { name: 'Russell 1000 (IWB)', amount: 7500, pct: 7.5 },
-      ],
-      rationale: 'Global diversification; large-cap US via ETFs.',
-    },
-    {
-      label: 'Metal',
-      amount: 20000,
-      pct: 20,
-      color: '#f0c040',
-      instruments: [
-        { name: 'Gold (MCX / ETF)', amount: 12000, pct: 12 },
-        { name: 'Silver (MCX / ETF)', amount: 8000, pct: 8 },
-      ],
-      rationale: 'Hedge and inflation protection; gold-heavy, silver for growth.',
-    },
+    { label: 'Indian Equity', amount: 50000, pct: 50, color: '#2dd4bf', instruments: [{ name: 'Nifty 50', amount: 25000 }, { name: 'Nifty Bank', amount: 12500 }, { name: 'Others', amount: 12500 }], rationale: 'Core domestic exposure.' },
+    { label: 'US Equity', amount: 30000, pct: 30, color: '#60a5fa', instruments: [{ name: 'S&P 500', amount: 12000 }, { name: 'NASDAQ-100', amount: 10500 }, { name: 'Russell 1000', amount: 7500 }], rationale: 'Global diversification.' },
+    { label: 'Metal', amount: 20000, pct: 20, color: '#f0c040', instruments: [{ name: 'Gold', amount: 12000 }, { name: 'Silver', amount: 8000 }], rationale: 'Hedge and inflation protection.' },
   ],
 };
 
-function BalancedPortfolioCard() {
+function buildDynamicAllocationPrompt(riskProfile, priceDataMap, analysisResults) {
+  const riskNote = riskProfile === 'high' ? 'Aggressive: tilt toward higher-conviction, higher-dip instruments.' : riskProfile === 'low' ? 'Conservative: tilt toward broad indices, less sector concentration.' : 'Balanced: moderate tilt based on scores.';
+
+  let dataBlock = 'LIVE PRICE DATA (Yahoo Finance):\n';
+  for (const inst of ALL_INSTRUMENTS) {
+    const price = priceDataMap[inst.id];
+    const analysis = analysisResults[inst.id]?.parsed;
+    const dip = price?.dipFromHighPct ?? analysis?.screening?.dipFromHighPct;
+    const composite = analysis?.compositeScore;
+    const fundamental = analysis?.fundamentalScore;
+    const technical = analysis?.technicalScore;
+    dataBlock += `- ${inst.name} (${inst.id}): price ${price?.currentPrice ?? '?'}, 52w high ${price?.high52w ?? '?'}, dip from high ${dip != null ? dip + '%' : '?'}`;
+    if (composite != null || fundamental != null || technical != null) {
+      dataBlock += ` | composite ${composite ?? '?'}, fundamental ${fundamental ?? '?'}, technical ${technical ?? '?'}`;
+    }
+    dataBlock += '\n';
+  }
+
+  return `You are a portfolio allocator. Produce a dynamic ₹1,00,000 allocation for a ${riskProfile}-risk investor.
+
+${dataBlock}
+
+RISK PROFILE: ${riskProfile}. ${riskNote}
+
+Use buy-the-dip (higher dip = consider more allocation), composite/fundamental/technical scores (higher = more), and macro context. Allocate across Indian equity, US equity, and Metal buckets. Total must be 100000.
+
+Return ONLY valid JSON. No markdown, no code fences.
+
+{
+  "rationale": "2-3 sentence summary of allocation logic",
+  "buckets": [
+    {
+      "label": "Indian Equity",
+      "amount": number,
+      "pct": number,
+      "color": "#2dd4bf",
+      "instruments": [ { "name": "string", "amount": number } ],
+      "rationale": "one sentence"
+    },
+    {
+      "label": "US Equity",
+      "amount": number,
+      "pct": number,
+      "color": "#60a5fa",
+      "instruments": [ { "name": "string", "amount": number } ],
+      "rationale": "one sentence"
+    },
+    {
+      "label": "Metal",
+      "amount": number,
+      "pct": number,
+      "color": "#f0c040",
+      "instruments": [ { "name": "string", "amount": number } ],
+      "rationale": "one sentence"
+    }
+  ]
+}
+
+Sum of bucket amounts = 100000. Sum of instrument amounts within each bucket = bucket amount.`;
+}
+
+function tryParseAllocationResponse(raw) {
+  const text = String(raw).trim();
+  try { return JSON.parse(text); } catch (_) {}
+  const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  try { return JSON.parse(cleaned); } catch (_) {}
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) return null;
+  try { return JSON.parse(text.slice(start, end + 1)); } catch (_) {}
+  return null;
+}
+
+function BalancedPortfolioCard({ onComputeAllocation, loading, allocation, results }) {
+  const [riskProfile, setRiskProfile] = useState('medium');
+  const display = allocation || FALLBACK_ALLOCATION;
+  const buckets = display.buckets || FALLBACK_ALLOCATION.buckets;
+
   return (
     <div className="card">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h2 className="font-display font-semibold text-white text-lg">Balanced portfolio — ₹1 Lac</h2>
-        <span className="font-mono text-accent font-bold">₹1,00,000</span>
+        <div className="flex items-center gap-3">
+          <select
+            className="input py-2 px-3 text-sm w-auto"
+            value={riskProfile}
+            onChange={(e) => setRiskProfile(e.target.value)}
+          >
+            <option value="low">Low risk</option>
+            <option value="medium">Medium risk</option>
+            <option value="high">High risk</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => onComputeAllocation(riskProfile, results)}
+            disabled={loading}
+            className="btn-primary flex items-center gap-2"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+            {loading ? 'Computing…' : allocation ? 'Refresh' : 'Compute allocation'}
+          </button>
+        </div>
       </div>
       <p className="text-muted text-sm mb-4">
-        Suggested split across Indian equity, US equity, and metal. Use the instrument ideas below to deploy at your chosen levels.
+        Dynamic allocation based on risk profile, buy-the-dip, and fundamental/macro scores. Run &quot;Analyze all&quot; for richer scores, or compute with live prices.
       </p>
+      {allocation?.rationale && (
+        <p className="text-soft text-sm mb-4 p-3 rounded-lg bg-surface">{allocation.rationale}</p>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {BALANCED_ALLOCATION.buckets.map((b) => (
+        {buckets.map((b) => (
           <div
             key={b.label}
             className="rounded-xl border border-border p-4"
-            style={{ borderLeftWidth: 4, borderLeftColor: b.color }}
+            style={{ borderLeftWidth: 4, borderLeftColor: b.color || '#64748b' }}
           >
             <p className="font-semibold text-white">{b.label}</p>
-            <p className="font-mono text-lg mt-1" style={{ color: b.color }}>
-              ₹{b.amount.toLocaleString('en-IN')} <span className="text-muted text-sm font-normal">({b.pct}%)</span>
+            <p className="font-mono text-lg mt-1" style={{ color: b.color || '#94a3b8' }}>
+              ₹{(b.amount ?? 0).toLocaleString('en-IN')} <span className="text-muted text-sm font-normal">({(b.pct ?? 0).toFixed(1)}%)</span>
             </p>
-            <p className="text-muted text-xs mt-2 mb-3">{b.rationale}</p>
+            {b.rationale && <p className="text-muted text-xs mt-2 mb-3">{b.rationale}</p>}
             <ul className="space-y-1.5 text-sm">
-              {b.instruments.map((inv, i) => (
+              {(b.instruments || []).map((inv, i) => (
                 <li key={i} className="flex justify-between text-soft">
                   <span>{inv.name}</span>
-                  <span className="font-mono text-white">₹{inv.amount.toLocaleString('en-IN')}</span>
+                  <span className="font-mono text-white">₹{(inv.amount ?? 0).toLocaleString('en-IN')}</span>
                 </li>
               ))}
             </ul>
           </div>
         ))}
       </div>
-      <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-4 text-xs text-muted">
-        <span>Indian equity: core + sectoral</span>
-        <span>US: S&P 500, NASDAQ, Russell</span>
-        <span>Metal: Gold 60%, Silver 40%</span>
-      </div>
+      {!allocation && (
+        <p className="text-muted text-xs mt-4">Click &quot;Compute allocation&quot; to get a dynamic split based on current scores and risk.</p>
+      )}
     </div>
   );
 }
@@ -249,6 +334,8 @@ export default function Trade() {
   const [loading, setLoading] = useState(null); // id or 'all'
   const [error, setError] = useState(null);
   const [reportModal, setReportModal] = useState(null); // { instrument, parsed }
+  const [allocationLoading, setAllocationLoading] = useState(false);
+  const [allocation, setAllocation] = useState(null);
 
   const mergePriceData = useCallback((parsed, priceData) => {
     if (!parsed || !priceData) return parsed;
@@ -309,6 +396,29 @@ export default function Trade() {
     setLoading(null);
   }, [mergePriceData]);
 
+  const computeAllocation = useCallback(async (riskProfile, results) => {
+    setAllocationLoading(true);
+    setAllocation(null);
+    try {
+      const priceDataMap = {};
+      await Promise.all(
+        ALL_INSTRUMENTS.map(async (inst) => {
+          try {
+            const res = await api.get(`/prices/${inst.id}`);
+            priceDataMap[inst.id] = res.data;
+          } catch (_) {}
+        })
+      );
+      const raw = await callClaude(buildDynamicAllocationPrompt(riskProfile, priceDataMap, results || {}));
+      const parsed = tryParseAllocationResponse(raw);
+      if (parsed?.buckets) setAllocation(parsed);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setAllocationLoading(false);
+    }
+  }, []);
+
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
@@ -335,7 +445,12 @@ export default function Trade() {
         </div>
       )}
 
-      <BalancedPortfolioCard />
+      <BalancedPortfolioCard
+        onComputeAllocation={computeAllocation}
+        loading={allocationLoading}
+        allocation={allocation}
+        results={results}
+      />
 
       {INSTRUMENT_GROUPS.map((group) => (
         <div key={group.label} className="space-y-3">

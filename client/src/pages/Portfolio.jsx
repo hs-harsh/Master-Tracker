@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Legend } from 'recharts';
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
+import TradeFeedbackCard from '../components/TradeFeedbackCard';
 
 const RISK_COLORS = { Low: '#60a5fa', Medium: '#fbbf24', High: '#f97316' };
 const ASSET_COLORS = { Equity: '#f97316', Debt: '#60a5fa', Gold: '#fbbf24', Cash: '#6b7280', 'Real Estate': '#a78bfa', Crypto: '#ec4899' };
@@ -177,6 +178,14 @@ export default function Portfolio() {
           )}
         </div>
       </div>
+
+      {/* Trade feedback — portfolio / goal + ask if trade makes sense */}
+      <TradeFeedbackCard
+        key={`portfolio-${goalFilter}-${aggregated.filter((r) => r.net > 0).length}`}
+        defaultPortfolioContext={aggregated.length > 0
+          ? `Current: ${aggregated.filter((r) => r.net > 0).slice(0, 12).map((r) => `${r.instrument} ₹${fmt(r.net)}`).join(', ')}${aggregated.filter((r) => r.net > 0).length > 12 ? '…' : ''}. Goal: ${goalFilter || 'Balanced'}`
+          : ''}
+      />
 
       {/* Net invested — horizontal ribbon */}
       <div className="rounded-xl bg-accent/10 border border-accent/20 px-6 py-4 flex items-center justify-between gap-4 flex-wrap">

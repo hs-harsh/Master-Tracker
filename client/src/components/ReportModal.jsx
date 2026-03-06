@@ -2,7 +2,7 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
-import { X } from 'lucide-react';
+import { X, Newspaper, TrendingUp } from 'lucide-react';
 import PriceChartCard from './PriceChartCard';
 
 function toNum(x) {
@@ -44,6 +44,124 @@ function OutlookBadge({ rating }) {
     <span className={`text-xs font-bold px-2 py-0.5 rounded border ${c.text} ${c.bg}`}>
       {rating}
     </span>
+  );
+}
+
+function CompositeScoreSection({ technicalScore, fundamentalScore, compositeScore }) {
+  const t = toNum(technicalScore);
+  const f = toNum(fundamentalScore);
+  const c = toNum(compositeScore);
+  if (t == null && f == null && c == null) return null;
+
+  const scoreColor = (s) => {
+    if (s >= 7.5) return 'text-green-400';
+    if (s >= 5) return 'text-amber-400';
+    return 'text-rose';
+  };
+
+  return (
+    <div className="card">
+      <SectionTitle>Composite score (50% Technical + 50% Fundamental)</SectionTitle>
+      <div className="grid grid-cols-3 gap-4 text-center">
+        <div className="rounded-xl bg-surface p-4">
+          <p className="text-muted text-xs uppercase tracking-wider mb-1">Technical</p>
+          <p className={`font-mono text-2xl font-bold ${scoreColor(t ?? 0)}`}>{t != null ? t.toFixed(1) : '—'}</p>
+          <p className="text-muted text-xs mt-0.5">/ 10</p>
+        </div>
+        <div className="rounded-xl bg-surface p-4">
+          <p className="text-muted text-xs uppercase tracking-wider mb-1">Fundamental</p>
+          <p className={`font-mono text-2xl font-bold ${scoreColor(f ?? 0)}`}>{f != null ? f.toFixed(1) : '—'}</p>
+          <p className="text-muted text-xs mt-0.5">/ 10</p>
+        </div>
+        <div className="rounded-xl bg-accent/10 border-2 border-accent/30 p-4">
+          <p className="text-accent text-xs uppercase tracking-wider mb-1 font-semibold">Composite</p>
+          <p className={`font-mono text-3xl font-bold ${scoreColor(c ?? 0)}`}>{c != null ? c.toFixed(1) : '—'}</p>
+          <p className="text-muted text-xs mt-0.5">/ 10</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinalAssessmentSection({ assessment }) {
+  if (!assessment) return null;
+  const { highRiskAmount, mediumRiskAmount, lowRiskAmount, levelsToWatch } = assessment;
+
+  return (
+    <div className="card">
+      <SectionTitle>Final assessment — ₹1 Lac by risk profile</SectionTitle>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+        <div className="rounded-xl bg-rose/10 border border-rose/30 p-4">
+          <p className="text-rose text-xs font-semibold uppercase tracking-wider mb-1">High risk</p>
+          <p className="font-mono text-xl font-bold text-white">₹{(highRiskAmount ?? 0).toLocaleString('en-IN')}</p>
+          <p className="text-muted text-xs mt-1">Aggressive allocation</p>
+        </div>
+        <div className="rounded-xl bg-amber-400/10 border border-amber-400/30 p-4">
+          <p className="text-amber-400 text-xs font-semibold uppercase tracking-wider mb-1">Medium risk</p>
+          <p className="font-mono text-xl font-bold text-white">₹{(mediumRiskAmount ?? 0).toLocaleString('en-IN')}</p>
+          <p className="text-muted text-xs mt-1">Balanced allocation</p>
+        </div>
+        <div className="rounded-xl bg-green-400/10 border border-green-400/30 p-4">
+          <p className="text-green-400 text-xs font-semibold uppercase tracking-wider mb-1">Low risk</p>
+          <p className="font-mono text-xl font-bold text-white">₹{(lowRiskAmount ?? 0).toLocaleString('en-IN')}</p>
+          <p className="text-muted text-xs mt-1">Conservative allocation</p>
+        </div>
+      </div>
+      {levelsToWatch?.length > 0 && (
+        <div className="border-t border-border pt-4">
+          <p className="text-muted text-xs font-semibold uppercase tracking-wider mb-2">Levels to watch</p>
+          <ul className="space-y-2">
+            {levelsToWatch.map((l, i) => (
+              <li key={i} className="flex items-center justify-between gap-4 text-sm">
+                <span className="font-mono text-accent shrink-0">
+                  {l.level != null ? Number(l.level).toLocaleString('en-IN') : '—'}
+                </span>
+                <span className="text-soft text-right">{l.reason || ''}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewsSection({ macroNews, sectorNews }) {
+  const hasMacro = Array.isArray(macroNews) && macroNews.length > 0;
+  const hasSector = Array.isArray(sectorNews) && sectorNews.length > 0;
+  if (!hasMacro && !hasSector) return null;
+
+  return (
+    <div className="card">
+      <SectionTitle>Macro &amp; sector news</SectionTitle>
+      <p className="text-muted text-xs mb-4">AI-summarised themes from training data — verify with latest sources</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {hasMacro && (
+          <div>
+            <p className="text-xs text-amber-400 font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <TrendingUp size={12} /> Macro
+            </p>
+            <ul className="space-y-1.5 text-sm text-soft">
+              {macroNews.map((n, i) => (
+                <li key={i} className="flex gap-2"><span className="text-amber-400 shrink-0">•</span>{n}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {hasSector && (
+          <div>
+            <p className="text-xs text-blue-400 font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Newspaper size={12} /> Sector
+            </p>
+            <ul className="space-y-1.5 text-sm text-soft">
+              {sectorNews.map((n, i) => (
+                <li key={i} className="flex gap-2"><span className="text-blue-400 shrink-0">•</span>{n}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -281,6 +399,13 @@ export default function ReportModal({ instrument, parsed, onClose }) {
             </div>
           )}
 
+          {/* Composite score */}
+          <CompositeScoreSection
+            technicalScore={parsed?.technicalScore}
+            fundamentalScore={parsed?.fundamentalScore}
+            compositeScore={parsed?.compositeScore}
+          />
+
           {/* Fundamentals */}
           <FundamentalsGrid fundamentals={parsed?.fundamentals} />
 
@@ -295,6 +420,9 @@ export default function ReportModal({ instrument, parsed, onClose }) {
 
           {/* Buy the dip */}
           <BuyTheDipSection buyTheDipAnalysis={parsed?.buyTheDipAnalysis} screening={screening} />
+
+          {/* Final assessment — risk-based allocation + levels to watch */}
+          <FinalAssessmentSection assessment={parsed?.finalAssessment} />
 
           {/* ₹1 Lakh allocation */}
           <div className="rounded-xl bg-accent/15 border-2 border-accent/40 p-5">
@@ -393,6 +521,9 @@ export default function ReportModal({ instrument, parsed, onClose }) {
               </div>
             </div>
           )}
+
+          {/* Macro & sector news — at the end */}
+          <NewsSection macroNews={parsed?.macroNews} sectorNews={parsed?.sectorNews} />
 
         </div>
       </div>
