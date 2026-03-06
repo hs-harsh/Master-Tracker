@@ -2,103 +2,13 @@ import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
-import { Plus, Edit2, Trash2, ChevronDown, ChevronUp, Save, X } from 'lucide-react';
-
-const DEFAULT_IDEAL_SAVING = 100000;
-const DEFAULT_INCOME = 0;
 
 const PERSONS = ['Harsh', 'Kirti'];
-function emptyDefaults(idealSaving = DEFAULT_IDEAL_SAVING, income = DEFAULT_INCOME) {
-  return {
-    month: '', person: 'Harsh', income, other_income: 0,
-    major_expense: 0, non_recurring_expense: 0, regular_expense: 0,
-    emi: 0, trips_expense: 0, net_expense: 0, ideal_saving: idealSaving,
-    actual_saving: 0, target: 0, corpus: 0,
-    cash: 0, gold_silver: 0, debt_pf: 0, debt_ppf: 0, debt_mf: 0,
-    equity_indian: 0, equity_intl: 0, equity_nps: 0, equity_trading: 0,
-    equity_smallcase: 0, real_estate: 0, home_loan: 0, personal_loan: 0,
-    owed_friends: 0, net_total: 0, total_asset: 0, liability: 0, net_asset: 0,
-    low_risk_pct: 0, medium_risk_pct: 0, high_risk_pct: 0,
-  };
-}
-const EMPTY = emptyDefaults();
-
-function Field({ label, name, form, onChange, type = 'number' }) {
-  return (
-    <div>
-      <label className="label">{label}</label>
-      <input
-        type={type}
-        name={name}
-        value={form[name] ?? ''}
-        onChange={onChange}
-        className="input"
-      />
-    </div>
-  );
-}
-
-function EntryForm({ initial, defaultIdealSaving, defaultIncome, onSave, onCancel }) {
-  const [form, setForm] = useState(initial || emptyDefaults(defaultIdealSaving, defaultIncome));
-
-  const onChange = e => {
-    const { name, value } = e.target;
-    setForm(p => ({ ...p, [name]: name === 'month' || name === 'person' ? value : Number(value) }));
-  };
-
-  return (
-    <div className="card space-y-5">
-      <div className="flex items-center justify-between">
-        <h3 className="font-display font-bold text-white">{initial?.id ? 'Edit Entry' : 'New Month Entry'}</h3>
-        <button onClick={onCancel} className="text-muted hover:text-white transition-colors"><X size={18} /></button>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <Field label="Month" name="month" form={form} onChange={onChange} type="date" />
-        <div>
-          <label className="label">Person</label>
-          <select name="person" value={form.person} onChange={onChange} className="input">
-            {PERSONS.map(p => <option key={p}>{p}</option>)}
-          </select>
-        </div>
-        <Field label="Income" name="income" form={form} onChange={onChange} />
-        <Field label="Other Income" name="other_income" form={form} onChange={onChange} />
-        <Field label="Major Expense" name="major_expense" form={form} onChange={onChange} />
-        <Field label="Non-Recurring" name="non_recurring_expense" form={form} onChange={onChange} />
-        <Field label="Regular Expense" name="regular_expense" form={form} onChange={onChange} />
-        <Field label="EMI" name="emi" form={form} onChange={onChange} />
-        <Field label="Trips Expense" name="trips_expense" form={form} onChange={onChange} />
-        <Field label="Net Expense" name="net_expense" form={form} onChange={onChange} />
-        <Field label="Ideal Saving" name="ideal_saving" form={form} onChange={onChange} />
-        <Field label="Target" name="target" form={form} onChange={onChange} />
-      </div>
-      <p className="text-xs text-muted">Corpus is computed as running total of actual saving.</p>
-
-      <div className="flex gap-2 pt-2">
-        <button onClick={() => onSave(form)} className="btn-primary flex items-center gap-2">
-          <Save size={14} /> Save Entry
-        </button>
-        <button onClick={onCancel} className="btn-ghost">Cancel</button>
-      </div>
-    </div>
-  );
-}
 
 export default function Cashflow() {
   const [data, setData] = useState([]);
   const [person, setPerson] = useState('Harsh');
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [defaultIdealSaving, setDefaultIdealSaving] = useState(DEFAULT_IDEAL_SAVING);
-  const [defaultIncome, setDefaultIncome] = useState(DEFAULT_INCOME);
-
-  useEffect(() => {
-    api.get('/settings').then(r => {
-      if (r.data?.defaultIdealSaving != null) setDefaultIdealSaving(r.data.defaultIdealSaving);
-      if (r.data?.defaultIncome != null) setDefaultIncome(r.data.defaultIncome);
-    }).catch(() => {});
-  }, []);
 
   const load = () => {
     setLoading(true);
@@ -109,30 +19,9 @@ export default function Cashflow() {
 
   useEffect(() => { load(); }, [person]);
 
-  const handleSave = async (form) => {
-    try {
-      if (form.id) {
-        await api.put(`/cashflow/${form.id}`, form);
-      } else {
-        await api.post('/cashflow', form);
-      }
-      setShowForm(false);
-      setEditing(null);
-      load();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Save failed');
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this entry?')) return;
-    await api.delete(`/cashflow/${id}`);
-    load();
-  };
-
   const chartData = data.slice(-12).map(r => ({
     month: fmtDate(r.month),
-    Income: Number(r.income),
+    Income: Number(r.income) + Number(r.other_income || 0),
     Expense: Number(r.net_expense),
     Saving: Number(r.actual_saving),
   }));
@@ -143,7 +32,7 @@ export default function Cashflow() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-white">Cashflow</h1>
-          <p className="text-muted text-sm mt-0.5">Monthly income, expenses & savings</p>
+          <p className="text-muted text-sm mt-0.5">Monthly income, expenses & savings from transactions</p>
         </div>
         <div className="flex gap-2">
           {PERSONS.map(p => (
@@ -152,22 +41,8 @@ export default function Cashflow() {
               {p}
             </button>
           ))}
-          <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
-            <Plus size={14} /> Add Month
-          </button>
         </div>
       </div>
-
-      {/* Form */}
-      {(showForm || editing) && (
-        <EntryForm
-          initial={editing}
-          defaultIdealSaving={defaultIdealSaving}
-          defaultIncome={defaultIncome}
-          onSave={handleSave}
-          onCancel={() => { setShowForm(false); setEditing(null); }}
-        />
-      )}
 
       {/* Chart */}
       {!loading && data.length > 0 && (
@@ -206,16 +81,16 @@ export default function Cashflow() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                {['Month', 'Income', 'Major Exp', 'Regular', 'Net Exp', 'Ideal Save', 'Actual Save', 'Corpus', ''].map(h => (
+                {['Month', 'Income', 'Other Inc', 'Major Exp', 'Non-Recur', 'Regular', 'EMI', 'Trip Exp', 'Net Exp', 'Target', 'Actual Save', 'Corpus'].map(h => (
                   <th key={h} className="text-left py-3 px-3 text-muted font-display text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} className="py-8 text-center text-muted font-mono text-sm">Loading…</td></tr>
+                <tr><td colSpan={12} className="py-8 text-center text-muted font-mono text-sm">Loading…</td></tr>
               ) : data.length === 0 ? (
-                <tr><td colSpan={9} className="py-8 text-center text-muted">No data yet. Add your first month!</td></tr>
+                <tr><td colSpan={12} className="py-8 text-center text-muted">No data. Add transactions to see cashflow.</td></tr>
               ) : (
                 [...data].reverse().map(row => {
                   const savingOk = Number(row.actual_saving) >= Number(row.target);
@@ -226,32 +101,16 @@ export default function Cashflow() {
                     >
                       <td className="py-3 px-3 font-mono text-xs text-soft">{fmtDate(row.month)}</td>
                       <td className="py-3 px-3 font-mono text-accent">{fmt(row.income)}</td>
+                      <td className="py-3 px-3 font-mono text-accent">{fmt(row.other_income)}</td>
                       <td className="py-3 px-3 font-mono text-rose">{fmt(row.major_expense)}</td>
+                      <td className="py-3 px-3 font-mono text-rose">{fmt(row.non_recurring_expense)}</td>
                       <td className="py-3 px-3 font-mono text-soft">{fmt(row.regular_expense)}</td>
+                      <td className="py-3 px-3 font-mono text-rose">{fmt(row.emi)}</td>
+                      <td className="py-3 px-3 font-mono text-rose">{fmt(row.trips_expense)}</td>
                       <td className="py-3 px-3 font-mono text-rose">{fmt(row.net_expense)}</td>
-                      <td className="py-3 px-3 font-mono text-soft">{fmt(row.ideal_saving)}</td>
+                      <td className="py-3 px-3 font-mono text-soft">{fmt(row.target)}</td>
                       <td className={`py-3 px-3 font-mono ${savingOk ? 'text-teal' : 'text-rose'}`}>{fmt(row.actual_saving)}</td>
                       <td className="py-3 px-3 font-mono text-white">{fmt(row.corpus)}</td>
-                      <td className="py-3 px-3">
-                        {row.id ? (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => { setEditing(row); setShowForm(false); }}
-                              className="text-muted hover:text-accent transition-colors"
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(row.id)}
-                              className="text-muted hover:text-rose transition-colors"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-muted text-xs">From transactions</span>
-                        )}
-                      </td>
                     </tr>
                   );
                 })

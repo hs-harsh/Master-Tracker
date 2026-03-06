@@ -2,15 +2,24 @@ const router = require('express').Router();
 const pool = require('../db');
 const auth = require('../middleware/auth');
 
+async function getDefaultTarget() {
+  const { rows } = await pool.query("SELECT value FROM settings WHERE key = 'default_ideal_saving'");
+  const v = rows[0]?.value;
+  return v ? parseInt(v, 10) : 100000;
+}
+
 // GET all cashflow - optional ?person=Harsh|Kirti
 // Aggregates transactions by month/person; each transaction type maps to a cashflow column.
 // Types: Income, Other Income, Major, Non-Recurring, Regular, EMI, Trips
-// When a type has transaction data for that month, it overrides the monthly_cashflow row.
+// Actual saving = from transactions. Target = fixed from settings. Ideal = Target.
 router.get('/', auth, async (req, res) => {
   try {
     const { person } = req.query;
     const params = [];
     if (person) params.push(person);
+    const defaultTarget = await getDefaultTarget();
+    params.push(defaultTarget);
+    const defaultTargetIdx = params.length;
 
     const { rows } = await pool.query(`
       WITH tx AS (
@@ -46,7 +55,7 @@ router.get('/', auth, async (req, res) => {
             + CASE WHEN COALESCE(t.emi, 0) <> 0 THEN t.emi ELSE COALESCE(m.emi, 0) END
             + CASE WHEN COALESCE(t.trips_expense, 0) <> 0 THEN t.trips_expense ELSE COALESCE(m.trips_expense, 0) END
           ) AS net_expense,
-          COALESCE(m.ideal_saving, 100000) AS ideal_saving,
+          COALESCE(m.ideal_saving, $${defaultTargetIdx}) AS ideal_saving,
           (
             CASE WHEN COALESCE(t.income, 0) <> 0 THEN t.income ELSE COALESCE(m.income, 0) END
             + CASE WHEN COALESCE(t.other_income, 0) <> 0 THEN t.other_income ELSE COALESCE(m.other_income, 0) END
@@ -57,7 +66,7 @@ router.get('/', auth, async (req, res) => {
             + CASE WHEN COALESCE(t.emi, 0) <> 0 THEN t.emi ELSE COALESCE(m.emi, 0) END
             + CASE WHEN COALESCE(t.trips_expense, 0) <> 0 THEN t.trips_expense ELSE COALESCE(m.trips_expense, 0) END
           ) AS actual_saving,
-          COALESCE(m.target, 0) AS target,
+          COALESCE(m.target, $${defaultTargetIdx}) AS target,
           COALESCE(m.cash, 0) AS cash,
           COALESCE(m.gold_silver, 0) AS gold_silver,
           COALESCE(m.debt_pf, 0) AS debt_pf,
