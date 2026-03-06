@@ -119,7 +119,7 @@ export default function Portfolio() {
   const BROKER_COLORS = ['#2dd4bf', '#f0c040', '#60a5fa', '#a78bfa', '#fb7185', '#34d399', '#f97316', '#6b7280'];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>

@@ -304,13 +304,13 @@ export default function Dashboard() {
     );
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-white">Dashboard</h1>
-          <p className="text-muted text-sm mt-0.5">Key info, cashflow & investment trends · MoM</p>
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <h1 className="font-display text-xl sm:text-2xl font-bold text-white truncate">Dashboard</h1>
+          <p className="text-muted text-xs sm:text-sm mt-0.5">Key info, cashflow & investment trends · MoM</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1.5 sm:gap-2 flex-shrink-0">
           {PROFILES.map(p => (
             <button
               key={p}
@@ -347,9 +347,9 @@ export default function Dashboard() {
       )}
 
       {profile === 'Both' && (
-        <div className="flex gap-6">
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
           <PersonPanel person="Harsh" cashflowData={harshCashflow} investments={harshInvestments} compact />
-          <div className="w-px bg-border shrink-0" />
+          <div className="w-full lg:w-px lg:h-auto h-px bg-border shrink-0" />
           <PersonPanel person="Kirti" cashflowData={kirtiCashflow} investments={kirtiInvestments} compact />
         </div>
       )}

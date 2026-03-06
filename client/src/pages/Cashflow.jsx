@@ -53,7 +53,7 @@ function EntryForm({ initial, defaultIdealSaving, defaultIncome, onSave, onCance
         <button onClick={onCancel} className="text-muted hover:text-white transition-colors"><X size={18} /></button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <Field label="Month" name="month" form={form} onChange={onChange} type="date" />
         <div>
           <label className="label">Person</label>
@@ -138,7 +138,7 @@ export default function Cashflow() {
   }));
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

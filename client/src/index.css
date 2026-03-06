@@ -3,25 +3,42 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
   body {
     @apply bg-ink text-white font-body;
     font-size: 14px;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
   * { box-sizing: border-box; }
 }
 
+/* Mobile: safe area for fixed/sticky headers and bottom nav */
+.safe-area-top { padding-top: env(safe-area-inset-top); }
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+/* Touch-friendly table scroll (iOS) */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
 @layer components {
   .card {
-    @apply bg-card border border-border rounded-xl p-5;
+    @apply bg-card border border-border rounded-xl p-4 sm:p-5;
   }
   .btn-primary {
     @apply bg-accent text-ink font-display font-bold px-4 py-2 rounded-lg text-sm hover:bg-accent-dim transition-colors;
+    min-height: 44px;
   }
   .btn-ghost {
     @apply border border-border text-soft px-4 py-2 rounded-lg text-sm hover:border-accent hover:text-accent transition-colors;
+    min-height: 44px;
   }
   .input {
     @apply bg-surface border border-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-accent transition-colors w-full;
+    font-size: 16px; /* prevents iOS zoom on focus */
   }
   .label {
     @apply text-muted text-xs font-display uppercase tracking-wider mb-1 block;

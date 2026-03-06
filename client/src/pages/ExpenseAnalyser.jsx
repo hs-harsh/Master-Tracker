@@ -320,7 +320,7 @@ export default function ExpenseAnalyser() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div>
         <h1 className="font-display text-2xl font-bold text-white">Expense Analyser</h1>
         <p className="text-muted text-sm mt-0.5">
@@ -688,7 +688,7 @@ function ExpenseReportView({ finalData, statementMonth, results, onBack }) {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl font-bold text-white">Household report</h1>

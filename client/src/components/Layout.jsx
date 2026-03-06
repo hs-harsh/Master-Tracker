@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, Calculator, LineChart, LogOut, Settings, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, Calculator, LineChart, LogOut, Settings, BarChart3, Menu, X } from 'lucide-react';
 import api from '../lib/api';
 import { applyTheme } from '../lib/theme';
 import { setCurrencySymbol } from '../lib/utils';
@@ -21,6 +21,7 @@ const NAV = [
 export default function Layout() {
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     api.get('/settings').then(r => {
@@ -30,60 +31,103 @@ export default function Layout() {
     }).catch(() => {});
   }, []);
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  const handleLogout = () => { logout(); navigate('/login'); setSidebarOpen(false); };
+
+  const closeSidebar = () => setSidebarOpen(false);
+
+  const navLinkClass = ({ isActive }) =>
+    `flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-body transition-all min-h-[44px] ${
+      isActive ? 'bg-accent/10 text-accent border border-accent/20' : 'text-soft hover:text-white hover:bg-card'
+    }`;
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Sidebar */}
-      <aside className="w-56 bg-surface border-r border-border flex flex-col shrink-0">
-        {/* Logo */}
-        <div className="px-5 py-6 border-b border-border">
+      {/* Mobile overlay when sidebar open */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label="Close menu"
+        className={`md:hidden fixed inset-0 z-40 bg-black/60 transition-opacity ${sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={closeSidebar}
+        onKeyDown={(e) => e.key === 'Escape' && closeSidebar()}
+      />
+
+      {/* Sidebar: drawer on mobile, fixed on desktop */}
+      <aside
+        className={`
+          w-56 bg-surface border-r border-border flex flex-col shrink-0
+          fixed md:relative inset-y-0 left-0 z-50 md:z-auto
+          transform transition-transform duration-200 ease-out
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}
+      >
+        <div className="flex items-center justify-between px-4 py-4 border-b border-border md:px-5 md:py-6">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center">
               <span className="text-ink font-display font-bold text-xs">H·K</span>
             </div>
             <span className="font-display font-bold text-white text-sm tracking-tight">InvestTrack</span>
           </div>
-          <p className="text-muted text-xs mt-1 font-body">Harsh & Kirti</p>
+          <button
+            type="button"
+            onClick={closeSidebar}
+            className="md:hidden p-2 -mr-2 text-muted hover:text-white rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center"
+            aria-label="Close menu"
+          >
+            <X size={20} />
+          </button>
         </div>
+        <p className="text-muted text-xs px-5 pb-2 font-body hidden md:block">Harsh & Kirti</p>
 
-        {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {NAV.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
               end={to === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-body transition-all ${
-                  isActive
-                    ? 'bg-accent/10 text-accent border border-accent/20'
-                    : 'text-soft hover:text-white hover:bg-card'
-                }`
-              }
+              className={navLinkClass}
+              onClick={closeSidebar}
             >
-              <Icon size={16} />
+              <Icon size={18} />
               {label}
             </NavLink>
           ))}
         </nav>
 
-        {/* Logout */}
         <div className="px-3 py-4 border-t border-border">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-soft hover:text-rose hover:bg-rose/5 transition-all w-full"
+            className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-soft hover:text-rose hover:bg-rose/5 transition-all w-full min-h-[44px]"
           >
-            <LogOut size={16} />
+            <LogOut size={18} />
             Sign Out
           </button>
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="flex-1 overflow-y-auto bg-ink">
-        <Outlet />
-      </main>
+      {/* Main: top bar on mobile */}
+      <div className="flex flex-col flex-1 min-w-0">
+        <header className="md:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3 bg-ink border-b border-border safe-area-top">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 -ml-2 text-soft hover:text-white rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center"
+            aria-label="Open menu"
+          >
+            <Menu size={24} />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
+              <span className="text-ink font-display font-bold text-xs">H·K</span>
+            </div>
+            <span className="font-display font-bold text-white text-sm">InvestTrack</span>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-ink">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

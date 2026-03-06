@@ -223,11 +223,11 @@ export default function Trade() {
   }, []);
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-white">Trade Ideas</h1>
-          <p className="text-muted text-sm mt-0.5">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <h1 className="font-display text-xl sm:text-2xl font-bold text-white truncate">Trade Ideas</h1>
+          <p className="text-muted text-xs sm:text-sm mt-0.5">
             Technical analysis and buy-the-dip ideas for indices and metals. Uses AI (Claude). Set API key in Settings.
           </p>
         </div>
@@ -431,18 +431,18 @@ function ReportModal({ instrument, parsed, onClose }) {
   const buyLevels = (parsed?.buyTheDipLevels || []).map((b) => toNum(b.level)).filter((n) => n != null);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-start justify-center overflow-y-auto bg-black/70 p-0 sm:p-4" onClick={onClose}>
       <div
-        className="bg-ink border border-border rounded-xl shadow-xl max-w-2xl w-full my-8"
+        className="bg-ink border border-border rounded-t-xl sm:rounded-xl shadow-xl max-w-2xl w-full sm:my-8 max-h-[95vh] sm:max-h-[calc(100vh-8rem)] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 bg-ink border-b border-border px-6 py-4 flex items-center justify-between">
-          <h2 className="font-display text-xl font-bold text-white">{parsed?.reportTitle || instrument.name}</h2>
+        <div className="sticky top-0 bg-ink border-b border-border px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between shrink-0 safe-area-top">
+          <h2 className="font-display text-lg sm:text-xl font-bold text-white truncate pr-8">{parsed?.reportTitle || instrument.name}</h2>
           <button type="button" onClick={onClose} className="text-muted hover:text-white p-1">
             <X size={20} />
           </button>
         </div>
-        <div className="p-6 space-y-6 max-h-[calc(100vh-8rem)] overflow-y-auto">
+        <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto min-h-0 flex-1">
           {screening && (screening.currentPrice != null || screening.rating) && (
             <div className="card">
               <p className="stat-label mb-3">Screening</p>
@@ -590,7 +590,7 @@ function ReportModal({ instrument, parsed, onClose }) {
           {(supportLevels.length > 0 || resistanceLevels.length > 0 || buyLevels.length > 0) && (
             <div className="card">
               <p className="stat-label mb-3">Key levels</p>
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-sm">
                 {supportLevels.length > 0 && (
                   <div>
                     <p className="text-muted text-xs">Support</p>
