@@ -23,6 +23,7 @@ app.use('/api/portfolio', require('./routes/portfolio'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/chat', require('./routes/finsight'));
 app.use('/api/prices', require('./routes/prices'));
+app.use('/api/stocks', require('./routes/stocks'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));

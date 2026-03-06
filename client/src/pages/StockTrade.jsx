@@ -1,35 +1,20 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, AreaChart, Area } from 'recharts';
 import api from '../lib/api';
-import { Loader2, RefreshCw, BarChart3, FileText, X, TrendingUp } from 'lucide-react';
+import { Loader2, Search, X, TrendingUp, FileText, Trash2, BarChart3 } from 'lucide-react';
 import PriceChartCard from '../components/PriceChartCard';
 
-const STOCK_GROUPS = [
-  {
-    label: 'Exchanges & Infra',
-    instruments: [
-      { id: 'bse', name: 'BSE', ticker: 'NSE: BSE', description: 'BSE Ltd — stock exchange' },
-      { id: 'cdsl', name: 'CDSL', ticker: 'NSE: CDSL', description: 'Central Depository Services — depository' },
-      { id: 'mcx', name: 'MCX', ticker: 'NSE: MCX', description: 'Multi Commodity Exchange — commodity exchange' },
-    ],
-  },
-  {
-    label: 'PSU & Industrials',
-    instruments: [
-      { id: 'sjvn', name: 'SJVN', ticker: 'NSE: SJVN', description: 'SJVN Ltd — hydro power PSU' },
-      { id: 'rites', name: 'RITES', ticker: 'NSE: RITES', description: 'RITES Ltd — engineering & consultancy PSU' },
-      { id: 'irctc', name: 'IRCTC', ticker: 'NSE: IRCTC', description: 'Indian Railway Catering — railways PSU' },
-    ],
-  },
-  {
-    label: 'Growth & Diversified',
-    instruments: [
-      { id: 'vguard', name: 'V-Guard', ticker: 'NSE: VGUARD', description: 'V-Guard Industries — electricals & consumer' },
-      { id: 'polycab', name: 'Polycab', ticker: 'NSE: POLYCAB', description: 'Polycab India — cables & wires' },
-      { id: 'tatapower', name: 'Tata Power', ticker: 'NSE: TATAPOWER', description: 'Tata Power — power generation & distribution' },
-    ],
-  },
-];
+const WATCHLIST_KEY = 'stockTradeWatchlist';
+
+function loadWatchlist() {
+  try {
+    return JSON.parse(localStorage.getItem(WATCHLIST_KEY) || '[]');
+  } catch { return []; }
+}
+
+function saveWatchlist(list) {
+  localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list));
+}
 
 function buildStockPrompt(instrument, priceData) {
   const priceBlock = priceData
@@ -61,7 +46,7 @@ Return ONLY valid JSON. No markdown, no code fences. Structure like a profession
   "cons": [ "bullet 1", "bullet 2" ],
   "risks": [ "bullet 1", "bullet 2" ],
   "verdict": "2-3 sentence verdict and conviction level.",
-  "recentCloses": [ 21 numbers, oldest first${priceData ? ' — use the 21 numbers provided above' : ', approximate recent sessions for chart' } ],
+  "recentCloses": [ 21 numbers, oldest first${priceData ? ' — use the 21 numbers provided above' : ', approximate recent sessions for chart'} ],
   "supportLevels": [ number, number ],
   "resistanceLevels": [ number, number ],
   "buyTheDipLevels": [ { "level": number, "label": "short" } ],
@@ -74,28 +59,22 @@ Return ONLY valid JSON. No markdown, no code fences. Structure like a profession
 }
 
 CRITICAL RULES for oneLakhAllocation (total budget ₹1,00,000):
-- investTodayRupees = how much of the 1 Lakh to deploy TODAY (0 to 100000). Base this on how far price has already dipped from high: bigger dip = deploy more today; small dip = deploy less and keep more for lower levels.
-- waitForLevel = price/level at which to ADD the remaining amount (number). Should be a meaningful support or buy-the-dip level below current.
-- addAmountRupees = amount to add when price hits waitForLevel (typically 100000 - investTodayRupees).
+- investTodayRupees = how much of the 1 Lakh to deploy TODAY (0 to 100000). Based on dip from high.
+- waitForLevel = price at which to add remaining amount.
+- addAmountRupees = typically 100000 - investTodayRupees.
 - rationale = one sentence explaining the split.
-All numbers as JSON numbers. recentCloses exactly 21 numbers. pros/cons/risks: 2-4 bullets each. Be specific and actionable for this stock.`;
+All numbers as JSON numbers. recentCloses exactly 21 numbers. pros/cons/risks: 2-4 bullets each. Be specific and actionable.`;
 }
 
 function tryParseTradeResponse(raw) {
   const text = String(raw).trim();
-  try {
-    return JSON.parse(text);
-  } catch (_) {}
+  try { return JSON.parse(text); } catch (_) {}
   const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch (_) {}
+  try { return JSON.parse(cleaned); } catch (_) {}
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start === -1 || end <= start) return null;
-  try {
-    return JSON.parse(text.slice(start, end + 1));
-  } catch (_) {}
+  try { return JSON.parse(text.slice(start, end + 1)); } catch (_) {}
   return null;
 }
 
@@ -117,7 +96,113 @@ function toNum(x) {
   return typeof x === 'number' && !isNaN(x) ? x : !isNaN(n) ? n : null;
 }
 
-function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }) {
+// ─── Search bar with autocomplete ─────────────────────────────────────────────
+function StockSearchBar({ onAdd, watchlistIds }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [open, setOpen] = useState(false);
+  const timerRef = useRef(null);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const doSearch = useCallback(async (q) => {
+    if (!q.trim()) { setResults([]); setOpen(false); return; }
+    setSearching(true);
+    try {
+      const res = await api.get(`/stocks/search?q=${encodeURIComponent(q)}`);
+      setResults(res.data || []);
+      setOpen(true);
+    } catch { setResults([]); }
+    setSearching(false);
+  }, []);
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+    setQuery(val);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => doSearch(val), 300);
+  };
+
+  const handleSelect = (stock) => {
+    onAdd(stock);
+    setQuery('');
+    setResults([]);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={wrapRef} className="relative w-full max-w-lg">
+      <div className="relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+        <input
+          className="input pl-9 pr-10"
+          placeholder="Search Indian or US stocks (e.g. Infosys, Apple, RELIANCE…)"
+          value={query}
+          onChange={handleChange}
+          onFocus={() => results.length > 0 && setOpen(true)}
+          autoComplete="off"
+        />
+        {searching && (
+          <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted animate-spin" />
+        )}
+        {!searching && query && (
+          <button
+            type="button"
+            onClick={() => { setQuery(''); setResults([]); setOpen(false); }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
+      {open && results.length > 0 && (
+        <div className="absolute z-40 top-full mt-1 w-full bg-surface border border-border rounded-xl shadow-2xl overflow-hidden">
+          {results.map((stock) => {
+            const already = watchlistIds.has(stock.id);
+            return (
+              <button
+                key={stock.id}
+                type="button"
+                disabled={already}
+                onClick={() => handleSelect(stock)}
+                className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-card transition-colors border-b border-border last:border-0 ${already ? 'opacity-40 cursor-default' : ''}`}
+              >
+                <div className="min-w-0">
+                  <p className="text-white text-sm font-medium truncate">{stock.name}</p>
+                  <p className="text-muted text-xs">{stock.ticker}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`text-xs px-2 py-0.5 rounded font-mono ${stock.market === 'IN' ? 'bg-teal/10 text-teal' : 'bg-blue-500/10 text-blue-400'}`}>
+                    {stock.market === 'IN' ? 'India' : 'US'}
+                  </span>
+                  {already && <span className="text-xs text-muted">Added</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {open && query.length >= 2 && results.length === 0 && !searching && (
+        <div className="absolute z-40 top-full mt-1 w-full bg-surface border border-border rounded-xl shadow-2xl px-4 py-3">
+          <p className="text-muted text-sm">No Indian or US stocks found for "{query}"</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Instrument card ──────────────────────────────────────────────────────────
+function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport, onRemove }) {
   const hasResult = !!result;
   const parsed = result?.parsed;
   const alloc = parsed?.oneLakhAllocation;
@@ -132,17 +217,18 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }
   return (
     <div className="card overflow-hidden flex flex-col">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="font-display font-semibold text-white truncate">{instrument.name}</p>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-display font-semibold text-white truncate">{instrument.name}</p>
+            <span className={`text-xs px-1.5 py-0.5 rounded font-mono shrink-0 ${instrument.market === 'IN' ? 'bg-teal/10 text-teal' : 'bg-blue-500/10 text-blue-400'}`}>
+              {instrument.market === 'IN' ? 'India' : 'US'}
+            </span>
+          </div>
           <p className="text-muted text-xs mt-0.5 truncate">{instrument.ticker}</p>
         </div>
         <div className="flex gap-1.5 shrink-0">
           {hasResult && parsed && (
-            <button
-              type="button"
-              onClick={onViewReport}
-              className="btn-ghost flex items-center gap-1 px-2 py-1.5 text-xs"
-            >
+            <button type="button" onClick={onViewReport} className="btn-ghost flex items-center gap-1 px-2 py-1.5 text-xs">
               <FileText size={12} /> Report
             </button>
           )}
@@ -154,6 +240,14 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }
           >
             {loading ? <Loader2 size={12} className="animate-spin" /> : <TrendingUp size={12} />}
             {loading ? 'Analyzing…' : hasResult ? 'Refresh' : 'Analyze'}
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            title="Remove from watchlist"
+            className="p-1.5 rounded-lg text-muted hover:text-rose hover:bg-rose/5 transition-colors"
+          >
+            <X size={14} />
           </button>
         </div>
       </div>
@@ -175,29 +269,15 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }
                       <XAxis dataKey="session" hide />
                       <YAxis domain={['auto', 'auto']} hide />
                       <Tooltip
-                        contentStyle={{
-                          background: '#ffffff',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 8,
-                          fontSize: 12,
-                          color: '#0f172a',
-                          padding: '10px 14px',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
-                        }}
+                        contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, color: '#0f172a', padding: '10px 14px', boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}
                         labelStyle={{ color: '#0f172a', fontWeight: 600, marginBottom: 4 }}
                         itemStyle={{ color: '#0f172a' }}
                         formatter={(v) => [Number(v).toLocaleString('en-IN'), 'Close']}
                         labelFormatter={(l) => `Session ${l}`}
                       />
-                      {supportLevels.map((l, i) => (
-                        <ReferenceLine key={`s-${i}`} y={l} stroke="#10b981" strokeWidth={2} strokeDasharray="4 4" />
-                      ))}
-                      {resistanceLevels.map((l, i) => (
-                        <ReferenceLine key={`r-${i}`} y={l} stroke="#f97316" strokeWidth={2} strokeDasharray="4 4" />
-                      ))}
-                      {buyLevels.map((l, i) => (
-                        <ReferenceLine key={`b-${i}`} y={l} stroke="#f0c040" strokeWidth={2} />
-                      ))}
+                      {supportLevels.map((l, i) => <ReferenceLine key={`s-${i}`} y={l} stroke="#10b981" strokeWidth={2} strokeDasharray="4 4" />)}
+                      {resistanceLevels.map((l, i) => <ReferenceLine key={`r-${i}`} y={l} stroke="#f97316" strokeWidth={2} strokeDasharray="4 4" />)}
+                      {buyLevels.map((l, i) => <ReferenceLine key={`b-${i}`} y={l} stroke="#f0c040" strokeWidth={2} />)}
                       <Area type="monotone" dataKey="close" stroke="#2dd4bf" strokeWidth={2.5} fill={`url(#fill-stock-${instrument.id})`} />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -208,22 +288,16 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }
                 <div className="rounded-lg bg-accent/10 border border-accent/30 p-3">
                   <p className="text-xs text-muted uppercase tracking-wider mb-1.5">₹1 Lakh allocation</p>
                   <p className="text-white font-medium text-xs">Invest today: ₹{(alloc.investTodayRupees ?? 0).toLocaleString('en-IN')}</p>
-                  <p className="text-soft text-xs mt-0.5">Wait for level {(alloc.waitForLevel ?? '').toLocaleString('en-IN')} → add ₹{(alloc.addAmountRupees ?? 0).toLocaleString('en-IN')}</p>
+                  <p className="text-soft text-xs mt-0.5">Wait for {(alloc.waitForLevel ?? '').toLocaleString?.('en-IN') ?? alloc.waitForLevel} → add ₹{(alloc.addAmountRupees ?? 0).toLocaleString('en-IN')}</p>
                 </div>
               )}
-              {parsed.verdict && (
-                <p className="text-soft text-xs leading-snug line-clamp-2">{parsed.verdict}</p>
-              )}
+              {parsed.verdict && <p className="text-soft text-xs leading-snug line-clamp-2">{parsed.verdict}</p>}
               <div className="flex flex-wrap items-center gap-2">
                 {parsed.screening?.rating && (
-                  <span className={`text-xs font-medium ${RATING_COLOR[parsed.screening.rating] || 'text-soft'}`}>
-                    {parsed.screening.rating}
-                  </span>
+                  <span className={`text-xs font-medium ${RATING_COLOR[parsed.screening.rating] || 'text-soft'}`}>{parsed.screening.rating}</span>
                 )}
                 {parsed.screening?.riskLevel && (
-                  <span className={`text-xs font-medium ${RISK_COLOR[parsed.screening.riskLevel] || 'text-soft'}`}>
-                    Risk: {parsed.screening.riskLevel}
-                  </span>
+                  <span className={`text-xs font-medium ${RISK_COLOR[parsed.screening.riskLevel] || 'text-soft'}`}>Risk: {parsed.screening.riskLevel}</span>
                 )}
               </div>
               <button type="button" onClick={onViewReport} className="text-accent hover:underline text-xs font-medium">
@@ -233,9 +307,7 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }
           ) : (
             <div className="mt-4">
               <p className="text-muted text-xs mb-2">Could not parse response:</p>
-              <pre className="text-xs text-soft bg-surface rounded-lg p-3 overflow-auto max-h-32 whitespace-pre-wrap">
-                {result.raw?.slice(0, 300)}
-              </pre>
+              <pre className="text-xs text-soft bg-surface rounded-lg p-3 overflow-auto max-h-32 whitespace-pre-wrap">{result.raw?.slice(0, 300)}</pre>
             </div>
           )}
         </>
@@ -248,6 +320,7 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }
   );
 }
 
+// ─── Report modal ─────────────────────────────────────────────────────────────
 function ReportModal({ instrument, parsed, onClose }) {
   const screening = parsed?.screening || {};
   const alloc = parsed?.oneLakhAllocation || {};
@@ -262,8 +335,11 @@ function ReportModal({ instrument, parsed, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 bg-ink border-b border-border px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between shrink-0 safe-area-top">
-          <h2 className="font-display text-lg sm:text-xl font-bold text-white truncate pr-8">{parsed?.reportTitle || instrument.name}</h2>
-          <button type="button" onClick={onClose} className="text-muted hover:text-white p-1">
+          <div className="min-w-0 pr-8">
+            <h2 className="font-display text-lg sm:text-xl font-bold text-white truncate">{parsed?.reportTitle || instrument.name}</h2>
+            <p className="text-muted text-xs mt-0.5">{instrument.ticker}</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-muted hover:text-white p-1 shrink-0">
             <X size={20} />
           </button>
         </div>
@@ -276,34 +352,19 @@ function ReportModal({ instrument, parsed, onClose }) {
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                 {screening.currentPrice != null && (
-                  <div>
-                    <p className="text-muted text-xs">Price</p>
-                    <p className="font-mono text-white">{Number(screening.currentPrice).toLocaleString('en-IN')}</p>
-                  </div>
+                  <div><p className="text-muted text-xs">Price</p><p className="font-mono text-white">{Number(screening.currentPrice).toLocaleString('en-IN')}</p></div>
                 )}
                 {screening.high52wOrRecent != null && (
-                  <div>
-                    <p className="text-muted text-xs">High (52w/recent)</p>
-                    <p className="font-mono text-white">{Number(screening.high52wOrRecent).toLocaleString('en-IN')}</p>
-                  </div>
+                  <div><p className="text-muted text-xs">High (52w)</p><p className="font-mono text-white">{Number(screening.high52wOrRecent).toLocaleString('en-IN')}</p></div>
                 )}
                 {screening.dipFromHighPct != null && (
-                  <div>
-                    <p className="text-muted text-xs">Dip from high</p>
-                    <p className="font-mono text-amber-400">{Number(screening.dipFromHighPct).toFixed(1)}%</p>
-                  </div>
+                  <div><p className="text-muted text-xs">Dip from high</p><p className="font-mono text-amber-400">{Number(screening.dipFromHighPct).toFixed(1)}%</p></div>
                 )}
                 {screening.rating && (
-                  <div>
-                    <p className="text-muted text-xs">Rating</p>
-                    <p className={`font-semibold ${RATING_COLOR[screening.rating] || 'text-white'}`}>{screening.rating}</p>
-                  </div>
+                  <div><p className="text-muted text-xs">Rating</p><p className={`font-semibold ${RATING_COLOR[screening.rating] || 'text-white'}`}>{screening.rating}</p></div>
                 )}
                 {screening.riskLevel && (
-                  <div>
-                    <p className="text-muted text-xs">Risk</p>
-                    <p className={RISK_COLOR[screening.riskLevel] || 'text-soft'}>{screening.riskLevel}</p>
-                  </div>
+                  <div><p className="text-muted text-xs">Risk</p><p className={RISK_COLOR[screening.riskLevel] || 'text-soft'}>{screening.riskLevel}</p></div>
                 )}
               </div>
             </div>
@@ -317,21 +378,17 @@ function ReportModal({ instrument, parsed, onClose }) {
                 <p className="font-mono text-xl font-bold text-white">₹{(alloc.investTodayRupees ?? 0).toLocaleString('en-IN')}</p>
               </div>
               <div>
-                <p className="text-muted text-xs uppercase">Wait for level (add more)</p>
+                <p className="text-muted text-xs uppercase">Wait for level</p>
                 <p className="font-mono text-lg text-accent">
-                  {alloc.waitForLevel != null
-                    ? (typeof alloc.waitForLevel === 'number' ? alloc.waitForLevel.toLocaleString('en-IN') : String(alloc.waitForLevel))
-                    : '—'}
+                  {alloc.waitForLevel != null ? (typeof alloc.waitForLevel === 'number' ? alloc.waitForLevel.toLocaleString('en-IN') : String(alloc.waitForLevel)) : '—'}
                 </p>
               </div>
               <div>
-                <p className="text-muted text-xs uppercase">Add amount at that level</p>
+                <p className="text-muted text-xs uppercase">Add at that level</p>
                 <p className="font-mono text-lg text-white">₹{(alloc.addAmountRupees ?? 0).toLocaleString('en-IN')}</p>
               </div>
             </div>
-            {alloc.rationale && (
-              <p className="text-soft text-sm mt-3 border-t border-border pt-3">{alloc.rationale}</p>
-            )}
+            {alloc.rationale && <p className="text-soft text-sm mt-3 border-t border-border pt-3">{alloc.rationale}</p>}
           </div>
 
           {(parsed?.pros?.length || parsed?.cons?.length || parsed?.risks?.length) && (
@@ -339,31 +396,19 @@ function ReportModal({ instrument, parsed, onClose }) {
               {parsed.pros?.length > 0 && (
                 <div className="card">
                   <p className="text-xs text-green-400 font-semibold uppercase tracking-wider mb-2">Pros</p>
-                  <ul className="space-y-1 text-sm text-soft">
-                    {parsed.pros.map((p, i) => (
-                      <li key={i} className="flex gap-2"><span className="text-green-400 shrink-0">✓</span>{p}</li>
-                    ))}
-                  </ul>
+                  <ul className="space-y-1 text-sm text-soft">{parsed.pros.map((p, i) => <li key={i} className="flex gap-2"><span className="text-green-400 shrink-0">✓</span>{p}</li>)}</ul>
                 </div>
               )}
               {parsed.cons?.length > 0 && (
                 <div className="card">
                   <p className="text-xs text-rose font-semibold uppercase tracking-wider mb-2">Cons</p>
-                  <ul className="space-y-1 text-sm text-soft">
-                    {parsed.cons.map((c, i) => (
-                      <li key={i} className="flex gap-2"><span className="text-rose shrink-0">✗</span>{c}</li>
-                    ))}
-                  </ul>
+                  <ul className="space-y-1 text-sm text-soft">{parsed.cons.map((c, i) => <li key={i} className="flex gap-2"><span className="text-rose shrink-0">✗</span>{c}</li>)}</ul>
                 </div>
               )}
               {parsed.risks?.length > 0 && (
                 <div className="card">
                   <p className="text-xs text-amber-400 font-semibold uppercase tracking-wider mb-2">Risks</p>
-                  <ul className="space-y-1 text-sm text-soft">
-                    {parsed.risks.map((r, i) => (
-                      <li key={i} className="flex gap-2"><span className="text-amber-400 shrink-0">⚠</span>{r}</li>
-                    ))}
-                  </ul>
+                  <ul className="space-y-1 text-sm text-soft">{parsed.risks.map((r, i) => <li key={i} className="flex gap-2"><span className="text-amber-400 shrink-0">⚠</span>{r}</li>)}</ul>
                 </div>
               )}
             </div>
@@ -389,24 +434,9 @@ function ReportModal({ instrument, parsed, onClose }) {
             <div className="card">
               <p className="stat-label mb-3">Key levels</p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-sm">
-                {supportLevels.length > 0 && (
-                  <div>
-                    <p className="text-muted text-xs">Support</p>
-                    <p className="font-mono text-green-400">{supportLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p>
-                  </div>
-                )}
-                {resistanceLevels.length > 0 && (
-                  <div>
-                    <p className="text-muted text-xs">Resistance</p>
-                    <p className="font-mono text-amber-400">{resistanceLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p>
-                  </div>
-                )}
-                {buyLevels.length > 0 && (
-                  <div>
-                    <p className="text-muted text-xs">Buy the dip</p>
-                    <p className="font-mono text-accent">{buyLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p>
-                  </div>
-                )}
+                {supportLevels.length > 0 && <div><p className="text-muted text-xs">Support</p><p className="font-mono text-green-400">{supportLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p></div>}
+                {resistanceLevels.length > 0 && <div><p className="text-muted text-xs">Resistance</p><p className="font-mono text-amber-400">{resistanceLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p></div>}
+                {buyLevels.length > 0 && <div><p className="text-muted text-xs">Buy the dip</p><p className="font-mono text-accent">{buyLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p></div>}
               </div>
             </div>
           )}
@@ -416,22 +446,45 @@ function ReportModal({ instrument, parsed, onClose }) {
   );
 }
 
+// ─── Main page ────────────────────────────────────────────────────────────────
 export default function StockTrade() {
+  const [watchlist, setWatchlist] = useState(() => loadWatchlist());
   const [results, setResults] = useState({});
   const [loading, setLoading] = useState(null);
   const [error, setError] = useState(null);
   const [reportModal, setReportModal] = useState(null);
 
+  const watchlistIds = new Set(watchlist.map((s) => s.id));
+
+  const addToWatchlist = useCallback((stock) => {
+    setWatchlist((prev) => {
+      if (prev.find((s) => s.id === stock.id)) return prev;
+      const next = [...prev, stock];
+      saveWatchlist(next);
+      return next;
+    });
+  }, []);
+
+  const removeFromWatchlist = useCallback((id) => {
+    setWatchlist((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      saveWatchlist(next);
+      return next;
+    });
+    setResults((prev) => { const n = { ...prev }; delete n[id]; return n; });
+  }, []);
+
+  const clearWatchlist = useCallback(() => {
+    setWatchlist([]);
+    saveWatchlist([]);
+    setResults({});
+  }, []);
+
   const mergePriceData = useCallback((parsed, priceData) => {
     if (!parsed || !priceData) return parsed;
     return {
       ...parsed,
-      screening: {
-        ...parsed.screening,
-        currentPrice: priceData.currentPrice,
-        high52wOrRecent: priceData.high52w,
-        dipFromHighPct: priceData.dipFromHighPct,
-      },
+      screening: { ...parsed.screening, currentPrice: priceData.currentPrice, high52wOrRecent: priceData.high52w, dipFromHighPct: priceData.dipFromHighPct },
       recentCloses: Array.isArray(priceData.recentCloses) && priceData.recentCloses.length >= 21
         ? priceData.recentCloses.slice(0, 21)
         : parsed.recentCloses,
@@ -443,10 +496,7 @@ export default function StockTrade() {
     setError(null);
     try {
       let priceData = null;
-      try {
-        const res = await api.get(`/prices/${instrument.id}`);
-        priceData = res.data;
-      } catch (_) {}
+      try { const res = await api.get(`/prices/${encodeURIComponent(instrument.id)}`); priceData = res.data; } catch (_) {}
       const raw = await callClaude(buildStockPrompt(instrument, priceData));
       let parsed = tryParseTradeResponse(raw);
       if (parsed && priceData) parsed = mergePriceData(parsed, priceData);
@@ -459,74 +509,70 @@ export default function StockTrade() {
     }
   }, [mergePriceData]);
 
-  const analyzeAll = useCallback(async () => {
-    setLoading('all');
-    setError(null);
-    const flat = STOCK_GROUPS.flatMap((g) => g.instruments);
-    for (const inst of flat) {
-      try {
-        let priceData = null;
-        try {
-          const res = await api.get(`/prices/${inst.id}`);
-          priceData = res.data;
-        } catch (_) {}
-        const raw = await callClaude(buildStockPrompt(inst, priceData));
-        let parsed = tryParseTradeResponse(raw);
-        if (parsed && priceData) parsed = mergePriceData(parsed, priceData);
-        setResults((prev) => ({ ...prev, [inst.id]: { parsed, raw } }));
-      } catch (err) {
-        setResults((prev) => ({ ...prev, [inst.id]: { parsed: null, raw: String(err.message) } }));
-      }
-    }
-    setLoading(null);
-  }, [mergePriceData]);
-
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0">
           <h1 className="font-display text-xl sm:text-2xl font-bold text-white truncate">Stock Trade</h1>
           <p className="text-muted text-xs sm:text-sm mt-0.5">
-            AI analysis for individual stocks (BSE, CDSL, MCX, SJVN, RITES, V-Guard, and more). Uses Claude. Set API key in Settings.
+            Search Indian & US stocks, build your watchlist, and get AI analysis.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={analyzeAll}
-          disabled={!!loading}
-          className="btn-primary flex items-center gap-2"
-        >
-          {loading === 'all' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-          {loading === 'all' ? 'Analyzing all…' : 'Analyze all'}
-        </button>
+        {watchlist.length > 0 && (
+          <button
+            type="button"
+            onClick={clearWatchlist}
+            className="btn-ghost flex items-center gap-2 text-rose border-rose/30 hover:border-rose hover:bg-rose/5"
+          >
+            <Trash2 size={14} /> Clear watchlist
+          </button>
+        )}
+      </div>
+
+      {/* Search */}
+      <div className="card">
+        <p className="text-sm font-medium text-white mb-3 flex items-center gap-2">
+          <Search size={14} className="text-accent" /> Add to watchlist
+        </p>
+        <StockSearchBar onAdd={addToWatchlist} watchlistIds={watchlistIds} />
+        <p className="text-muted text-xs mt-2">
+          Searches Indian (NSE/BSE) and US (NYSE/NASDAQ) equities via Yahoo Finance.
+        </p>
       </div>
 
       {error && (
-        <div className="card border-rose/40 bg-rose/5 text-rose text-sm">
-          {error}
-        </div>
+        <div className="card border-rose/40 bg-rose/5 text-rose text-sm">{error}</div>
       )}
 
-      {STOCK_GROUPS.map((group) => (
-        <div key={group.label} className="space-y-3">
+      {/* Watchlist */}
+      {watchlist.length === 0 ? (
+        <div className="card text-center py-12">
+          <BarChart3 size={36} className="text-muted mx-auto mb-3" />
+          <p className="text-white font-medium">Your watchlist is empty</p>
+          <p className="text-muted text-sm mt-1">Search for a stock above to add it here.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
           <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
             <BarChart3 size={18} className="text-accent" />
-            {group.label}
+            Watchlist <span className="text-muted text-sm font-normal">({watchlist.length})</span>
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {group.instruments.map((inst) => (
+            {watchlist.map((inst) => (
               <InstrumentCard
                 key={inst.id}
                 instrument={inst}
                 result={results[inst.id]}
-                loading={loading === inst.id || loading === 'all'}
+                loading={loading === inst.id}
                 onAnalyze={() => analyzeOne(inst)}
                 onViewReport={() => results[inst.id]?.parsed && setReportModal({ instrument: inst, parsed: results[inst.id].parsed })}
+                onRemove={() => removeFromWatchlist(inst.id)}
               />
             ))}
           </div>
         </div>
-      ))}
+      )}
 
       {reportModal && (
         <ReportModal

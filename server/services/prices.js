@@ -36,7 +36,8 @@ const STOCK_SYMBOLS = {
 const ALL_SYMBOLS = { ...TRADE_SYMBOLS, ...STOCK_SYMBOLS };
 
 function getSymbol(instrumentId) {
-  return ALL_SYMBOLS[instrumentId] || null;
+  // Known mapped instruments first; otherwise treat the id itself as a Yahoo Finance symbol
+  return ALL_SYMBOLS[instrumentId] || instrumentId;
 }
 
 /**
@@ -46,7 +47,7 @@ function getSymbol(instrumentId) {
  */
 async function getPriceData(instrumentId) {
   const symbol = getSymbol(instrumentId);
-  if (!symbol) return null;
+  if (!symbol) return null; // never null now, kept for safety
 
   try {
     const YahooFinance = require('yahoo-finance2').default;
@@ -108,7 +109,7 @@ async function getPriceData(instrumentId) {
  */
 async function getPriceHistory(instrumentId, range = '1m') {
   const symbol = getSymbol(instrumentId);
-  if (!symbol) return null;
+  if (!symbol) return null; // never null now, kept for safety
 
   const now = new Date();
   let period1;
@@ -150,4 +151,50 @@ async function getPriceHistory(instrumentId, range = '1m') {
   }
 }
 
-module.exports = { getPriceData, getPriceHistory, getSymbol, ALL_SYMBOLS };
+/**
+ * Search for stocks using Yahoo Finance search.
+ * Filters to Indian (.NS/.BO) and US (major exchanges) equities.
+ */
+async function searchStocks(query) {
+  if (!query || query.length < 1) return [];
+  try {
+    const YahooFinance = require('yahoo-finance2').default;
+    const yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+
+    const result = await yf.search(query, { newsCount: 0, quotesCount: 20 });
+    const quotes = result?.quotes || [];
+
+    const US_EXCHANGES = new Set(['NMS', 'NYQ', 'NCM', 'PCX', 'AMEX', 'NGM', 'BTS', 'OBB', 'PNK']);
+
+    return quotes
+      .filter((q) => q.quoteType === 'EQUITY' && q.isYahooFinance)
+      .map((q) => {
+        const sym = q.symbol || '';
+        const isIndian = sym.endsWith('.NS') || sym.endsWith('.BO');
+        const isUS = !isIndian && US_EXCHANGES.has(q.exchange);
+        if (!isIndian && !isUS) return null;
+
+        const market = isIndian ? 'IN' : 'US';
+        const exLabel = isIndian
+          ? (sym.endsWith('.NS') ? 'NSE' : 'BSE')
+          : q.exchange;
+
+        return {
+          id: sym,
+          symbol: sym,
+          name: q.longname || q.shortname || sym,
+          ticker: `${exLabel}: ${sym.replace(/\.(NS|BO)$/, '')}`,
+          description: `${q.longname || q.shortname || sym} — ${exLabel}`,
+          market,
+          exchange: exLabel,
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 15);
+  } catch (err) {
+    console.error('[search]', query, err.message);
+    return [];
+  }
+}
+
+module.exports = { getPriceData, getPriceHistory, searchStocks, getSymbol, ALL_SYMBOLS };
