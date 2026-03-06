@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Legend } from 'recharts';
-import { TrendingUp, PieChart as PieIcon, Target, Wallet } from 'lucide-react';
+import { PieChart as PieIcon, Target, Wallet } from 'lucide-react';
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 import TradeFeedbackCard from '../components/TradeFeedbackCard';
@@ -130,8 +130,6 @@ export default function Portfolio() {
   const debtPct = (debtVal / totalAbs) * 100;
   const goldPct = (goldVal / totalAbs) * 100;
   const cashPct = (cashVal / totalAbs) * 100;
-  const topHoldings = aggregated.filter((r) => r.net > 0).slice(0, 3);
-
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="space-y-4">
@@ -237,24 +235,6 @@ export default function Portfolio() {
           <span className="font-mono text-lg font-bold" style={{ color: ASSET_COLORS.Cash }}>{cashPct.toFixed(1)}%</span>
         </div>
       </div>
-
-      {/* Top holdings */}
-      {topHoldings.length > 0 && (
-        <div className="card">
-          <div className="flex items-center gap-2 text-muted mb-2">
-            <TrendingUp size={14} />
-            <span className="stat-label text-xs">Top holdings</span>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            {topHoldings.map((h, i) => (
-              <div key={i} className="px-3 py-2 rounded-lg bg-surface/60 border border-border">
-                <span className="text-sm text-soft">{h.instrument}</span>
-                <span className="ml-2 font-mono text-accent font-semibold">{fmt(h.net)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Trade feedback — portfolio / goal + ask if trade makes sense */}
       <TradeFeedbackCard

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend, PieChart, Pie, Cell,
+  CartesianGrid, Legend, PieChart, Pie, Cell, ScatterChart, Scatter,
 } from 'recharts';
 import api from '../lib/api';
-import { MessageSquare, Loader2, BarChart3, TrendingUp, Plus, X } from 'lucide-react';
+import { MessageSquare, Loader2, BarChart3, TrendingUp, Plus, X, Wallet } from 'lucide-react';
 
 const TRADE_INSTRUMENTS = [
   { id: 'nifty50', name: 'Nifty 50', ticker: 'NSE Nifty 50' },
@@ -142,34 +142,92 @@ const RECOMMENDATION_COLOR = {
   REBALANCE: 'text-rose',
 };
 
-function RiskReturnChart({ data }) {
-  if (!data?.length) return null;
-  const chartData = data.map((d) => ({
-    ...d,
-    label: `${d.years}Y`,
-    expectedReturnPct: Number(d.expectedReturnPct) ?? 0,
-    riskPct: Number(d.riskPct) ?? 0,
-  }));
+const RISK_LEVEL_COLORS = { high: '#f97316', medium: '#fbbf24', low: '#60a5fa' };
+
+function RiskReturnScatterChart({ byRiskLevel }) {
+  if (!byRiskLevel) return null;
+  const scatterData = ['high', 'medium', 'low']
+    .filter((k) => byRiskLevel[k]?.riskPct != null && byRiskLevel[k]?.expectedReturnPct != null)
+    .map((k) => ({
+      name: `${k} risk`,
+      riskPct: Number(byRiskLevel[k].riskPct),
+      expectedReturnPct: Number(byRiskLevel[k].expectedReturnPct),
+      fill: RISK_LEVEL_COLORS[k],
+    }));
+  if (scatterData.length === 0) return null;
 
   return (
     <div className="card">
       <p className="stat-label mb-3 flex items-center gap-2">
-        <TrendingUp size={14} /> Risk vs return over horizon
+        <TrendingUp size={14} /> Risk vs return by profile
+      </p>
+      <div className="h-52">
+        <ResponsiveContainer width="100%" height="100%">
+          <ScatterChart margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis type="number" dataKey="riskPct" name="Risk" tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(v) => `${v}%`} />
+            <YAxis type="number" dataKey="expectedReturnPct" name="Return" tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(v) => `${v}%`} />
+            <Tooltip
+              content={({ active, payload }) =>
+                active && payload?.[0] ? (
+                  <div className="px-3 py-2 rounded-lg bg-[#1e2330] border border-[#2a3040] text-xs">
+                    <p className="font-semibold text-white mb-1">{payload[0].payload?.name}</p>
+                    <p className="text-soft">Risk: {payload[0].payload?.riskPct}%</p>
+                    <p className="text-accent">Return: {payload[0].payload?.expectedReturnPct}%</p>
+                  </div>
+                ) : null
+              }
+            />
+            {scatterData.map((d, i) => (
+              <Scatter key={i} data={[d]} fill={d.fill} shape="circle" r={8} />
+            ))}
+          </ScatterChart>
+        </ResponsiveContainer>
+        <div className="flex flex-wrap gap-3 mt-2 justify-center text-xs">
+          {scatterData.map((d) => (
+            <span key={d.name} style={{ color: d.fill }}>● {d.name}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CorpusIncrementChart({ byRiskLevel, initialCorpus }) {
+  if (!byRiskLevel || initialCorpus <= 0) return null;
+  const years = [3, 5, 10, 15, 20];
+  const hasData = ['high', 'medium', 'low'].some((k) => byRiskLevel[k]?.expectedReturnPct != null);
+  if (!hasData) return null;
+
+  const chartData = years.map((y) => {
+    const row = { years: y, label: `${y}Y` };
+    ['high', 'medium', 'low'].forEach((k) => {
+      const r = byRiskLevel[k]?.expectedReturnPct;
+      if (r != null) row[k] = Math.round(initialCorpus * Math.pow(1 + Number(r) / 100, y));
+    });
+    return row;
+  });
+
+  return (
+    <div className="card">
+      <p className="stat-label mb-3 flex items-center gap-2">
+        <Wallet size={14} /> Corpus projection by profile
       </p>
       <div className="h-52">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
             <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} width={36} tickFormatter={(v) => `${v}%`} />
+            <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} width={48} tickFormatter={(v) => `${(v / 1e5).toFixed(1)}L`} />
             <Tooltip
               contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}
-              formatter={(v) => [`${v}%`, '']}
+              formatter={(v) => [Number(v).toLocaleString('en-IN'), '']}
               labelFormatter={(l) => `Horizon: ${l}`}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => <span style={{ color: '#94a3b8' }}>{v}</span>} />
-            <Line type="monotone" dataKey="expectedReturnPct" name="Expected return" stroke="#2dd4bf" strokeWidth={2} dot={{ fill: '#2dd4bf', r: 4 }} />
-            <Line type="monotone" dataKey="riskPct" name="Risk (volatility)" stroke="#f97316" strokeWidth={2} dot={{ fill: '#f97316', r: 4 }} strokeDasharray="4 4" />
+            <Line type="monotone" dataKey="high" name="High risk" stroke={RISK_LEVEL_COLORS.high} strokeWidth={2} dot={{ fill: RISK_LEVEL_COLORS.high, r: 4 }} connectNulls />
+            <Line type="monotone" dataKey="medium" name="Medium risk" stroke={RISK_LEVEL_COLORS.medium} strokeWidth={2} dot={{ fill: RISK_LEVEL_COLORS.medium, r: 4 }} connectNulls />
+            <Line type="monotone" dataKey="low" name="Low risk" stroke={RISK_LEVEL_COLORS.low} strokeWidth={2} dot={{ fill: RISK_LEVEL_COLORS.low, r: 4 }} connectNulls />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -489,9 +547,13 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
                   </div>
                 </div>
               )}
-              {feedback.riskReturnProjection?.length > 0 && (
+              {(feedback.byRiskLevel || feedback.riskReturnProjection?.length > 0) && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <RiskReturnChart data={feedback.riskReturnProjection} />
+                  <RiskReturnScatterChart byRiskLevel={feedback.byRiskLevel} />
+                  <CorpusIncrementChart
+                    byRiskLevel={feedback.byRiskLevel}
+                    initialCorpus={allHoldings.reduce((s, h) => s + Math.max(0, h.net || 0), 0)}
+                  />
                   {feedback.allocationEvolution?.length > 0 && <AllocationChart data={feedback.allocationEvolution} />}
                 </div>
               )}
