@@ -9,6 +9,7 @@ import Portfolio from './pages/Portfolio';
 import Investments from './pages/Investments';
 import ExpenseAnalyser from './pages/ExpenseAnalyser';
 import Trade from './pages/Trade';
+import StockTrade from './pages/StockTrade';
 import Settings from './pages/Settings';
 
 function Protected({ children }) {
@@ -30,6 +31,7 @@ export default function App() {
             <Route path="transactions" element={<Transactions />} />
             <Route path="expense-analyser" element={<ExpenseAnalyser />} />
             <Route path="trade" element={<Trade />} />
+            <Route path="stock-trade" element={<StockTrade />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
