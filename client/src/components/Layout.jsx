@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, Calculator, LineChart, LogOut, Settings, BarChart3, Menu, X, LogIn } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, Calculator, LineChart, LogOut, Settings, BarChart3, Menu, X, LogIn, Lock } from 'lucide-react';
 import api from '../lib/api';
 import { applyTheme } from '../lib/theme';
 import { setCurrencySymbol } from '../lib/utils';
@@ -35,8 +35,7 @@ export default function Layout() {
     }).catch(() => {});
   }, [isAuth]);
 
-  const handleLogout = () => { logout(); navigate('/login'); setSidebarOpen(false); };
-  const handleLogin = () => { navigate('/login'); setSidebarOpen(false); };
+  const handleLogout = () => { logout(); setSidebarOpen(false); };
   const closeSidebar = () => setSidebarOpen(false);
 
   const navLinkClass = ({ isActive }) =>
@@ -44,11 +43,9 @@ export default function Layout() {
       isActive ? 'bg-accent/10 text-accent border border-accent/20' : 'text-soft hover:text-white hover:bg-card'
     }`;
 
-  const navItems = isAuth ? [...PUBLIC_NAV, ...PRIVATE_NAV] : PUBLIC_NAV;
-
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Mobile overlay when sidebar open */}
+      {/* Mobile overlay */}
       <div
         role="button"
         tabIndex={0}
@@ -83,27 +80,44 @@ export default function Layout() {
             <X size={20} />
           </button>
         </div>
-        {isAuth && <p className="text-muted text-xs px-5 pb-2 font-body hidden md:block">Harsh & Kirti</p>}
+        {isAuth && <p className="text-muted text-xs px-5 pb-2 font-body hidden md:block">Harsh &amp; Kirti</p>}
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navItems.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === '/'}
-              className={navLinkClass}
-              onClick={closeSidebar}
-            >
+          {/* Public tabs — always accessible */}
+          {PUBLIC_NAV.map(({ to, icon: Icon, label }) => (
+            <NavLink key={to} to={to} className={navLinkClass} onClick={closeSidebar}>
               <Icon size={18} />
               {label}
             </NavLink>
           ))}
 
-          {!isAuth && (
-            <div className="pt-2 border-t border-border mt-2">
-              <p className="text-muted text-xs px-3 pb-2">Sign in to access portfolio, investments & more.</p>
-            </div>
-          )}
+          {/* Divider */}
+          <div className="pt-2 pb-1">
+            <div className="border-t border-border" />
+          </div>
+
+          {/* Private tabs — visible always, show login prompt when not authed */}
+          {PRIVATE_NAV.map(({ to, icon: Icon, label }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === '/'}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-body transition-all min-h-[44px] ${
+                  isActive
+                    ? 'bg-accent/10 text-accent border border-accent/20'
+                    : isAuth
+                    ? 'text-soft hover:text-white hover:bg-card'
+                    : 'text-muted hover:text-soft hover:bg-card/50'
+                }`
+              }
+              onClick={closeSidebar}
+            >
+              <Icon size={18} />
+              <span className="flex-1">{label}</span>
+              {!isAuth && <Lock size={12} className="text-muted shrink-0" />}
+            </NavLink>
+          ))}
         </nav>
 
         <div className="px-3 py-4 border-t border-border">
@@ -117,7 +131,7 @@ export default function Layout() {
             </button>
           ) : (
             <button
-              onClick={handleLogin}
+              onClick={() => { navigate('/'); closeSidebar(); }}
               className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-soft hover:text-accent hover:bg-accent/5 transition-all w-full min-h-[44px]"
             >
               <LogIn size={18} />
@@ -146,7 +160,7 @@ export default function Layout() {
           </div>
           {!isAuth && (
             <button
-              onClick={handleLogin}
+              onClick={() => navigate('/')}
               className="text-accent text-sm font-medium hover:underline"
             >
               Sign In
@@ -154,7 +168,7 @@ export default function Layout() {
           )}
         </header>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-ink">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-ink flex flex-col">
           <Outlet />
         </main>
       </div>
