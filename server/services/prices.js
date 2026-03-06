@@ -2,6 +2,16 @@
  * Maps instrument IDs (Trade Ideas + Stock Trade) to Yahoo Finance symbols.
  * Prices from Yahoo Finance (trusted financial data source).
  */
+
+// Single shared instance — suppresses the Node version notice after first load
+let _yf = null;
+function getYf() {
+  if (!_yf) {
+    const YahooFinance = require('yahoo-finance2').default;
+    _yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+  }
+  return _yf;
+}
 const TRADE_SYMBOLS = {
   // Indian indices (NSE)
   nifty50: '^NSEI',
@@ -50,8 +60,7 @@ async function getPriceData(instrumentId) {
   if (!symbol) return null; // never null now, kept for safety
 
   try {
-    const YahooFinance = require('yahoo-finance2').default;
-    const yf = new YahooFinance();
+    const yf = getYf();
 
     const [quote, chartResult] = await Promise.all([
       yf.quote(symbol),
@@ -126,8 +135,7 @@ async function getPriceHistory(instrumentId, range = '1m') {
   const interval = range === '5y' ? '1wk' : '1d';
 
   try {
-    const YahooFinance = require('yahoo-finance2').default;
-    const yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+    const yf = getYf();
 
     const chartResult = await yf.chart(symbol, {
       period1,
@@ -158,8 +166,7 @@ async function getPriceHistory(instrumentId, range = '1m') {
 async function searchStocks(query) {
   if (!query || query.length < 1) return [];
   try {
-    const YahooFinance = require('yahoo-finance2').default;
-    const yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+    const yf = getYf();
 
     const result = await yf.search(query, { newsCount: 0, quotesCount: 20 });
     const quotes = result?.quotes || [];
