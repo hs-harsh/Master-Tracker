@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, AreaChart, Area } from 'recharts';
 import api from '../lib/api';
 import { Loader2, RefreshCw, BarChart3, FileText, X, TrendingUp } from 'lucide-react';
+import PriceChartCard from '../components/PriceChartCard';
 
 const STOCK_GROUPS = [
   {
@@ -250,9 +251,6 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }
 function ReportModal({ instrument, parsed, onClose }) {
   const screening = parsed?.screening || {};
   const alloc = parsed?.oneLakhAllocation || {};
-  const chartData = parsed?.recentCloses?.length
-    ? parsed.recentCloses.map((v, i) => ({ session: i + 1, close: toNum(v) ?? 0 })).filter((d) => d.close > 0)
-    : [];
   const supportLevels = (parsed?.supportLevels || []).map(toNum).filter((n) => n != null);
   const resistanceLevels = (parsed?.resistanceLevels || []).map(toNum).filter((n) => n != null);
   const buyLevels = (parsed?.buyTheDipLevels || []).map((b) => toNum(b.level)).filter((n) => n != null);
@@ -378,44 +376,14 @@ function ReportModal({ instrument, parsed, onClose }) {
             </div>
           )}
 
-          {chartData.length > 0 && (
-            <div className="card">
-              <p className="stat-label mb-3">Price (last 21 sessions)</p>
-              <div className="h-[200px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 12, right: 12, left: 12, bottom: 8 }}>
-                    <defs>
-                      <linearGradient id={`fill-modal-stock-${instrument.id}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.5} />
-                        <stop offset="100%" stopColor="#2dd4bf" stopOpacity={0.08} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="session" tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                    <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => v.toLocaleString('en-IN')} />
-                    <Tooltip
-                      contentStyle={{
-                        background: '#ffffff',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: 8,
-                        fontSize: 13,
-                        color: '#0f172a',
-                        padding: '12px 16px',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-                      }}
-                      labelStyle={{ color: '#0f172a', fontWeight: 600 }}
-                      itemStyle={{ color: '#0f172a' }}
-                      formatter={(v) => [Number(v).toLocaleString('en-IN'), 'Close']}
-                      labelFormatter={(l) => `Session ${l}`}
-                    />
-                    {supportLevels.map((l, i) => <ReferenceLine key={i} y={l} stroke="#10b981" strokeWidth={2} strokeDasharray="4 4" />)}
-                    {resistanceLevels.map((l, i) => <ReferenceLine key={i} y={l} stroke="#f97316" strokeWidth={2} strokeDasharray="4 4" />)}
-                    {buyLevels.map((l, i) => <ReferenceLine key={i} y={l} stroke="#f0c040" strokeWidth={2} />)}
-                    <Area type="monotone" dataKey="close" stroke="#2dd4bf" strokeWidth={2.5} fill={`url(#fill-modal-stock-${instrument.id})`} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
+          <PriceChartCard
+            instrumentId={instrument.id}
+            fallbackCloses={parsed?.recentCloses || []}
+            supportLevels={supportLevels}
+            resistanceLevels={resistanceLevels}
+            buyLevels={buyLevels}
+            title="Price chart"
+          />
 
           {(supportLevels.length > 0 || resistanceLevels.length > 0 || buyLevels.length > 0) && (
             <div className="card">

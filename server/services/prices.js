@@ -100,4 +100,54 @@ async function getPriceData(instrumentId) {
   }
 }
 
-module.exports = { getPriceData, getSymbol, ALL_SYMBOLS };
+/**
+ * Fetch historical close data from Yahoo Finance for a specific time range.
+ * @param {string} instrumentId
+ * @param {'1m'|'6m'|'ytd'|'1y'|'5y'} range
+ * @returns {Promise<Array<{date:string, close:number}> | null>}
+ */
+async function getPriceHistory(instrumentId, range = '1m') {
+  const symbol = getSymbol(instrumentId);
+  if (!symbol) return null;
+
+  const now = new Date();
+  let period1;
+  switch (range) {
+    case '1m':  period1 = new Date(now - 30  * 24 * 60 * 60 * 1000); break;
+    case '6m':  period1 = new Date(now - 183 * 24 * 60 * 60 * 1000); break;
+    case 'ytd': period1 = new Date(now.getFullYear(), 0, 1);          break;
+    case '1y':  period1 = new Date(now - 365 * 24 * 60 * 60 * 1000); break;
+    case '5y':  period1 = new Date(now - 5 * 365 * 24 * 60 * 60 * 1000); break;
+    default:    period1 = new Date(now - 30  * 24 * 60 * 60 * 1000);
+  }
+
+  // Use weekly interval for 5y to keep data size manageable
+  const interval = range === '5y' ? '1wk' : '1d';
+
+  try {
+    const YahooFinance = require('yahoo-finance2').default;
+    const yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+
+    const chartResult = await yf.chart(symbol, {
+      period1,
+      period2: now,
+      interval,
+    });
+
+    if (!chartResult?.quotes?.length) return [];
+
+    return chartResult.quotes
+      .filter((q) => q.close != null && q.date != null)
+      .map((q) => ({
+        date: q.date instanceof Date
+          ? q.date.toISOString().split('T')[0]
+          : String(q.date).split('T')[0],
+        close: Math.round(q.close * 100) / 100,
+      }));
+  } catch (err) {
+    console.error('[prices history]', symbol, range, err.message);
+    return null;
+  }
+}
+
+module.exports = { getPriceData, getPriceHistory, getSymbol, ALL_SYMBOLS };
