@@ -138,11 +138,13 @@ async function seedRegularExpenses() {
 
 async function seedUser() {
   const bcrypt = require('bcryptjs');
-  const hash = await bcrypt.hash(process.env.APP_PASSWORD || 'harsh_kirti_2024', 10);
+  const username = process.env.APP_USERNAME || 'hskv';
+  const password = process.env.APP_PASSWORD || 'hskv@2250';
+  const hash = await bcrypt.hash(password, 10);
   await pool.query(`
-    INSERT INTO users (username, password_hash) VALUES ($1, $2) ON CONFLICT DO NOTHING
-  `, ['admin', hash]);
-  console.log('✅ Seeded admin user');
+    INSERT INTO users (username, password_hash) VALUES ($1, $2) ON CONFLICT (username) DO UPDATE SET password_hash = $2
+  `, [username, hash]);
+  console.log('✅ Seeded login user:', username);
 }
 
 async function main() {
