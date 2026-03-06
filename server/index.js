@@ -23,17 +23,10 @@ app.use('/api/portfolio', require('./routes/portfolio'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/chat', require('./routes/finsight'));
 
-// FinSight — serve from sibling project if present
-const finsightPath = path.join(__dirname, '../../FinSight/public');
-if (fs.existsSync(finsightPath)) {
-  app.use('/finsight', express.static(finsightPath));
-  app.get('/finsight', (req, res) => res.sendFile(path.join(finsightPath, 'index.html')));
-} else {
-  app.get('/finsight', (req, res) => res.type('html').send(
-    '<!DOCTYPE html><html><body style="font-family:sans-serif;padding:2rem;color:#666">' +
-    '<h2>FinSight</h2><p>Place the FinSight project at <code>Projects/FinSight</code> (sibling to investment-tracker) to use the household finance analyzer.</p></body></html>'
-  ));
-}
+// FinSight — serve from server/public/finsight (copied from FinSight project)
+const finsightPath = path.join(__dirname, 'public', 'finsight');
+app.use('/finsight', express.static(finsightPath));
+app.get('/finsight', (req, res) => res.sendFile(path.join(finsightPath, 'index.html')));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
