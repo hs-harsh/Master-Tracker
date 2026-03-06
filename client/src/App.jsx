@@ -7,7 +7,6 @@ import Cashflow from './pages/Cashflow';
 import Transactions from './pages/Transactions';
 import Portfolio from './pages/Portfolio';
 import Investments from './pages/Investments';
-import FinSight from './pages/FinSight';
 import ExpenseAnalyser from './pages/ExpenseAnalyser';
 import Settings from './pages/Settings';
 
@@ -28,7 +27,6 @@ export default function App() {
             <Route path="investments" element={<Investments />} />
             <Route path="cashflow" element={<Cashflow />} />
             <Route path="transactions" element={<Transactions />} />
-            <Route path="finsight" element={<FinSight />} />
             <Route path="expense-analyser" element={<ExpenseAnalyser />} />
             <Route path="settings" element={<Settings />} />
           </Route>

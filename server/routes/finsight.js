@@ -9,11 +9,11 @@ async function getSetting(key) {
   return (rows[0]?.value ?? '').trim();
 }
 
-// POST /api/chat — proxy for Expense Tracker (Anthropic Claude)
+// POST /api/chat — proxy for Expense Analyser (Anthropic Claude)
 router.post('/', async (req, res) => {
   const key = (await getSetting('anthropic_api_key')) || process.env.ANTHROPIC_API_KEY || '';
   if (!key) {
-    return res.status(500).json({ error: 'Anthropic API key not set. Add it in Settings → Expense Tracker (or set ANTHROPIC_API_KEY in .env).' });
+    return res.status(500).json({ error: 'Anthropic API key not set. Add it in Settings → Expense Analyser (or set ANTHROPIC_API_KEY in .env).' });
   }
 
   const body = { ...req.body, model: MODEL };

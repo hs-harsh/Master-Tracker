@@ -211,11 +211,11 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Expense Tracker (Anthropic API key) */}
+      {/* Expense Analyser (Anthropic API key) */}
       <div className="card max-w-2xl">
-        <h2 className="font-display font-bold text-white mb-2">Expense Tracker (AI)</h2>
+        <h2 className="font-display font-bold text-white mb-2">Expense Analyser (AI)</h2>
         <p className="text-sm text-soft mb-4">
-          Required for the <strong>Expense Tracker</strong> tab to analyze PDF statements with Claude. Get a key at <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">console.anthropic.com</a>. The key is stored only on this server and never shown again.
+          Required for the <strong>Expense Analyser</strong> tab to analyze PDF statements with Claude. Get a key at <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">console.anthropic.com</a>. The key is stored only on this server and never shown again.
         </p>
         <div>
           <label className="label">Anthropic API key</label>
