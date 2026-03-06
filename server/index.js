@@ -23,7 +23,7 @@ app.use('/api/portfolio', require('./routes/portfolio'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/chat', require('./routes/finsight'));
 
-// FinSight — serve from server/public/finsight (copied from FinSight project)
+// Expense Tracker (finsight) — serve from server/public/finsight
 const finsightPath = path.join(__dirname, 'public', 'finsight');
 app.use('/finsight', express.static(finsightPath));
 app.get('/finsight', (req, res) => res.sendFile(path.join(finsightPath, 'index.html')));

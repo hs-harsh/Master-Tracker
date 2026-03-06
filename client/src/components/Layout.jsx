@@ -12,7 +12,7 @@ const NAV = [
   { to: '/investments', icon: Briefcase, label: 'Investments' },
   { to: '/cashflow', icon: TrendingUp, label: 'Cashflow' },
   { to: '/transactions', icon: Receipt, label: 'Transactions' },
-  { to: '/finsight', icon: FileBarChart, label: 'FinSight' },
+  { to: '/finsight', icon: FileBarChart, label: 'Expense Tracker' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

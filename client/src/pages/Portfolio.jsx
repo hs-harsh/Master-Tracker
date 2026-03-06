@@ -178,23 +178,21 @@ export default function Portfolio() {
         </div>
       </div>
 
-      {/* Summary + charts */}
-      <div className="grid grid-cols-3 gap-4">
-        {/* Total value */}
-        <div className="card col-span-1 flex flex-col justify-between">
-          <div>
-            <p className="stat-label">Net Invested (₹)</p>
-            <p className="font-mono text-2xl font-medium text-accent mt-2">
-              {fmt(totalNet)}
-            </p>
-            <p className="text-muted text-xs mt-1">
-              {aggregated.length} position{aggregated.length !== 1 ? 's' : ''}
-              {goalFilter ? ` · ${goalFilter}` : ''}
-              {brokerFilter ? ` · ${brokerFilter}` : ''}
-            </p>
-          </div>
+      {/* Net invested — horizontal ribbon */}
+      <div className="rounded-xl bg-accent/10 border border-accent/20 px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-baseline gap-3">
+          <span className="stat-label text-muted">Net Invested (₹)</span>
+          <span className="font-mono text-2xl font-bold text-accent">{fmt(totalNet)}</span>
         </div>
+        <p className="text-muted text-xs">
+          {aggregated.length} position{aggregated.length !== 1 ? 's' : ''}
+          {goalFilter ? ` · ${goalFilter}` : ''}
+          {brokerFilter ? ` · ${brokerFilter}` : ''}
+        </p>
+      </div>
 
+      {/* Three charts in one row: Risk, Asset, Broker */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Risk pie */}
         <div className="card">
           <p className="stat-label mb-3">Risk Mix</p>
@@ -232,9 +230,14 @@ export default function Portfolio() {
                   fontSize: 12,
                   color: '#e5e7eb',
                 }}
-                labelStyle={{ color: '#e5e7eb' }}
-                itemStyle={{ color: '#e5e7eb' }}
-                formatter={v => [fmt(v), '']}
+                formatter={(value, name) => [fmt(value), name || 'Amount']}
+                content={({ active, payload }) =>
+                  active && payload?.[0] ? (
+                    <div style={{ padding: '6px 10px', background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}>
+                      <strong>{payload[0].name}</strong>: {fmt(payload[0].value)}
+                    </div>
+                  ) : null
+                }
               />
             </PieChart>
           </ResponsiveContainer>
@@ -243,7 +246,7 @@ export default function Portfolio() {
         {/* Asset bar */}
         <div className="card">
           <p className="stat-label mb-3">By Asset Class (₹L)</p>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={200}>
             <BarChart data={assetBar} margin={{ top: 4, right: 4, bottom: 20, left: 0 }}>
               <XAxis
                 dataKey="name"
@@ -264,9 +267,13 @@ export default function Portfolio() {
                   fontSize: 12,
                   color: '#e5e7eb',
                 }}
-                labelStyle={{ color: '#e5e7eb' }}
-                itemStyle={{ color: '#e5e7eb' }}
-                formatter={v => [`${Number(v).toFixed(2)}L`, '']}
+                content={({ active, payload }) =>
+                  active && payload?.[0] ? (
+                    <div style={{ padding: '6px 10px', background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}>
+                      <strong>{payload[0].payload?.name ?? 'Value'}</strong>: {Number(payload[0].value).toFixed(2)} L
+                    </div>
+                  ) : null
+                }
               />
               <Bar dataKey="ValueL" radius={[3, 3, 0, 0]}>
                 {assetBar.map(d => (
@@ -279,47 +286,53 @@ export default function Portfolio() {
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
 
-      {/* By Broker (bifurcation) */}
-      {brokerPie.length > 0 && (
+        {/* By Broker */}
         <div className="card">
           <p className="stat-label mb-3">By Broker Account</p>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie
-                data={brokerPie}
-                cx="50%"
-                cy="50%"
-                innerRadius={40}
-                outerRadius={65}
-                dataKey="value"
-                nameKey="name"
-                strokeWidth={0}
-              >
-                {brokerPie.map((d, i) => (
-                  <Cell key={d.name} fill={BROKER_COLORS[i % BROKER_COLORS.length]} />
-                ))}
-              </Pie>
-              <Legend
-                layout="horizontal"
-                align="center"
-                verticalAlign="bottom"
-                formatter={(value) => <span style={{ color: '#e5e7eb', fontSize: 11 }}>{value}</span>}
-                iconType="circle"
-                iconSize={6}
-                wrapperStyle={{ paddingTop: 6 }}
-              />
-              <Tooltip
-                contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}
-                labelStyle={{ color: '#e5e7eb' }}
-                itemStyle={{ color: '#e5e7eb' }}
-                formatter={v => [fmt(v), '']}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+          {brokerPie.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie
+                  data={brokerPie}
+                  cx="50%"
+                  cy="45%"
+                  innerRadius={40}
+                  outerRadius={65}
+                  dataKey="value"
+                  nameKey="name"
+                  strokeWidth={0}
+                >
+                  {brokerPie.map((d, i) => (
+                    <Cell key={d.name} fill={BROKER_COLORS[i % BROKER_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Legend
+                  layout="horizontal"
+                  align="center"
+                  verticalAlign="bottom"
+                  formatter={(value) => <span style={{ color: '#e5e7eb', fontSize: 11 }}>{value}</span>}
+                  iconType="circle"
+                  iconSize={6}
+                  wrapperStyle={{ paddingTop: 6 }}
+                />
+                <Tooltip
+                  contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}
+                  content={({ active, payload }) =>
+                    active && payload?.[0] ? (
+                      <div style={{ padding: '6px 10px', background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}>
+                        <strong>{payload[0].name}</strong>: {fmt(payload[0].value)}
+                      </div>
+                    ) : null
+                  }
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-[200px] text-muted text-sm">No broker data</div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Aggregated net positions (goal, account, asset, instrument, broker) */}
       <div className="card overflow-hidden">

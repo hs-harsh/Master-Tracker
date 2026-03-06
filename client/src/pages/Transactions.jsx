@@ -131,18 +131,19 @@ export default function Transactions() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="font-display text-2xl font-bold text-white">Transactions</h1>
           <p className="text-muted text-sm mt-0.5">All income, major, non-recurring & trip expenses</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-4 flex-wrap">
           {sheetUrl && (
-            <a href={sheetUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost flex items-center gap-2" title="Open Google Sheet">
+            <a href={sheetUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:text-accent/80 flex items-center gap-2 text-sm font-medium border-b border-accent/40 pb-0.5" title="Open Google Sheet">
               <ExternalLink size={14} />
               Open sheet
             </a>
           )}
+          <div className="flex gap-2 border-l border-border pl-4">
           <button
             onClick={handleSync}
             disabled={syncing}
@@ -155,6 +156,7 @@ export default function Transactions() {
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
             <Plus size={14} /> Add Transaction
           </button>
+          </div>
         </div>
       </div>
 
