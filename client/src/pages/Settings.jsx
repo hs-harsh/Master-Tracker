@@ -27,6 +27,9 @@ export default function Settings() {
   const [accent, setAccent] = useState('gold');
   const [currencyDisplay, setCurrencyDisplay] = useState('INR');
   const [dashboardDefaultProfile, setDashboardDefaultProfile] = useState('Both');
+  const [anthropicApiKeySet, setAnthropicApiKeySet] = useState(false);
+  const [anthropicApiKeyInput, setAnthropicApiKeyInput] = useState('');
+  const [anthropicApiKeyTouched, setAnthropicApiKeyTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(null);
 
@@ -42,6 +45,7 @@ export default function Settings() {
       setAccent(d.accent || 'gold');
       setCurrencyDisplay(d.currencyDisplay || 'INR');
       setDashboardDefaultProfile(d.dashboardDefaultProfile || 'Both');
+      setAnthropicApiKeySet(!!d.anthropicApiKeySet);
       applyTheme(d.themeMode || 'dark', d.accent || 'gold');
     }).catch(() => {});
   };
@@ -51,7 +55,7 @@ export default function Settings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.put('/settings', {
+      const body = {
         sheetUrlTransactions: sheetUrlTransactions.trim(),
         sheetUrlInvestments: sheetUrlInvestments.trim(),
         defaultIdealSaving: Number(defaultIdealSaving) || 0,
@@ -61,7 +65,11 @@ export default function Settings() {
         accent,
         currencyDisplay,
         dashboardDefaultProfile,
-      });
+      };
+      if (anthropicApiKeyTouched) body.anthropicApiKey = anthropicApiKeyInput.trim();
+      await api.put('/settings', body);
+      setAnthropicApiKeyTouched(false);
+      setAnthropicApiKeyInput('');
       applyTheme(themeMode, accent);
       load();
     } catch (e) {
@@ -190,6 +198,26 @@ export default function Settings() {
               {DASHBOARD_PROFILES.map(p => <option key={p}>{p}</option>)}
             </select>
           </div>
+        </div>
+      </div>
+
+      {/* FinSight (Anthropic API key) */}
+      <div className="card max-w-2xl">
+        <h2 className="font-display font-bold text-white mb-2">FinSight (AI)</h2>
+        <p className="text-sm text-soft mb-4">
+          Required for the <strong>FinSight</strong> tab to analyze PDF statements with Claude. Get a key at <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">console.anthropic.com</a>. The key is stored only on this server and never shown again.
+        </p>
+        <div>
+          <label className="label">Anthropic API key</label>
+          <input
+            type="password"
+            className="input w-full max-w-md"
+            placeholder={anthropicApiKeySet ? '•••••••• (enter new key to change)' : 'sk-ant-...'}
+            value={anthropicApiKeyInput}
+            onChange={e => { setAnthropicApiKeyInput(e.target.value); setAnthropicApiKeyTouched(true); }}
+            autoComplete="off"
+          />
+          {anthropicApiKeySet && !anthropicApiKeyTouched && <p className="text-xs text-muted mt-1">Key is set. Enter a new value above to change, then Save.</p>}
         </div>
       </div>
 

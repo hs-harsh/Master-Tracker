@@ -18,6 +18,7 @@ const SETTINGS_KEYS = {
   accent: 'accent',
   currencyDisplay: 'currency_display',
   dashboardDefaultProfile: 'dashboard_default_profile',
+  anthropicApiKey: 'anthropic_api_key',
 };
 
 async function getSetting(key) {
@@ -58,6 +59,7 @@ router.get('/', auth, async (req, res) => {
     const accent = await getSetting(SETTINGS_KEYS.accent);
     const currencyDisplay = await getSetting(SETTINGS_KEYS.currencyDisplay);
     const dashboardDefaultProfile = await getSetting(SETTINGS_KEYS.dashboardDefaultProfile);
+    const anthropicApiKey = await getSetting(SETTINGS_KEYS.anthropicApiKey);
     res.json({
       sheetUrlTransactions,
       sheetUrlInvestments,
@@ -69,6 +71,7 @@ router.get('/', auth, async (req, res) => {
       accent: accent || 'gold',
       currencyDisplay: currencyDisplay || 'INR',
       dashboardDefaultProfile: dashboardDefaultProfile || 'Both',
+      anthropicApiKeySet: !!anthropicApiKey.trim(),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -125,6 +128,10 @@ router.put('/', auth, async (req, res) => {
       const v = ['Harsh', 'Kirti', 'Both'].includes(body.dashboardDefaultProfile) ? body.dashboardDefaultProfile : 'Both';
       await setSetting(SETTINGS_KEYS.dashboardDefaultProfile, v);
     }
+    if (body.anthropicApiKey !== undefined) {
+      const v = typeof body.anthropicApiKey === 'string' ? body.anthropicApiKey.trim() : '';
+      await setSetting(SETTINGS_KEYS.anthropicApiKey, v);
+    }
     const sheetUrlTransactions = await getSetting(SETTINGS_KEYS.sheetUrlTransactions);
     const sheetUrlInvestments = await getSetting(SETTINGS_KEYS.sheetUrlInvestments);
     const defaultIdealSaving = await getSetting(SETTINGS_KEYS.defaultIdealSaving);
@@ -135,6 +142,7 @@ router.put('/', auth, async (req, res) => {
     const accent = await getSetting(SETTINGS_KEYS.accent);
     const currencyDisplay = await getSetting(SETTINGS_KEYS.currencyDisplay);
     const dashboardDefaultProfile = await getSetting(SETTINGS_KEYS.dashboardDefaultProfile);
+    const anthropicApiKey = await getSetting(SETTINGS_KEYS.anthropicApiKey);
     res.json({
       sheetUrlTransactions,
       sheetUrlInvestments,
@@ -146,6 +154,7 @@ router.put('/', auth, async (req, res) => {
       accent: accent || 'gold',
       currencyDisplay: currencyDisplay || 'INR',
       dashboardDefaultProfile: dashboardDefaultProfile || 'Both',
+      anthropicApiKeySet: !!anthropicApiKey.trim(),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
