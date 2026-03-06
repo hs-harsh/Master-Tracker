@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Legend } from 'recharts';
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 
@@ -28,6 +28,7 @@ export default function Portfolio() {
   const [loading, setLoading] = useState(true);
   const [person, setPerson] = useState('Harsh');
   const [goalFilter, setGoalFilter] = useState('');
+  const [brokerFilter, setBrokerFilter] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -47,10 +48,30 @@ export default function Portfolio() {
     () => Array.from(new Set(data.map(d => d.goal))).sort(),
     [data]
   );
+  const brokers = useMemo(
+    () => Array.from(new Set(data.map(d => d.broker || '').filter(Boolean))).sort(),
+    [data]
+  );
 
-  const goalInvestments = goalFilter
-    ? data.filter(d => d.goal === goalFilter)
-    : data;
+  const goalInvestments = useMemo(() => {
+    let list = data;
+    if (goalFilter) list = list.filter(d => d.goal === goalFilter);
+    if (brokerFilter) list = list.filter(d => (d.broker || '') === brokerFilter);
+    return list;
+  }, [data, goalFilter, brokerFilter]);
+
+  // Aggregated net positions: same goal, account, asset_class, instrument, broker → one row with net amount
+  const aggregated = useMemo(() => {
+    const map = {};
+    goalInvestments.forEach(inv => {
+      const key = `${inv.goal}|${inv.account}|${inv.asset_class}|${inv.instrument}|${inv.broker || ''}`;
+      if (!map[key]) {
+        map[key] = { goal: inv.goal, account: inv.account, asset_class: inv.asset_class, instrument: inv.instrument, broker: inv.broker || '—', net: 0 };
+      }
+      map[key].net += inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount);
+    });
+    return Object.values(map).filter(r => r.net !== 0).sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+  }, [goalInvestments]);
 
   const totalNet = goalInvestments.reduce(
     (sum, inv) => sum + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)),
@@ -81,6 +102,21 @@ export default function Portfolio() {
     name,
     ValueL: value / 100000,
   }));
+
+  const brokerBuckets = goalInvestments.reduce(
+    (acc, inv) => {
+      const broker = inv.broker || '—';
+      const signed = inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount);
+      acc[broker] = (acc[broker] || 0) + signed;
+      return acc;
+    },
+    {}
+  );
+  const brokerPie = Object.entries(brokerBuckets)
+    .filter(([, v]) => v !== 0)
+    .map(([name, value]) => ({ name, value }));
+
+  const BROKER_COLORS = ['#2dd4bf', '#f0c040', '#60a5fa', '#a78bfa', '#fb7185', '#34d399', '#f97316', '#6b7280'];
 
   return (
     <div className="p-6 space-y-6">
@@ -122,6 +158,20 @@ export default function Portfolio() {
               ))}
             </select>
           </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="portfolio-broker" className="text-muted text-xs uppercase tracking-wider">Broker</label>
+            <select
+              id="portfolio-broker"
+              value={brokerFilter}
+              onChange={e => setBrokerFilter(e.target.value)}
+              className="input py-2 text-sm min-w-[140px]"
+            >
+              <option value="">All brokers</option>
+              {brokers.map(b => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
+          </div>
           {goals.length === 0 && (
             <span className="text-muted text-xs">Add investments with goals to see portfolio.</span>
           )}
@@ -138,8 +188,9 @@ export default function Portfolio() {
               {fmt(totalNet)}
             </p>
             <p className="text-muted text-xs mt-1">
-              {goalInvestments.length} investment{goalInvestments.length !== 1 ? 's' : ''}
-              {goalFilter ? ` for ${goalFilter}` : ''}
+              {aggregated.length} position{aggregated.length !== 1 ? 's' : ''}
+              {goalFilter ? ` · ${goalFilter}` : ''}
+              {brokerFilter ? ` · ${brokerFilter}` : ''}
             </p>
           </div>
         </div>
@@ -147,21 +198,32 @@ export default function Portfolio() {
         {/* Risk pie */}
         <div className="card">
           <p className="stat-label mb-3">Risk Mix</p>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={200}>
             <PieChart>
               <Pie
                 data={riskPie}
                 cx="50%"
-                cy="50%"
+                cy="45%"
                 innerRadius={45}
                 outerRadius={70}
                 dataKey="value"
+                nameKey="name"
                 strokeWidth={0}
+                labelLine={false}
               >
                 {riskPie.map(d => (
                   <Cell key={d.name} fill={RISK_COLORS[d.name] || '#9ca3af'} />
                 ))}
               </Pie>
+              <Legend
+                layout="horizontal"
+                align="center"
+                verticalAlign="bottom"
+                formatter={(value) => <span style={{ color: '#e5e7eb', fontSize: 12 }}>{value}</span>}
+                iconType="circle"
+                iconSize={8}
+                wrapperStyle={{ paddingTop: 8 }}
+              />
               <Tooltip
                 contentStyle={{
                   background: '#1e2330',
@@ -219,13 +281,54 @@ export default function Portfolio() {
         </div>
       </div>
 
-      {/* Investments for goal */}
+      {/* By Broker (bifurcation) */}
+      {brokerPie.length > 0 && (
+        <div className="card">
+          <p className="stat-label mb-3">By Broker Account</p>
+          <ResponsiveContainer width="100%" height={180}>
+            <PieChart>
+              <Pie
+                data={brokerPie}
+                cx="50%"
+                cy="50%"
+                innerRadius={40}
+                outerRadius={65}
+                dataKey="value"
+                nameKey="name"
+                strokeWidth={0}
+              >
+                {brokerPie.map((d, i) => (
+                  <Cell key={d.name} fill={BROKER_COLORS[i % BROKER_COLORS.length]} />
+                ))}
+              </Pie>
+              <Legend
+                layout="horizontal"
+                align="center"
+                verticalAlign="bottom"
+                formatter={(value) => <span style={{ color: '#e5e7eb', fontSize: 11 }}>{value}</span>}
+                iconType="circle"
+                iconSize={6}
+                wrapperStyle={{ paddingTop: 6 }}
+              />
+              <Tooltip
+                contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}
+                labelStyle={{ color: '#e5e7eb' }}
+                itemStyle={{ color: '#e5e7eb' }}
+                formatter={v => [fmt(v), '']}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Aggregated net positions (goal, account, asset, instrument, broker) */}
       <div className="card overflow-hidden">
+        <p className="text-muted text-xs mb-3">Net position per goal, account, asset, instrument & broker (BUY − SELL aggregated)</p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                {['Date', 'Goal', 'Asset Class', 'Instrument', 'Side', 'Amount', 'Broker'].map(
+                {['Goal', 'Account', 'Asset Class', 'Instrument', 'Broker', 'Net (₹)'].map(
                   h => (
                     <th
                       key={h}
@@ -240,52 +343,29 @@ export default function Portfolio() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="py-8 text-center text-muted font-mono text-sm animate-pulse"
-                  >
+                  <td colSpan={6} className="py-8 text-center text-muted font-mono text-sm animate-pulse">
                     Loading…
                   </td>
                 </tr>
-              ) : goalInvestments.length === 0 ? (
+              ) : aggregated.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-muted">
-                    {goalFilter ? `No investments for ${goalFilter} yet` : 'No investments yet'}
+                  <td colSpan={6} className="py-8 text-center text-muted">
+                    {goalFilter || brokerFilter ? 'No positions for this filter' : 'No investments yet'}
                   </td>
                 </tr>
               ) : (
-                goalInvestments.map(inv => (
-                  <tr
-                    key={inv.id}
-                    className="border-b border-border/40 hover:bg-surface/40 transition-colors"
-                  >
-                    <td className="py-3 px-4 text-xs text-soft font-mono">
-                      {new Date(inv.date).toLocaleDateString('en-IN')}
-                    </td>
-                    <td className="py-3 px-4 text-xs text-soft">{inv.goal}</td>
+                aggregated.map((row, i) => (
+                  <tr key={i} className="border-b border-border/40 hover:bg-surface/40 transition-colors">
+                    <td className="py-3 px-4 text-xs text-soft">{row.goal}</td>
+                    <td className="py-3 px-4 text-xs text-soft">{row.account}</td>
                     <td className="py-3 px-4 text-xs">
-                      <span className="tag bg-card/60">{inv.asset_class}</span>
+                      <span className="tag bg-card/60">{row.asset_class}</span>
                     </td>
-                    <td className="py-3 px-4 text-xs text-soft max-w-xs truncate">
-                      {inv.instrument}
-                    </td>
-                    <td className="py-3 px-4 text-xs">
-                      <span
-                        className={`tag ${
-                          inv.side === 'BUY'
-                            ? 'bg-teal/10 text-teal'
-                            : 'bg-rose/10 text-rose'
-                        }`}
-                      >
-                        {inv.side}
-                      </span>
-                    </td>
+                    <td className="py-3 px-4 text-xs text-soft max-w-xs truncate">{row.instrument}</td>
+                    <td className="py-3 px-4 text-xs text-muted">{row.broker}</td>
                     <td className="py-3 px-4 font-mono text-soft">
-                      {inv.side === 'SELL' ? '-' : ''}
-                      {fmt(inv.amount)}
-                    </td>
-                    <td className="py-3 px-4 text-xs text-muted">
-                      {inv.broker || '—'}
+                      {row.net >= 0 ? '' : '−'}
+                      {fmt(Math.abs(row.net))}
                     </td>
                   </tr>
                 ))

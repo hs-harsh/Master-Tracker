@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, RefreshCw } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, RefreshCw, ExternalLink } from 'lucide-react';
 import SyncResultModal, { downloadBackupCsv } from '../components/SyncResultModal';
 
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
@@ -158,9 +158,13 @@ export default function Investments() {
   const [defaultAccount, setDefaultAccount] = useState('Harsh');
   const [syncResult, setSyncResult] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [sheetUrl, setSheetUrl] = useState('');
 
   useEffect(() => {
-    api.get('/settings').then(r => { if (r.data?.defaultAccount) setDefaultAccount(r.data.defaultAccount); }).catch(() => {});
+    api.get('/settings').then(r => {
+      if (r.data?.defaultAccount) setDefaultAccount(r.data.defaultAccount);
+      if (r.data?.sheetUrlInvestments) setSheetUrl(r.data.sheetUrlInvestments);
+    }).catch(() => {});
   }, []);
 
   const load = () => {
@@ -249,6 +253,12 @@ export default function Investments() {
           </p>
         </div>
         <div className="flex gap-2">
+          {sheetUrl && (
+            <a href={sheetUrl} target="_blank" rel="noopener noreferrer" className="btn-ghost flex items-center gap-2" title="Open Google Sheet">
+              <ExternalLink size={14} />
+              Open sheet
+            </a>
+          )}
           <button
             onClick={handleSync}
             disabled={syncing}
