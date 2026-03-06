@@ -100,6 +100,91 @@ async function callClaude(prompt) {
 
 const RISK_COLOR = { Low: 'text-green-400', Medium: 'text-amber-400', High: 'text-rose' };
 
+// Balanced ₹1 Lac portfolio across Indian equity, US equity, and Metal
+const BALANCED_ALLOCATION = {
+  total: 100000,
+  buckets: [
+    {
+      label: 'Indian Equity',
+      amount: 50000,
+      pct: 50,
+      color: '#2dd4bf',
+      instruments: [
+        { name: 'Nifty 50', amount: 25000, pct: 25 },
+        { name: 'Nifty Bank', amount: 12500, pct: 12.5 },
+        { name: 'Nifty IT', amount: 6250, pct: 6.25 },
+        { name: 'Nifty Pharma / FMCG / Auto', amount: 6250, pct: 6.25 },
+      ],
+      rationale: 'Core domestic exposure; diversify across broad index and sectors.',
+    },
+    {
+      label: 'US Equity',
+      amount: 30000,
+      pct: 30,
+      color: '#60a5fa',
+      instruments: [
+        { name: 'S&P 500 (SPY)', amount: 12000, pct: 12 },
+        { name: 'NASDAQ-100 (QQQ)', amount: 10500, pct: 10.5 },
+        { name: 'Russell 1000 (IWB)', amount: 7500, pct: 7.5 },
+      ],
+      rationale: 'Global diversification; large-cap US via ETFs.',
+    },
+    {
+      label: 'Metal',
+      amount: 20000,
+      pct: 20,
+      color: '#f0c040',
+      instruments: [
+        { name: 'Gold (MCX / ETF)', amount: 12000, pct: 12 },
+        { name: 'Silver (MCX / ETF)', amount: 8000, pct: 8 },
+      ],
+      rationale: 'Hedge and inflation protection; gold-heavy, silver for growth.',
+    },
+  ],
+};
+
+function BalancedPortfolioCard() {
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-display font-semibold text-white text-lg">Balanced portfolio — ₹1 Lac</h2>
+        <span className="font-mono text-accent font-bold">₹1,00,000</span>
+      </div>
+      <p className="text-muted text-sm mb-4">
+        Suggested split across Indian equity, US equity, and metal. Use the instrument ideas below to deploy at your chosen levels.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {BALANCED_ALLOCATION.buckets.map((b) => (
+          <div
+            key={b.label}
+            className="rounded-xl border border-border p-4"
+            style={{ borderLeftWidth: 4, borderLeftColor: b.color }}
+          >
+            <p className="font-semibold text-white">{b.label}</p>
+            <p className="font-mono text-lg mt-1" style={{ color: b.color }}>
+              ₹{b.amount.toLocaleString('en-IN')} <span className="text-muted text-sm font-normal">({b.pct}%)</span>
+            </p>
+            <p className="text-muted text-xs mt-2 mb-3">{b.rationale}</p>
+            <ul className="space-y-1.5 text-sm">
+              {b.instruments.map((inv, i) => (
+                <li key={i} className="flex justify-between text-soft">
+                  <span>{inv.name}</span>
+                  <span className="font-mono text-white">₹{inv.amount.toLocaleString('en-IN')}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-4 text-xs text-muted">
+        <span>Indian equity: core + sectoral</span>
+        <span>US: S&P 500, NASDAQ, Russell</span>
+        <span>Metal: Gold 60%, Silver 40%</span>
+      </div>
+    </div>
+  );
+}
+
 export default function Trade() {
   const [results, setResults] = useState({}); // id -> { parsed, raw }
   const [loading, setLoading] = useState(null); // id or 'all'
@@ -162,6 +247,8 @@ export default function Trade() {
           {error}
         </div>
       )}
+
+      <BalancedPortfolioCard />
 
       {INSTRUMENT_GROUPS.map((group) => (
         <div key={group.label} className="space-y-3">
