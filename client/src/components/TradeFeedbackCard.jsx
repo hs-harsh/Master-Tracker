@@ -4,7 +4,7 @@ import {
   CartesianGrid, Legend,
 } from 'recharts';
 import api from '../lib/api';
-import { MessageSquare, Loader2, BarChart3, TrendingUp } from 'lucide-react';
+import { MessageSquare, Loader2, BarChart3, TrendingUp, Plus, X } from 'lucide-react';
 
 const TRADE_INSTRUMENTS = [
   { id: 'nifty50', name: 'Nifty 50', ticker: 'NSE Nifty 50' },
@@ -226,33 +226,56 @@ function AllocationChart({ data }) {
   );
 }
 
+const defaultTradeRow = () => ({
+  mode: 'buy',
+  instrumentId: TRADE_INSTRUMENTS[0]?.id || '',
+  sellInstrument: '',
+  amount: '25000',
+});
+
 export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdings = [] }) {
-  const [mode, setMode] = useState('general');
+  const [activeTab, setActiveTab] = useState(0); // 0 = General, 1+ = Trade 1, 2, ...
   const [portfolioContext, setPortfolioContext] = useState(defaultPortfolioContext);
   const [years, setYears] = useState(10);
-  const [instrumentId, setInstrumentId] = useState(TRADE_INSTRUMENTS[0]?.id || '');
-  const [sellInstrument, setSellInstrument] = useState('');
-  const [amount, setAmount] = useState('25000');
+  const [tradeRows, setTradeRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [error, setError] = useState(null);
 
-  const instrument = TRADE_INSTRUMENTS.find((i) => i.id === instrumentId) || TRADE_INSTRUMENTS[0];
   const holdingsForSell = holdings.filter((h) => h.net > 0);
+  const isGeneral = activeTab === 0;
+  const currentRow = activeTab > 0 ? tradeRows[activeTab - 1] : null;
+
+  const addRow = () => {
+    setTradeRows((prev) => [...prev, defaultTradeRow()]);
+    setActiveTab(tradeRows.length + 1);
+  };
+
+  const removeRow = (idx) => {
+    setTradeRows((prev) => prev.filter((_, i) => i !== idx));
+    setActiveTab(Math.max(0, activeTab - (activeTab > idx ? 1 : 0)));
+  };
+
+  const updateRow = (idx, field, value) => {
+    setTradeRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (mode !== 'general') {
-      const amt = parseInt(amount, 10);
+    if (!isGeneral && currentRow) {
+      const amt = parseInt(currentRow.amount, 10);
       if (isNaN(amt) || amt <= 0) return;
-      if (mode === 'sell' && !sellInstrument) return;
+      if (currentRow.mode === 'sell' && !currentRow.sellInstrument) return;
     }
     setLoading(true);
     setError(null);
     setFeedback(null);
     try {
-      const inst = mode === 'sell' ? { name: sellInstrument, ticker: sellInstrument } : instrument;
-      const amt = mode === 'general' ? 0 : parseInt(amount, 10);
+      const mode = isGeneral ? 'general' : currentRow.mode;
+      const inst = isGeneral ? null : (currentRow.mode === 'sell'
+        ? { name: currentRow.sellInstrument, ticker: currentRow.sellInstrument }
+        : TRADE_INSTRUMENTS.find((i) => i.id === currentRow.instrumentId) || TRADE_INSTRUMENTS[0]);
+      const amt = isGeneral ? 0 : parseInt(currentRow.amount, 10);
       const prompt = buildPrompt(mode, portfolioContext, years, inst, amt, holdingsForSell);
       const res = await api.post('/chat', {
         model: 'claude-sonnet-4-20250514',
@@ -278,8 +301,49 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
         <h2 className="font-display font-semibold text-white text-lg">Portfolio feedback</h2>
       </div>
       <p className="text-muted text-sm mb-4">
-        Get insight on your portfolio, or feedback on a buy/sell. Charts show risk-return and allocation over 3–20 years.
+        0 rows = general insight. Add trade rows as tabs to get feedback on buy/sell.
       </p>
+
+      {/* Tabs: General + Trade 1, Trade 2, ... + Add */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => setActiveTab(0)}
+          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 0 ? 'bg-accent text-ink' : 'bg-surface text-soft hover:text-white'
+          }`}
+        >
+          General
+        </button>
+        {tradeRows.map((row, i) => (
+          <div key={i} className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab(i + 1)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === i + 1 ? 'bg-accent text-ink' : 'bg-surface text-soft hover:text-white'
+              }`}
+            >
+              Trade {i + 1}
+            </button>
+            <button
+              type="button"
+              onClick={() => removeRow(i)}
+              className="p-1.5 rounded text-muted hover:text-rose hover:bg-rose/10"
+              title="Remove"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={addRow}
+          className="px-3 py-2 rounded-lg text-sm font-medium bg-surface text-soft hover:text-white flex items-center gap-1"
+        >
+          <Plus size={14} /> Add trade
+        </button>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -300,63 +364,87 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
             rows={2}
           />
         </div>
-        <div>
-          <label className="label">Mode</label>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { id: 'general', label: 'General insight' },
-              { id: 'buy', label: 'Buy' },
-              { id: 'sell', label: 'Sell' },
-            ].map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setMode(m.id)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  mode === m.id ? 'bg-accent text-ink' : 'bg-surface text-soft hover:text-white'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        {mode === 'buy' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        {isGeneral ? (
+          <p className="text-muted text-sm">General insight: no trades. Analyze current holdings only.</p>
+        ) : currentRow && (
+          <div className="space-y-4 p-4 rounded-xl bg-surface/50 border border-border">
             <div>
-              <label className="label">Instrument</label>
-              <select className="input" value={instrumentId} onChange={(e) => setInstrumentId(e.target.value)}>
-                {TRADE_INSTRUMENTS.map((i) => (
-                  <option key={i.id} value={i.id}>{i.name}</option>
+              <label className="label">Mode</label>
+              <div className="flex gap-2">
+                {['buy', 'sell'].map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => updateRow(activeTab - 1, 'mode', m)}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium capitalize ${
+                      currentRow.mode === m ? 'bg-accent text-ink' : 'bg-card text-soft hover:text-white'
+                    }`}
+                  >
+                    {m}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
-            <div>
-              <label className="label">Amount (₹)</label>
-              <input type="number" className="input" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} />
-            </div>
+            {currentRow.mode === 'buy' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="label">Instrument</label>
+                  <select
+                    className="input"
+                    value={currentRow.instrumentId}
+                    onChange={(e) => updateRow(activeTab - 1, 'instrumentId', e.target.value)}
+                  >
+                    {TRADE_INSTRUMENTS.map((i) => (
+                      <option key={i.id} value={i.id}>{i.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Amount (₹)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    min={1}
+                    value={currentRow.amount}
+                    onChange={(e) => updateRow(activeTab - 1, 'amount', e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+            {currentRow.mode === 'sell' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="label">Sell from</label>
+                  <select
+                    className="input"
+                    value={currentRow.sellInstrument}
+                    onChange={(e) => updateRow(activeTab - 1, 'sellInstrument', e.target.value)}
+                  >
+                    <option value="">Select holding</option>
+                    {holdingsForSell.map((h, i) => (
+                      <option key={i} value={h.instrument}>{h.instrument} — ₹{h.net?.toLocaleString('en-IN')}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Amount (₹)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    min={1}
+                    value={currentRow.amount}
+                    onChange={(e) => updateRow(activeTab - 1, 'amount', e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
-        {mode === 'sell' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label">Sell from</label>
-              <select className="input" value={sellInstrument} onChange={(e) => setSellInstrument(e.target.value)}>
-                <option value="">Select holding</option>
-                {holdingsForSell.map((h, i) => (
-                  <option key={i} value={h.instrument}>{h.instrument} — ₹{h.net?.toLocaleString('en-IN')}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Amount (₹)</label>
-              <input type="number" className="input" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} />
-            </div>
-          </div>
-        )}
+
         <button type="submit" disabled={loading} className="btn-primary flex items-center gap-2">
           {loading ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />}
-          {loading ? 'Analyzing…' : mode === 'general' ? 'Get insight' : 'Get feedback'}
+          {loading ? 'Analyzing…' : isGeneral ? 'Get insight' : 'Get feedback'}
         </button>
       </form>
 
