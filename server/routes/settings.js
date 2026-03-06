@@ -11,6 +11,7 @@ const SIDES = ['BUY', 'SELL'];
 const SETTINGS_KEYS = {
   sheetUrlTransactions: 'sheet_url_transactions',
   sheetUrlInvestments: 'sheet_url_investments',
+  sheetUrl: 'sheet_url',
   defaultIdealSaving: 'default_ideal_saving',
   defaultIncome: 'default_income',
   defaultAccount: 'default_account',
@@ -51,6 +52,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const sheetUrlTransactions = await getSetting(SETTINGS_KEYS.sheetUrlTransactions);
     const sheetUrlInvestments = await getSetting(SETTINGS_KEYS.sheetUrlInvestments);
+    const sheetUrl = await getSetting(SETTINGS_KEYS.sheetUrl);
     const defaultIdealSaving = await getSetting(SETTINGS_KEYS.defaultIdealSaving);
     const defaultIncome = await getSetting(SETTINGS_KEYS.defaultIncome);
     const defaultAccount = await getSetting(SETTINGS_KEYS.defaultAccount);
@@ -63,6 +65,7 @@ router.get('/', auth, async (req, res) => {
     res.json({
       sheetUrlTransactions,
       sheetUrlInvestments,
+      sheetUrl,
       defaultIdealSaving: defaultIdealSaving ? parseInt(defaultIdealSaving, 10) : 100000,
       defaultIncome: defaultIncome ? parseInt(defaultIncome, 10) : 0,
       defaultAccount: defaultAccount || 'Harsh',
@@ -95,6 +98,13 @@ router.put('/', auth, async (req, res) => {
         return res.status(400).json({ error: 'Investments sheet URL must use https' });
       }
       await setSetting(SETTINGS_KEYS.sheetUrlInvestments, v);
+    }
+    if (body.sheetUrl !== undefined) {
+      const v = typeof body.sheetUrl === 'string' ? body.sheetUrl.trim() : '';
+      if (v && !v.startsWith('https://')) {
+        return res.status(400).json({ error: 'Sheet URL must use https' });
+      }
+      await setSetting(SETTINGS_KEYS.sheetUrl, v);
     }
     if (body.defaultIdealSaving !== undefined) {
       const v = Math.max(0, parseInt(body.defaultIdealSaving, 10) || 0);
@@ -134,6 +144,7 @@ router.put('/', auth, async (req, res) => {
     }
     const sheetUrlTransactions = await getSetting(SETTINGS_KEYS.sheetUrlTransactions);
     const sheetUrlInvestments = await getSetting(SETTINGS_KEYS.sheetUrlInvestments);
+    const sheetUrl = await getSetting(SETTINGS_KEYS.sheetUrl);
     const defaultIdealSaving = await getSetting(SETTINGS_KEYS.defaultIdealSaving);
     const defaultIncome = await getSetting(SETTINGS_KEYS.defaultIncome);
     const defaultAccount = await getSetting(SETTINGS_KEYS.defaultAccount);
@@ -146,6 +157,7 @@ router.put('/', auth, async (req, res) => {
     res.json({
       sheetUrlTransactions,
       sheetUrlInvestments,
+      sheetUrl,
       defaultIdealSaving: defaultIdealSaving ? parseInt(defaultIdealSaving, 10) : 100000,
       defaultIncome: defaultIncome ? parseInt(defaultIncome, 10) : 0,
       defaultAccount: defaultAccount || 'Harsh',

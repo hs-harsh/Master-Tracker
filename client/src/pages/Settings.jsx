@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { Settings as SettingsIcon, Save, Trash2, ExternalLink } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Trash2 } from 'lucide-react';
 import { applyTheme } from '../lib/theme';
 
 const THEME_MODES = ['dark', 'light'];
@@ -20,6 +20,7 @@ const DASHBOARD_PROFILES = ['Harsh', 'Kirti', 'Both'];
 export default function Settings() {
   const [sheetUrlTransactions, setSheetUrlTransactions] = useState('');
   const [sheetUrlInvestments, setSheetUrlInvestments] = useState('');
+  const [sheetUrl, setSheetUrl] = useState('');
   const [defaultIdealSaving, setDefaultIdealSaving] = useState(100000);
   const [defaultIncome, setDefaultIncome] = useState(0);
   const [defaultAccount, setDefaultAccount] = useState('Harsh');
@@ -38,6 +39,7 @@ export default function Settings() {
       const d = r.data;
       setSheetUrlTransactions(d.sheetUrlTransactions || '');
       setSheetUrlInvestments(d.sheetUrlInvestments || '');
+      setSheetUrl(d.sheetUrl || '');
       setDefaultIdealSaving(d.defaultIdealSaving ?? 100000);
       setDefaultIncome(d.defaultIncome ?? 0);
       setDefaultAccount(d.defaultAccount || 'Harsh');
@@ -58,6 +60,7 @@ export default function Settings() {
       const body = {
         sheetUrlTransactions: sheetUrlTransactions.trim(),
         sheetUrlInvestments: sheetUrlInvestments.trim(),
+        sheetUrl: sheetUrl.trim(),
         defaultIdealSaving: Number(defaultIdealSaving) || 0,
         defaultIncome: Number(defaultIncome) || 0,
         defaultAccount,
@@ -112,18 +115,15 @@ export default function Settings() {
         <p className="text-muted text-sm mt-0.5">Sheet links, defaults, and appearance. Use <strong>Sync with sheet</strong> on Transactions or Investments to pull new rows.</p>
       </div>
 
-      {/* Linked Google Sheet — save links only */}
+      {/* Linked Google Sheet — 3 URL placeholders */}
       <div className="card max-w-2xl">
         <div className="flex items-center gap-2 mb-4">
           <SettingsIcon size={18} className="text-accent" />
           <h2 className="font-display font-bold text-white">Linked Google Sheet</h2>
         </div>
-        <p className="text-sm text-soft mb-4">
-          Use one Google Sheet with two tabs: <strong>Transactions</strong> and <strong>Investments</strong>. Publish each tab to the web as CSV, then paste the two links below. Sync from the <strong>Transactions</strong> or <strong>Investments</strong> tab to add new rows.
-        </p>
         <div className="space-y-4">
           <div>
-            <label className="label">Transactions sheet CSV URL</label>
+            <label className="label">TRANSACTIONS SHEET CSV URL</label>
             <input
               type="url"
               className="input w-full"
@@ -131,32 +131,9 @@ export default function Settings() {
               value={sheetUrlTransactions}
               onChange={e => setSheetUrlTransactions(e.target.value)}
             />
-            <div className="mt-2 flex items-center gap-2 rounded-lg bg-surface border border-border overflow-hidden">
-              <input
-                type="text"
-                readOnly
-                className="flex-1 min-w-0 bg-transparent px-3 py-2.5 text-sm text-soft font-mono truncate border-0 focus:ring-0"
-                value={sheetUrlTransactions || 'No link set'}
-                title={sheetUrlTransactions || 'Save a URL above first'}
-              />
-              <a
-                href={sheetUrlTransactions || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium shrink-0 ${
-                  sheetUrlTransactions
-                    ? 'text-accent hover:bg-accent/10'
-                    : 'text-muted cursor-not-allowed pointer-events-none'
-                }`}
-                onClick={e => !sheetUrlTransactions && e.preventDefault()}
-              >
-                <ExternalLink size={14} />
-                Open sheet
-              </a>
-            </div>
           </div>
           <div>
-            <label className="label">Investments sheet CSV URL</label>
+            <label className="label">INVESTMENT SHEET CSV URL</label>
             <input
               type="url"
               className="input w-full"
@@ -164,29 +141,16 @@ export default function Settings() {
               value={sheetUrlInvestments}
               onChange={e => setSheetUrlInvestments(e.target.value)}
             />
-            <div className="mt-2 flex items-center gap-2 rounded-lg bg-surface border border-border overflow-hidden">
-              <input
-                type="text"
-                readOnly
-                className="flex-1 min-w-0 bg-transparent px-3 py-2.5 text-sm text-soft font-mono truncate border-0 focus:ring-0"
-                value={sheetUrlInvestments || 'No link set'}
-                title={sheetUrlInvestments || 'Save a URL above first'}
-              />
-              <a
-                href={sheetUrlInvestments || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium shrink-0 ${
-                  sheetUrlInvestments
-                    ? 'text-accent hover:bg-accent/10'
-                    : 'text-muted cursor-not-allowed pointer-events-none'
-                }`}
-                onClick={e => !sheetUrlInvestments && e.preventDefault()}
-              >
-                <ExternalLink size={14} />
-                Open sheet
-              </a>
-            </div>
+          </div>
+          <div>
+            <label className="label">SHEET CSV URL</label>
+            <input
+              type="url"
+              className="input w-full"
+              placeholder="https://docs.google.com/... (published CSV link)"
+              value={sheetUrl}
+              onChange={e => setSheetUrl(e.target.value)}
+            />
           </div>
         </div>
       </div>
