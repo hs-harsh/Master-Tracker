@@ -30,7 +30,20 @@ const STOCK_GROUPS = [
   },
 ];
 
-const STOCK_PROMPT = (instrument) => `You are an equity/technical analyst. Produce a CRITICAL DETAILED REPORT for the STOCK ${instrument.name} (${instrument.ticker}). Context: ${instrument.description}.
+function buildStockPrompt(instrument, priceData) {
+  const priceBlock = priceData
+    ? `
+REAL PRICE DATA (from Yahoo Finance — use these numbers exactly; do not invent prices):
+- Current price: ${priceData.currentPrice}
+- 52-week high: ${priceData.high52w}
+- 52-week low: ${priceData.low52w}
+- Dip from high: ${priceData.dipFromHighPct}%
+- Last 21 session closes (oldest first): [${priceData.recentCloses?.slice(0, 21).join(', ')}]
+Your screening.currentPrice, screening.high52wOrRecent, screening.dipFromHighPct MUST match the above. Your recentCloses array MUST be exactly the 21 numbers above.
+`
+    : '';
+
+  return `You are an equity/technical analyst. Produce a CRITICAL DETAILED REPORT for the STOCK ${instrument.name} (${instrument.ticker}). Context: ${instrument.description}.${priceBlock}
 
 Return ONLY valid JSON. No markdown, no code fences. Structure like a professional research note.
 
@@ -47,7 +60,7 @@ Return ONLY valid JSON. No markdown, no code fences. Structure like a profession
   "cons": [ "bullet 1", "bullet 2" ],
   "risks": [ "bullet 1", "bullet 2" ],
   "verdict": "2-3 sentence verdict and conviction level.",
-  "recentCloses": [ 21 numbers, oldest first, approximate recent sessions for chart ],
+  "recentCloses": [ 21 numbers, oldest first${priceData ? ' — use the 21 numbers provided above' : ', approximate recent sessions for chart' } ],
   "supportLevels": [ number, number ],
   "resistanceLevels": [ number, number ],
   "buyTheDipLevels": [ { "level": number, "label": "short" } ],
@@ -65,6 +78,7 @@ CRITICAL RULES for oneLakhAllocation (total budget ₹1,00,000):
 - addAmountRupees = amount to add when price hits waitForLevel (typically 100000 - investTodayRupees).
 - rationale = one sentence explaining the split.
 All numbers as JSON numbers. recentCloses exactly 21 numbers. pros/cons/risks: 2-4 bullets each. Be specific and actionable for this stock.`;
+}
 
 function tryParseTradeResponse(raw) {
   const text = String(raw).trim();
@@ -258,7 +272,10 @@ function ReportModal({ instrument, parsed, onClose }) {
         <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto min-h-0 flex-1">
           {screening && (screening.currentPrice != null || screening.rating) && (
             <div className="card">
-              <p className="stat-label mb-3">Screening</p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="stat-label mb-0">Screening</p>
+                <span className="text-muted text-xs">Prices: Yahoo Finance</span>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                 {screening.currentPrice != null && (
                   <div>
@@ -437,12 +454,34 @@ export default function StockTrade() {
   const [error, setError] = useState(null);
   const [reportModal, setReportModal] = useState(null);
 
+  const mergePriceData = useCallback((parsed, priceData) => {
+    if (!parsed || !priceData) return parsed;
+    return {
+      ...parsed,
+      screening: {
+        ...parsed.screening,
+        currentPrice: priceData.currentPrice,
+        high52wOrRecent: priceData.high52w,
+        dipFromHighPct: priceData.dipFromHighPct,
+      },
+      recentCloses: Array.isArray(priceData.recentCloses) && priceData.recentCloses.length >= 21
+        ? priceData.recentCloses.slice(0, 21)
+        : parsed.recentCloses,
+    };
+  }, []);
+
   const analyzeOne = useCallback(async (instrument) => {
     setLoading(instrument.id);
     setError(null);
     try {
-      const raw = await callClaude(STOCK_PROMPT(instrument));
-      const parsed = tryParseTradeResponse(raw);
+      let priceData = null;
+      try {
+        const res = await api.get(`/prices/${instrument.id}`);
+        priceData = res.data;
+      } catch (_) {}
+      const raw = await callClaude(buildStockPrompt(instrument, priceData));
+      let parsed = tryParseTradeResponse(raw);
+      if (parsed && priceData) parsed = mergePriceData(parsed, priceData);
       setResults((prev) => ({ ...prev, [instrument.id]: { parsed, raw } }));
     } catch (err) {
       setError(err.response?.data?.error || err.message);
@@ -450,7 +489,7 @@ export default function StockTrade() {
     } finally {
       setLoading(null);
     }
-  }, []);
+  }, [mergePriceData]);
 
   const analyzeAll = useCallback(async () => {
     setLoading('all');
@@ -458,15 +497,21 @@ export default function StockTrade() {
     const flat = STOCK_GROUPS.flatMap((g) => g.instruments);
     for (const inst of flat) {
       try {
-        const raw = await callClaude(STOCK_PROMPT(inst));
-        const parsed = tryParseTradeResponse(raw);
+        let priceData = null;
+        try {
+          const res = await api.get(`/prices/${inst.id}`);
+          priceData = res.data;
+        } catch (_) {}
+        const raw = await callClaude(buildStockPrompt(inst, priceData));
+        let parsed = tryParseTradeResponse(raw);
+        if (parsed && priceData) parsed = mergePriceData(parsed, priceData);
         setResults((prev) => ({ ...prev, [inst.id]: { parsed, raw } }));
       } catch (err) {
         setResults((prev) => ({ ...prev, [inst.id]: { parsed: null, raw: String(err.message) } }));
       }
     }
     setLoading(null);
-  }, []);
+  }, [mergePriceData]);
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">

@@ -71,7 +71,7 @@ This loads all your Excel data into PostgreSQL.
 Railway gives you a public URL like `https://investment-tracker-production.up.railway.app`
 
 Login with:
-- **Username**: `admin`  
+- **Username**: `hskv`  
 - **Password**: whatever you set in `APP_PASSWORD`
 
 ---
@@ -125,7 +125,7 @@ investment-tracker/
 
 - Change `JWT_SECRET` to a strong random value before deploying
 - Change `APP_PASSWORD` to something only you know
-- The app has no public registration — only the seeded `admin` user can log in
+- The app has no public registration — only the seeded user (default `hskv`) can log in
 - All API routes are protected by JWT authentication
 
 ---
