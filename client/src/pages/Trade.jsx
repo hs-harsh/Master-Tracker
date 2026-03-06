@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, AreaChart, Area } from 'recharts';
 import api from '../lib/api';
-import { TrendingUp, Loader2, RefreshCw, BarChart3 } from 'lucide-react';
+import { TrendingUp, Loader2, RefreshCw, BarChart3, FileText, X } from 'lucide-react';
 
 const INSTRUMENT_GROUPS = [
   {
@@ -34,28 +34,41 @@ const INSTRUMENT_GROUPS = [
   },
 ];
 
-const TRADE_PROMPT = (instrument) => `You are a technical analyst. For ${instrument.name} (${instrument.ticker}), return ONLY valid JSON. No markdown, no code fences.
+const TRADE_PROMPT = (instrument) => `You are an equity/technical analyst. Produce a CRITICAL DETAILED REPORT for ${instrument.name} (${instrument.ticker}). Context: ${instrument.description}.
 
-Context: ${instrument.description}. Use realistic approximate levels and recent price structure for this instrument.
+Return ONLY valid JSON. No markdown, no code fences. Structure like a professional research note.
 
-Required JSON (use numbers only for numeric fields):
 {
-  "summary": "One short sentence: trend and key level.",
-  "recentCloses": [ number, number, ... ],
+  "reportTitle": "Critical analysis: ${instrument.name}",
+  "screening": {
+    "currentPrice": number,
+    "high52wOrRecent": number,
+    "dipFromHighPct": number,
+    "rating": "STRONG BUY" | "BUY" | "HOLD" | "AVOID",
+    "riskLevel": "Low" | "Medium" | "High"
+  },
+  "pros": [ "bullet 1", "bullet 2", "bullet 3" ],
+  "cons": [ "bullet 1", "bullet 2" ],
+  "risks": [ "bullet 1", "bullet 2" ],
+  "verdict": "2-3 sentence verdict and conviction level.",
+  "recentCloses": [ 21 numbers, oldest first, approximate recent sessions for chart ],
   "supportLevels": [ number, number ],
   "resistanceLevels": [ number, number ],
-  "buyTheDipLevels": [ { "level": number, "label": "short label" } ],
-  "riskLevel": "Low" | "Medium" | "High",
-  "tradeIdea": "One sentence: Buy at X, target Y, stop Z."
+  "buyTheDipLevels": [ { "level": number, "label": "short" } ],
+  "oneLakhAllocation": {
+    "investTodayRupees": number,
+    "waitForLevel": number,
+    "addAmountRupees": number,
+    "rationale": "One sentence: why this split based on dip from high."
+  }
 }
 
-Rules:
-- recentCloses: exactly 21 numbers = last 21 sessions (oldest first). Use realistic approximate closes for recent weeks so we can plot a price chart.
-- supportLevels, resistanceLevels: 1-3 numbers each. Key S/R only.
-- buyTheDipLevels: 1-2 entries, level must be number.
-- riskLevel: exactly one of Low, Medium, High.
-- summary and tradeIdea: one sentence each, minimal text.
-- All numbers as JSON numbers, not strings. No trailing commas.`;
+CRITICAL RULES for oneLakhAllocation (total budget ₹1,00,000):
+- investTodayRupees = how much of the 1 Lakh to deploy TODAY (0 to 100000). Base this on how far price has already dipped from high: bigger dip = deploy more today; small dip = deploy less and keep more for lower levels.
+- waitForLevel = price/level at which to ADD the remaining amount (number). Should be a meaningful support or buy-the-dip level below current.
+- addAmountRupees = amount to add when price hits waitForLevel (typically 100000 - investTodayRupees).
+- rationale = one sentence explaining the split (e.g. "8% off high so deploy 40% now; add 60% if it dips to 23500.").
+All numbers as JSON numbers. recentCloses exactly 21 numbers. pros/cons/risks: 2-4 bullets each. Be specific and actionable.`;
 
 function tryParseTradeResponse(raw) {
   const text = String(raw).trim();
@@ -78,7 +91,7 @@ function tryParseTradeResponse(raw) {
 async function callClaude(prompt) {
   const res = await api.post('/chat', {
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 1200,
+    max_tokens: 2800,
     messages: [{ role: 'user', content: prompt }],
   });
   const content = res.data.content || [];
@@ -91,6 +104,7 @@ export default function Trade() {
   const [results, setResults] = useState({}); // id -> { parsed, raw }
   const [loading, setLoading] = useState(null); // id or 'all'
   const [error, setError] = useState(null);
+  const [reportModal, setReportModal] = useState(null); // { instrument, parsed }
 
   const analyzeOne = useCallback(async (instrument) => {
     setLoading(instrument.id);
@@ -127,7 +141,7 @@ export default function Trade() {
     <div className="p-6 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-white">Trade</h1>
+          <h1 className="font-display text-2xl font-bold text-white">Trade Ideas</h1>
           <p className="text-muted text-sm mt-0.5">
             Technical analysis and buy-the-dip ideas for indices and metals. Uses AI (Claude). Set API key in Settings.
           </p>
@@ -163,11 +177,20 @@ export default function Trade() {
                 result={results[inst.id]}
                 loading={loading === inst.id || loading === 'all'}
                 onAnalyze={() => analyzeOne(inst)}
+                onViewReport={() => results[inst.id]?.parsed && setReportModal({ instrument: inst, parsed: results[inst.id].parsed })}
               />
             ))}
           </div>
         </div>
       ))}
+
+      {reportModal && (
+        <ReportModal
+          instrument={reportModal.instrument}
+          parsed={reportModal.parsed}
+          onClose={() => setReportModal(null)}
+        />
+      )}
     </div>
   );
 }
@@ -177,9 +200,12 @@ function toNum(x) {
   return typeof x === 'number' && !isNaN(x) ? x : !isNaN(n) ? n : null;
 }
 
-function InstrumentCard({ instrument, result, loading, onAnalyze }) {
+const RATING_COLOR = { 'STRONG BUY': 'text-green-400', 'BUY': 'text-teal-400', 'HOLD': 'text-amber-400', 'AVOID': 'text-rose' };
+
+function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }) {
   const hasResult = !!result;
   const parsed = result?.parsed;
+  const alloc = parsed?.oneLakhAllocation;
 
   const chartData = parsed?.recentCloses?.length
     ? parsed.recentCloses.map((v, i) => ({ session: i + 1, close: toNum(v) ?? 0 })).filter((d) => d.close > 0)
@@ -195,15 +221,26 @@ function InstrumentCard({ instrument, result, loading, onAnalyze }) {
           <p className="font-display font-semibold text-white truncate">{instrument.name}</p>
           <p className="text-muted text-xs mt-0.5 truncate">{instrument.ticker}</p>
         </div>
-        <button
-          type="button"
-          onClick={onAnalyze}
-          disabled={!!loading}
-          className="btn-primary shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs"
-        >
-          {loading ? <Loader2 size={12} className="animate-spin" /> : <TrendingUp size={12} />}
-          {loading ? 'Analyzing…' : hasResult ? 'Refresh' : 'Analyze'}
-        </button>
+        <div className="flex gap-1.5 shrink-0">
+          {hasResult && parsed && (
+            <button
+              type="button"
+              onClick={onViewReport}
+              className="btn-ghost flex items-center gap-1 px-2 py-1.5 text-xs"
+            >
+              <FileText size={12} /> Report
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onAnalyze}
+            disabled={!!loading}
+            className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs"
+          >
+            {loading ? <Loader2 size={12} className="animate-spin" /> : <TrendingUp size={12} />}
+            {loading ? 'Analyzing…' : hasResult ? 'Refresh' : 'Analyze'}
+          </button>
+        </div>
       </div>
 
       {hasResult && (
@@ -213,53 +250,70 @@ function InstrumentCard({ instrument, result, loading, onAnalyze }) {
               {chartData.length > 0 && (
                 <div className="h-[140px] w-full -mx-1">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                    <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
                       <defs>
                         <linearGradient id={`fill-${instrument.id}`} x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.4} />
-                          <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
+                          <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.5} />
+                          <stop offset="100%" stopColor="#2dd4bf" stopOpacity={0.08} />
                         </linearGradient>
                       </defs>
                       <XAxis dataKey="session" hide />
                       <YAxis domain={['auto', 'auto']} hide />
                       <Tooltip
-                        contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 11 }}
+                        contentStyle={{
+                          background: '#ffffff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 8,
+                          fontSize: 12,
+                          color: '#0f172a',
+                          padding: '10px 14px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                        }}
+                        labelStyle={{ color: '#0f172a', fontWeight: 600, marginBottom: 4 }}
+                        itemStyle={{ color: '#0f172a' }}
                         formatter={(v) => [Number(v).toLocaleString('en-IN'), 'Close']}
                         labelFormatter={(l) => `Session ${l}`}
                       />
                       {supportLevels.map((l, i) => (
-                        <ReferenceLine key={`s-${i}`} y={l} stroke="#34d399" strokeDasharray="2 2" strokeOpacity={0.8} />
+                        <ReferenceLine key={`s-${i}`} y={l} stroke="#10b981" strokeWidth={2} strokeDasharray="4 4" />
                       ))}
                       {resistanceLevels.map((l, i) => (
-                        <ReferenceLine key={`r-${i}`} y={l} stroke="#f97316" strokeDasharray="2 2" strokeOpacity={0.8} />
+                        <ReferenceLine key={`r-${i}`} y={l} stroke="#f97316" strokeWidth={2} strokeDasharray="4 4" />
                       ))}
                       {buyLevels.map((l, i) => (
-                        <ReferenceLine key={`b-${i}`} y={l} stroke="var(--accent)" strokeWidth={1.5} strokeOpacity={1} />
+                        <ReferenceLine key={`b-${i}`} y={l} stroke="#f0c040" strokeWidth={2} />
                       ))}
-                      <Area type="monotone" dataKey="close" stroke="var(--accent)" strokeWidth={1.5} fill={`url(#fill-${instrument.id})`} />
+                      <Area type="monotone" dataKey="close" stroke="#2dd4bf" strokeWidth={2.5} fill={`url(#fill-${instrument.id})`} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
               )}
 
-              {parsed.summary && (
-                <p className="text-soft text-xs leading-snug line-clamp-2">{parsed.summary}</p>
+              {alloc && (
+                <div className="rounded-lg bg-accent/10 border border-accent/30 p-3">
+                  <p className="text-xs text-muted uppercase tracking-wider mb-1.5">₹1 Lakh allocation</p>
+                  <p className="text-white font-medium text-xs">Invest today: ₹{(alloc.investTodayRupees ?? 0).toLocaleString('en-IN')}</p>
+                  <p className="text-soft text-xs mt-0.5">Wait for level {(alloc.waitForLevel ?? '').toLocaleString('en-IN')} → add ₹{(alloc.addAmountRupees ?? 0).toLocaleString('en-IN')}</p>
+                </div>
+              )}
+              {parsed.verdict && (
+                <p className="text-soft text-xs leading-snug line-clamp-2">{parsed.verdict}</p>
               )}
               <div className="flex flex-wrap items-center gap-2">
+                {parsed.screening?.rating && (
+                  <span className={`text-xs font-medium ${RATING_COLOR[parsed.screening.rating] || 'text-soft'}`}>
+                    {parsed.screening.rating}
+                  </span>
+                )}
                 {parsed.riskLevel && (
                   <span className={`text-xs font-medium ${RISK_COLOR[parsed.riskLevel] || 'text-soft'}`}>
                     Risk: {parsed.riskLevel}
                   </span>
                 )}
-                {buyLevels.length > 0 && (
-                  <span className="text-xs text-muted">
-                    Buy zone: {buyLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}
-                  </span>
-                )}
               </div>
-              {parsed.tradeIdea && (
-                <p className="text-accent text-xs font-medium leading-snug">{parsed.tradeIdea}</p>
-              )}
+              <button type="button" onClick={onViewReport} className="text-accent hover:underline text-xs font-medium">
+                View full report →
+              </button>
             </div>
           ) : (
             <div className="mt-4">
@@ -273,8 +327,206 @@ function InstrumentCard({ instrument, result, loading, onAnalyze }) {
       )}
 
       {!hasResult && !loading && (
-        <p className="text-muted text-xs mt-3">Click Analyze for chart and levels.</p>
+        <p className="text-muted text-xs mt-3">Click Analyze for detailed report and ₹1 Lakh allocation.</p>
       )}
+    </div>
+  );
+}
+
+function ReportModal({ instrument, parsed, onClose }) {
+  const screening = parsed?.screening || {};
+  const alloc = parsed?.oneLakhAllocation || {};
+  const chartData = parsed?.recentCloses?.length
+    ? parsed.recentCloses.map((v, i) => ({ session: i + 1, close: toNum(v) ?? 0 })).filter((d) => d.close > 0)
+    : [];
+  const supportLevels = (parsed?.supportLevels || []).map(toNum).filter((n) => n != null);
+  const resistanceLevels = (parsed?.resistanceLevels || []).map(toNum).filter((n) => n != null);
+  const buyLevels = (parsed?.buyTheDipLevels || []).map((b) => toNum(b.level)).filter((n) => n != null);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4" onClick={onClose}>
+      <div
+        className="bg-ink border border-border rounded-xl shadow-xl max-w-2xl w-full my-8"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-ink border-b border-border px-6 py-4 flex items-center justify-between">
+          <h2 className="font-display text-xl font-bold text-white">{parsed?.reportTitle || instrument.name}</h2>
+          <button type="button" onClick={onClose} className="text-muted hover:text-white p-1">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="p-6 space-y-6 max-h-[calc(100vh-8rem)] overflow-y-auto">
+          {screening && (screening.currentPrice != null || screening.rating) && (
+            <div className="card">
+              <p className="stat-label mb-3">Screening</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                {screening.currentPrice != null && (
+                  <div>
+                    <p className="text-muted text-xs">Price</p>
+                    <p className="font-mono text-white">{Number(screening.currentPrice).toLocaleString('en-IN')}</p>
+                  </div>
+                )}
+                {screening.high52wOrRecent != null && (
+                  <div>
+                    <p className="text-muted text-xs">High (52w/recent)</p>
+                    <p className="font-mono text-white">{Number(screening.high52wOrRecent).toLocaleString('en-IN')}</p>
+                  </div>
+                )}
+                {screening.dipFromHighPct != null && (
+                  <div>
+                    <p className="text-muted text-xs">Dip from high</p>
+                    <p className="font-mono text-amber-400">{Number(screening.dipFromHighPct).toFixed(1)}%</p>
+                  </div>
+                )}
+                {screening.rating && (
+                  <div>
+                    <p className="text-muted text-xs">Rating</p>
+                    <p className={`font-semibold ${RATING_COLOR[screening.rating] || 'text-white'}`}>{screening.rating}</p>
+                  </div>
+                )}
+                {screening.riskLevel && (
+                  <div>
+                    <p className="text-muted text-xs">Risk</p>
+                    <p className={RISK_COLOR[screening.riskLevel] || 'text-soft'}>{screening.riskLevel}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-xl bg-accent/15 border-2 border-accent/40 p-5">
+            <p className="stat-label text-accent mb-2">₹1 Lakh allocation</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+              <div>
+                <p className="text-muted text-xs uppercase">Invest today</p>
+                <p className="font-mono text-xl font-bold text-white">₹{(alloc.investTodayRupees ?? 0).toLocaleString('en-IN')}</p>
+              </div>
+              <div>
+                <p className="text-muted text-xs uppercase">Wait for level (add more)</p>
+                <p className="font-mono text-lg text-accent">
+                {alloc.waitForLevel != null
+                  ? (typeof alloc.waitForLevel === 'number' ? alloc.waitForLevel.toLocaleString('en-IN') : String(alloc.waitForLevel))
+                  : '—'}
+              </p>
+              </div>
+              <div>
+                <p className="text-muted text-xs uppercase">Add amount at that level</p>
+                <p className="font-mono text-lg text-white">₹{(alloc.addAmountRupees ?? 0).toLocaleString('en-IN')}</p>
+              </div>
+            </div>
+            {alloc.rationale && (
+              <p className="text-soft text-sm mt-3 border-t border-border pt-3">{alloc.rationale}</p>
+            )}
+          </div>
+
+          {(parsed?.pros?.length || parsed?.cons?.length || parsed?.risks?.length) && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {parsed.pros?.length > 0 && (
+                <div className="card">
+                  <p className="text-xs text-green-400 font-semibold uppercase tracking-wider mb-2">Pros</p>
+                  <ul className="space-y-1 text-sm text-soft">
+                    {parsed.pros.map((p, i) => (
+                      <li key={i} className="flex gap-2"><span className="text-green-400 shrink-0">✓</span>{p}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {parsed.cons?.length > 0 && (
+                <div className="card">
+                  <p className="text-xs text-rose font-semibold uppercase tracking-wider mb-2">Cons</p>
+                  <ul className="space-y-1 text-sm text-soft">
+                    {parsed.cons.map((c, i) => (
+                      <li key={i} className="flex gap-2"><span className="text-rose shrink-0">✗</span>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {parsed.risks?.length > 0 && (
+                <div className="card">
+                  <p className="text-xs text-amber-400 font-semibold uppercase tracking-wider mb-2">Risks</p>
+                  <ul className="space-y-1 text-sm text-soft">
+                    {parsed.risks.map((r, i) => (
+                      <li key={i} className="flex gap-2"><span className="text-amber-400 shrink-0">⚠</span>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {parsed?.verdict && (
+            <div className="card">
+              <p className="stat-label mb-2">Verdict</p>
+              <p className="text-soft text-sm leading-relaxed">{parsed.verdict}</p>
+            </div>
+          )}
+
+          {chartData.length > 0 && (
+            <div className="card">
+              <p className="stat-label mb-3">Price (last 21 sessions)</p>
+              <div className="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 12, right: 12, left: 12, bottom: 8 }}>
+                    <defs>
+                      <linearGradient id={`fill-modal-${instrument.id}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.5} />
+                        <stop offset="100%" stopColor="#2dd4bf" stopOpacity={0.08} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="session" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                    <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => v.toLocaleString('en-IN')} />
+                    <Tooltip
+                      contentStyle={{
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 8,
+                        fontSize: 13,
+                        color: '#0f172a',
+                        padding: '12px 16px',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                      }}
+                      labelStyle={{ color: '#0f172a', fontWeight: 600 }}
+                      itemStyle={{ color: '#0f172a' }}
+                      formatter={(v) => [Number(v).toLocaleString('en-IN'), 'Close']}
+                      labelFormatter={(l) => `Session ${l}`}
+                    />
+                    {supportLevels.map((l, i) => <ReferenceLine key={i} y={l} stroke="#10b981" strokeWidth={2} strokeDasharray="4 4" />)}
+                    {resistanceLevels.map((l, i) => <ReferenceLine key={i} y={l} stroke="#f97316" strokeWidth={2} strokeDasharray="4 4" />)}
+                    {buyLevels.map((l, i) => <ReferenceLine key={i} y={l} stroke="#f0c040" strokeWidth={2} />)}
+                    <Area type="monotone" dataKey="close" stroke="#2dd4bf" strokeWidth={2.5} fill={`url(#fill-modal-${instrument.id})`} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {(supportLevels.length > 0 || resistanceLevels.length > 0 || buyLevels.length > 0) && (
+            <div className="card">
+              <p className="stat-label mb-3">Key levels</p>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                {supportLevels.length > 0 && (
+                  <div>
+                    <p className="text-muted text-xs">Support</p>
+                    <p className="font-mono text-green-400">{supportLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p>
+                  </div>
+                )}
+                {resistanceLevels.length > 0 && (
+                  <div>
+                    <p className="text-muted text-xs">Resistance</p>
+                    <p className="font-mono text-amber-400">{resistanceLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p>
+                  </div>
+                )}
+                {buyLevels.length > 0 && (
+                  <div>
+                    <p className="text-muted text-xs">Buy the dip</p>
+                    <p className="font-mono text-accent">{buyLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

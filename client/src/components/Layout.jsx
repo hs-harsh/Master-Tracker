@@ -8,12 +8,12 @@ import { setCurrencySymbol } from '../lib/utils';
 
 const NAV = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/trade', icon: LineChart, label: 'Trade Ideas' },
   { to: '/portfolio', icon: PieChart, label: 'Portfolio' },
   { to: '/investments', icon: Briefcase, label: 'Investments' },
   { to: '/cashflow', icon: TrendingUp, label: 'Cashflow' },
   { to: '/transactions', icon: Receipt, label: 'Transactions' },
   { to: '/expense-analyser', icon: Calculator, label: 'Expense Analyser' },
-  { to: '/trade', icon: LineChart, label: 'Trade' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
