@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, AreaChart, Area } from 'recharts';
 import api from '../lib/api';
-import { TrendingUp, Loader2, RefreshCw, BarChart3, FileText, X } from 'lucide-react';
-import PriceChartCard from '../components/PriceChartCard';
+import { TrendingUp, Loader2, RefreshCw, BarChart3, FileText } from 'lucide-react';
+import ReportModal from '../components/ReportModal';
 
 const INSTRUMENT_GROUPS = [
   {
@@ -48,12 +48,12 @@ Your screening.currentPrice, screening.high52wOrRecent, screening.dipFromHighPct
 `
     : '';
 
-  return `You are an equity/technical analyst. Produce a CRITICAL DETAILED REPORT for ${instrument.name} (${instrument.ticker}). Context: ${instrument.description}.${priceBlock}
+  return `You are a senior equity and fundamental analyst. Produce a COMPREHENSIVE RESEARCH REPORT for ${instrument.name} (${instrument.ticker}). Context: ${instrument.description}.${priceBlock}
 
-Return ONLY valid JSON. No markdown, no code fences. Structure like a professional research note.
+Return ONLY valid JSON. No markdown, no code fences. All numbers as JSON numbers (not strings).
 
 {
-  "reportTitle": "Critical analysis: ${instrument.name}",
+  "reportTitle": "Research report: ${instrument.name}",
   "screening": {
     "currentPrice": number,
     "high52wOrRecent": number,
@@ -61,28 +61,74 @@ Return ONLY valid JSON. No markdown, no code fences. Structure like a profession
     "rating": "STRONG BUY" | "BUY" | "HOLD" | "AVOID",
     "riskLevel": "Low" | "Medium" | "High"
   },
+  "fundamentals": {
+    "pe": number or null,
+    "pb": number or null,
+    "roe": number or null,
+    "debtToEquity": number or null,
+    "revenueGrowthYoY": number,
+    "profitGrowthYoY": number,
+    "operatingMargin": number,
+    "netMargin": number,
+    "eps": number or null
+  },
+  "quarterlyTrend": [
+    { "quarter": "Q1FY24", "revenue": number, "profit": number },
+    { "quarter": "Q2FY24", "revenue": number, "profit": number },
+    { "quarter": "Q3FY24", "revenue": number, "profit": number },
+    { "quarter": "Q4FY24", "revenue": number, "profit": number },
+    { "quarter": "Q1FY25", "revenue": number, "profit": number },
+    { "quarter": "Q2FY25", "revenue": number, "profit": number },
+    { "quarter": "Q3FY25", "revenue": number, "profit": number },
+    { "quarter": "Q4FY25E", "revenue": number, "profit": number }
+  ],
+  "annualTrend": [
+    { "year": "FY22", "revenue": number, "profit": number },
+    { "year": "FY23", "revenue": number, "profit": number },
+    { "year": "FY24", "revenue": number, "profit": number },
+    { "year": "FY25E", "revenue": number, "profit": number },
+    { "year": "FY26E", "revenue": number, "profit": number }
+  ],
+  "outlook": {
+    "shortTerm": "3-6 month outlook in 2-3 sentences covering near-term catalysts or headwinds",
+    "mediumTerm": "6-18 month outlook covering sector trends, earnings trajectory",
+    "longTerm": "2-5 year structural outlook covering growth drivers and risks",
+    "shortRating": "BULLISH" | "NEUTRAL" | "BEARISH",
+    "mediumRating": "BULLISH" | "NEUTRAL" | "BEARISH",
+    "longRating": "BULLISH" | "NEUTRAL" | "BEARISH"
+  },
+  "buyTheDipAnalysis": {
+    "currentDipPct": number,
+    "assessment": "string e.g. 'Moderate dip — good staggered entry'",
+    "levels": [
+      { "level": number, "label": "Aggressive entry", "dipFromHighPct": number, "allocPct": 40 },
+      { "level": number, "label": "Ideal entry", "dipFromHighPct": number, "allocPct": 40 },
+      { "level": number, "label": "Deep value entry", "dipFromHighPct": number, "allocPct": 20 }
+    ],
+    "strategy": "2-3 sentence staggered accumulation strategy"
+  },
   "pros": [ "bullet 1", "bullet 2", "bullet 3" ],
   "cons": [ "bullet 1", "bullet 2" ],
   "risks": [ "bullet 1", "bullet 2" ],
-  "verdict": "2-3 sentence verdict and conviction level.",
-  "recentCloses": [ 21 numbers, oldest first${priceData ? ' — use the 21 numbers provided above' : ', approximate recent sessions for chart' } ],
+  "verdict": "2-3 sentence overall verdict and conviction level.",
+  "recentCloses": [ 21 numbers, oldest first${priceData ? ' — use the 21 numbers provided above' : ', approximate recent sessions'} ],
   "supportLevels": [ number, number ],
   "resistanceLevels": [ number, number ],
-  "buyTheDipLevels": [ { "level": number, "label": "short" } ],
+  "buyTheDipLevels": [ { "level": number, "label": "string" } ],
   "oneLakhAllocation": {
     "investTodayRupees": number,
     "waitForLevel": number,
     "addAmountRupees": number,
-    "rationale": "One sentence: why this split based on dip from high."
+    "rationale": "One sentence explaining the split based on dip from high."
   }
 }
 
-CRITICAL RULES for oneLakhAllocation (total budget ₹1,00,000):
-- investTodayRupees = how much of the 1 Lakh to deploy TODAY (0 to 100000). Base this on how far price has already dipped from high: bigger dip = deploy more today; small dip = deploy less and keep more for lower levels.
-- waitForLevel = price/level at which to ADD the remaining amount (number). Should be a meaningful support or buy-the-dip level below current.
-- addAmountRupees = amount to add when price hits waitForLevel (typically 100000 - investTodayRupees).
-- rationale = one sentence explaining the split (e.g. "8% off high so deploy 40% now; add 60% if it dips to 23500.").
-All numbers as JSON numbers. recentCloses exactly 21 numbers. pros/cons/risks: 2-4 bullets each. Be specific and actionable.`;
+RULES:
+- quarterlyTrend/annualTrend: use Cr for Indian instruments, M USD for US. Use your best knowledge; label estimated values with "E".
+- fundamentals: for indices use index-level P/E, earnings growth; null for unavailable fields.
+- buyTheDipAnalysis.levels: set levels below current price at meaningful technical support zones.
+- oneLakhAllocation: bigger dip = more today; small dip = less today. Total must be 100000.
+- recentCloses: exactly 21 numbers. pros/cons/risks: 3-4 bullets each. Be specific and actionable.`;
 }
 
 function tryParseTradeResponse(raw) {
@@ -106,14 +152,12 @@ function tryParseTradeResponse(raw) {
 async function callClaude(prompt) {
   const res = await api.post('/chat', {
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 2800,
+    max_tokens: 5000,
     messages: [{ role: 'user', content: prompt }],
   });
   const content = res.data.content || [];
   return content.map((c) => c.text || '').join('');
 }
-
-const RISK_COLOR = { Low: 'text-green-400', Medium: 'text-amber-400', High: 'text-rose' };
 
 // Balanced ₹1 Lac portfolio across Indian equity, US equity, and Metal
 const BALANCED_ALLOCATION = {
@@ -330,7 +374,8 @@ function toNum(x) {
   return typeof x === 'number' && !isNaN(x) ? x : !isNaN(n) ? n : null;
 }
 
-const RATING_COLOR = { 'STRONG BUY': 'text-green-400', 'BUY': 'text-teal-400', 'HOLD': 'text-amber-400', 'AVOID': 'text-rose' };
+const RATING_COLOR = { 'STRONG BUY': 'text-green-400', BUY: 'text-teal-400', HOLD: 'text-amber-400', AVOID: 'text-rose' };
+const RISK_COLOR = { Low: 'text-green-400', Medium: 'text-amber-400', High: 'text-rose' };
 
 function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }) {
   const hasResult = !!result;
@@ -463,170 +508,3 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }
   );
 }
 
-function ReportModal({ instrument, parsed, onClose }) {
-  const screening = parsed?.screening || {};
-  const alloc = parsed?.oneLakhAllocation || {};
-  const supportLevels = (parsed?.supportLevels || []).map(toNum).filter((n) => n != null);
-  const resistanceLevels = (parsed?.resistanceLevels || []).map(toNum).filter((n) => n != null);
-  const buyLevels = (parsed?.buyTheDipLevels || []).map((b) => toNum(b.level)).filter((n) => n != null);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-start justify-center overflow-y-auto bg-black/70 p-0 sm:p-4" onClick={onClose}>
-      <div
-        className="bg-ink border border-border rounded-t-xl sm:rounded-xl shadow-xl max-w-2xl w-full sm:my-8 max-h-[95vh] sm:max-h-[calc(100vh-8rem)] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="sticky top-0 bg-ink border-b border-border px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between shrink-0 safe-area-top">
-          <h2 className="font-display text-lg sm:text-xl font-bold text-white truncate pr-8">{parsed?.reportTitle || instrument.name}</h2>
-          <button type="button" onClick={onClose} className="text-muted hover:text-white p-1">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto min-h-0 flex-1">
-          {screening && (screening.currentPrice != null || screening.rating) && (
-            <div className="card">
-              <div className="flex items-center justify-between mb-3">
-                <p className="stat-label mb-0">Screening</p>
-                <span className="text-muted text-xs">Prices: Yahoo Finance</span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                {screening.currentPrice != null && (
-                  <div>
-                    <p className="text-muted text-xs">Price</p>
-                    <p className="font-mono text-white">{Number(screening.currentPrice).toLocaleString('en-IN')}</p>
-                  </div>
-                )}
-                {screening.high52wOrRecent != null && (
-                  <div>
-                    <p className="text-muted text-xs">High (52w/recent)</p>
-                    <p className="font-mono text-white">{Number(screening.high52wOrRecent).toLocaleString('en-IN')}</p>
-                  </div>
-                )}
-                {screening.dipFromHighPct != null && (
-                  <div>
-                    <p className="text-muted text-xs">Dip from high</p>
-                    <p className="font-mono text-amber-400">{Number(screening.dipFromHighPct).toFixed(1)}%</p>
-                  </div>
-                )}
-                {screening.rating && (
-                  <div>
-                    <p className="text-muted text-xs">Rating</p>
-                    <p className={`font-semibold ${RATING_COLOR[screening.rating] || 'text-white'}`}>{screening.rating}</p>
-                  </div>
-                )}
-                {screening.riskLevel && (
-                  <div>
-                    <p className="text-muted text-xs">Risk</p>
-                    <p className={RISK_COLOR[screening.riskLevel] || 'text-soft'}>{screening.riskLevel}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="rounded-xl bg-accent/15 border-2 border-accent/40 p-5">
-            <p className="stat-label text-accent mb-2">₹1 Lakh allocation</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-              <div>
-                <p className="text-muted text-xs uppercase">Invest today</p>
-                <p className="font-mono text-xl font-bold text-white">₹{(alloc.investTodayRupees ?? 0).toLocaleString('en-IN')}</p>
-              </div>
-              <div>
-                <p className="text-muted text-xs uppercase">Wait for level (add more)</p>
-                <p className="font-mono text-lg text-accent">
-                {alloc.waitForLevel != null
-                  ? (typeof alloc.waitForLevel === 'number' ? alloc.waitForLevel.toLocaleString('en-IN') : String(alloc.waitForLevel))
-                  : '—'}
-              </p>
-              </div>
-              <div>
-                <p className="text-muted text-xs uppercase">Add amount at that level</p>
-                <p className="font-mono text-lg text-white">₹{(alloc.addAmountRupees ?? 0).toLocaleString('en-IN')}</p>
-              </div>
-            </div>
-            {alloc.rationale && (
-              <p className="text-soft text-sm mt-3 border-t border-border pt-3">{alloc.rationale}</p>
-            )}
-          </div>
-
-          {(parsed?.pros?.length || parsed?.cons?.length || parsed?.risks?.length) && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {parsed.pros?.length > 0 && (
-                <div className="card">
-                  <p className="text-xs text-green-400 font-semibold uppercase tracking-wider mb-2">Pros</p>
-                  <ul className="space-y-1 text-sm text-soft">
-                    {parsed.pros.map((p, i) => (
-                      <li key={i} className="flex gap-2"><span className="text-green-400 shrink-0">✓</span>{p}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {parsed.cons?.length > 0 && (
-                <div className="card">
-                  <p className="text-xs text-rose font-semibold uppercase tracking-wider mb-2">Cons</p>
-                  <ul className="space-y-1 text-sm text-soft">
-                    {parsed.cons.map((c, i) => (
-                      <li key={i} className="flex gap-2"><span className="text-rose shrink-0">✗</span>{c}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {parsed.risks?.length > 0 && (
-                <div className="card">
-                  <p className="text-xs text-amber-400 font-semibold uppercase tracking-wider mb-2">Risks</p>
-                  <ul className="space-y-1 text-sm text-soft">
-                    {parsed.risks.map((r, i) => (
-                      <li key={i} className="flex gap-2"><span className="text-amber-400 shrink-0">⚠</span>{r}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-
-          {parsed?.verdict && (
-            <div className="card">
-              <p className="stat-label mb-2">Verdict</p>
-              <p className="text-soft text-sm leading-relaxed">{parsed.verdict}</p>
-            </div>
-          )}
-
-          <PriceChartCard
-            instrumentId={instrument.id}
-            fallbackCloses={parsed?.recentCloses || []}
-            supportLevels={supportLevels}
-            resistanceLevels={resistanceLevels}
-            buyLevels={buyLevels}
-            title="Price chart"
-          />
-
-          {(supportLevels.length > 0 || resistanceLevels.length > 0 || buyLevels.length > 0) && (
-            <div className="card">
-              <p className="stat-label mb-3">Key levels</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-sm">
-                {supportLevels.length > 0 && (
-                  <div>
-                    <p className="text-muted text-xs">Support</p>
-                    <p className="font-mono text-green-400">{supportLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p>
-                  </div>
-                )}
-                {resistanceLevels.length > 0 && (
-                  <div>
-                    <p className="text-muted text-xs">Resistance</p>
-                    <p className="font-mono text-amber-400">{resistanceLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p>
-                  </div>
-                )}
-                {buyLevels.length > 0 && (
-                  <div>
-                    <p className="text-muted text-xs">Buy the dip</p>
-                    <p className="font-mono text-accent">{buyLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
