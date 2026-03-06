@@ -69,14 +69,12 @@ export default function Transactions() {
   const [defaultAccount, setDefaultAccount] = useState('Harsh');
   const [syncResult, setSyncResult] = useState(null);
   const [syncing, setSyncing] = useState(false);
-  const [sheetUrlTransactions, setSheetUrlTransactions] = useState('');
-  const [sheetUrlSheet, setSheetUrlSheet] = useState('');
+  const [sheetUrl, setSheetUrl] = useState('');
 
   useEffect(() => {
     api.get('/settings').then(r => {
       if (r.data?.defaultAccount) setDefaultAccount(r.data.defaultAccount);
-      if (r.data?.sheetUrlTransactions) setSheetUrlTransactions(r.data.sheetUrlTransactions);
-      if (r.data?.sheetUrl) setSheetUrlSheet(r.data.sheetUrl);
+      if (r.data?.sheetUrl) setSheetUrl(r.data.sheetUrl);
     }).catch(() => {});
   }, []);
 
@@ -139,16 +137,10 @@ export default function Transactions() {
           <p className="text-muted text-sm mt-0.5">All income, major, non-recurring & trip expenses</p>
         </div>
         <div className="flex items-center gap-4 flex-wrap">
-          {sheetUrlTransactions && (
-            <a href={sheetUrlTransactions} target="_blank" rel="noopener noreferrer" className="text-accent hover:text-accent/80 flex items-center gap-2 text-sm font-medium border-b border-accent/40 pb-0.5" title="Open Transactions sheet">
+          {sheetUrl && (
+            <a href={sheetUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:text-accent/80 flex items-center gap-2 text-sm font-medium border-b border-accent/40 pb-0.5" title="Open Google Sheet">
               <ExternalLink size={14} />
               Open sheet
-            </a>
-          )}
-          {sheetUrlSheet && (
-            <a href={sheetUrlSheet} target="_blank" rel="noopener noreferrer" className="text-accent hover:text-accent/80 flex items-center gap-2 text-sm font-medium border-b border-accent/40 pb-0.5" title="Open Sheet (SHEET CSV URL)">
-              <ExternalLink size={14} />
-              Open sheet (Sheet)
             </a>
           )}
           <div className="flex gap-2 border-l border-border pl-4">
