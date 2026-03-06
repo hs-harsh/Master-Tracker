@@ -24,24 +24,14 @@ const TRADE_INSTRUMENTS = [
 
 const YEAR_OPTIONS = [3, 5, 10, 15, 20];
 
-function buildPrompt(mode, portfolioContext, years, instrument, amount, holdingsForSell) {
-  const ctx = (portfolioContext || '').trim();
-  const base = `You are a portfolio advisor. Return ONLY valid JSON. No markdown, no code fences.
-
-PORTFOLIO / GOAL CONTEXT:
-${ctx || '(None provided)'}
-
-YEARS TO KEEP GOAL PORTFOLIO: ${years} years`;
-
-  if (mode === 'general') {
-    return `${base}
-
-MODE: General portfolio insight (no trade). Analyze current holdings only.
-
-Return this JSON:
-{
-  "insight": "2-3 sentence overall assessment",
-  "recommendation": "STRONG" | "GOOD" | "NEEDS_ATTENTION" | "REBALANCE",
+const JSON_SCHEMA = `{
+  "insight": "2-4 sentence assessment",
+  "recommendation": "GO_AHEAD" | "MODIFY_AMOUNT" | "AVOID" | "DEFER" | "STRONG" | "GOOD" | "NEEDS_ATTENTION" | "REBALANCE",
+  "riskTakerAdvice": {
+    "high": "1-2 sentences: what a high risk taker should do",
+    "medium": "1-2 sentences: what a medium risk taker should do",
+    "low": "1-2 sentences: what a low risk taker should do"
+  },
   "riskReturnProjection": [
     { "years": 3, "expectedReturnPct": number, "riskPct": number },
     { "years": 5, "expectedReturnPct": number, "riskPct": number },
@@ -58,74 +48,49 @@ Return this JSON:
   ],
   "keyInsights": ["bullet 1", "bullet 2", "bullet 3"],
   "caveats": ["caveat 1"]
-}
+}`;
 
-Use realistic CAGR and volatility based on current allocation.`;
-  }
+function buildPrompt(portfolioContext, years, trades, holdings) {
+  const ctx = (portfolioContext || '').trim();
+  const holdingsStr = holdings?.length
+    ? `CURRENT HOLDINGS:\n${holdings.map((h) => `- ${h.instrument}: ₹${h.net?.toLocaleString('en-IN')}`).join('\n')}`
+    : 'No holdings data.';
 
-  if (mode === 'sell') {
-    const holdingsStr = holdingsForSell?.length
-      ? `CURRENT HOLDINGS (can sell):\n${holdingsForSell.map((h) => `- ${h.instrument}: ₹${h.net}`).join('\n')}`
-      : 'No holdings data.';
-    return `${base}
+  const base = `You are a portfolio advisor. Return ONLY valid JSON. No markdown, no code fences.
 
-${holdingsStr}
+PORTFOLIO / GOAL CONTEXT:
+${ctx || '(None provided)'}
 
-MODE: SELL. User wants to sell ₹${amount} of ${instrument?.name || instrument}.
+YEARS TO KEEP GOAL PORTFOLIO: ${years} years
 
-Return this JSON:
-{
-  "insight": "2-3 sentence: does selling make sense?",
-  "recommendation": "GO_AHEAD" | "MODIFY_AMOUNT" | "AVOID" | "DEFER",
-  "riskReturnProjection": [
-    { "years": 3, "expectedReturnPct": number, "riskPct": number },
-    { "years": 5, "expectedReturnPct": number, "riskPct": number },
-    { "years": 10, "expectedReturnPct": number, "riskPct": number },
-    { "years": 15, "expectedReturnPct": number, "riskPct": number },
-    { "years": 20, "expectedReturnPct": number, "riskPct": number }
-  ],
-  "allocationEvolution": [
-    { "year": 3, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
-    { "year": 5, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
-    { "year": 10, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
-    { "year": 15, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
-    { "year": 20, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number }
-  ],
-  "keyInsights": ["bullet 1", "bullet 2"],
-  "caveats": ["caveat 1"]
-}
+${holdingsStr}`;
 
-Show how risk/return changes after the sale over ${years}Y horizon.`;
-  }
+  const tradesStr = trades?.length
+    ? trades.map((t, i) => {
+        const inst = t.mode === 'sell'
+          ? t.sellInstrument
+          : (TRADE_INSTRUMENTS.find((x) => x.id === t.instrumentId)?.name || t.instrumentId);
+        return `${i + 1}. ${t.mode.toUpperCase()}: ₹${t.amount} in ${inst}`;
+      }).join('\n')
+    : null;
 
-  // Buy mode
+  const modeBlock = tradesStr
+    ? `PROPOSED TRADES (apply all together):\n${tradesStr}\n\nMODE: Analyze the combined effect of ALL trades on the portfolio.`
+    : 'MODE: General portfolio insight (no trades). Analyze current holdings only.';
+
   return `${base}
 
-MODE: BUY. User wants to invest ₹${amount} in ${instrument?.name} (${instrument?.ticker}).
+${modeBlock}
+
+IMPORTANT: Provide advice for three risk profiles. In riskTakerAdvice:
+- high: What should a HIGH risk taker do? (comfortable with volatility, can hold equity-heavy)
+- medium: What should a MEDIUM risk taker do? (balanced approach)
+- low: What should a LOW risk taker do? (prefers stability, debt/cash focus)
 
 Return this JSON:
-{
-  "insight": "2-3 sentence: does this trade make sense?",
-  "recommendation": "GO_AHEAD" | "MODIFY_AMOUNT" | "AVOID" | "DEFER",
-  "riskReturnProjection": [
-    { "years": 3, "expectedReturnPct": number, "riskPct": number },
-    { "years": 5, "expectedReturnPct": number, "riskPct": number },
-    { "years": 10, "expectedReturnPct": number, "riskPct": number },
-    { "years": 15, "expectedReturnPct": number, "riskPct": number },
-    { "years": 20, "expectedReturnPct": number, "riskPct": number }
-  ],
-  "allocationEvolution": [
-    { "year": 3, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
-    { "year": 5, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
-    { "year": 10, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
-    { "year": 15, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
-    { "year": 20, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number }
-  ],
-  "keyInsights": ["bullet 1", "bullet 2"],
-  "caveats": ["caveat 1"]
-}
+${JSON_SCHEMA}
 
-Show how risk/return changes after the buy over ${years}Y horizon.`;
+Use realistic CAGR and volatility. Show how risk/return and allocation evolve over ${years}Y horizon.`;
 }
 
 function tryParseJson(raw) {
@@ -234,7 +199,6 @@ const defaultTradeRow = () => ({
 });
 
 export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdings = [] }) {
-  const [activeTab, setActiveTab] = useState(0); // 0 = General, 1+ = Trade 1, 2, ...
   const [portfolioContext, setPortfolioContext] = useState(defaultPortfolioContext);
   const [years, setYears] = useState(10);
   const [tradeRows, setTradeRows] = useState([]);
@@ -243,17 +207,14 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
   const [error, setError] = useState(null);
 
   const holdingsForSell = holdings.filter((h) => h.net > 0);
-  const isGeneral = activeTab === 0;
-  const currentRow = activeTab > 0 ? tradeRows[activeTab - 1] : null;
+  const allHoldings = holdings.filter((h) => h.net !== 0);
 
   const addRow = () => {
     setTradeRows((prev) => [...prev, defaultTradeRow()]);
-    setActiveTab(tradeRows.length + 1);
   };
 
   const removeRow = (idx) => {
     setTradeRows((prev) => prev.filter((_, i) => i !== idx));
-    setActiveTab(Math.max(0, activeTab - (activeTab > idx ? 1 : 0)));
   };
 
   const updateRow = (idx, field, value) => {
@@ -262,21 +223,17 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!isGeneral && currentRow) {
-      const amt = parseInt(currentRow.amount, 10);
-      if (isNaN(amt) || amt <= 0) return;
-      if (currentRow.mode === 'sell' && !currentRow.sellInstrument) return;
-    }
+    const validTrades = tradeRows.filter((r) => {
+      const amt = parseInt(r.amount, 10);
+      if (isNaN(amt) || amt <= 0) return false;
+      if (r.mode === 'sell' && !r.sellInstrument) return false;
+      return true;
+    });
     setLoading(true);
     setError(null);
     setFeedback(null);
     try {
-      const mode = isGeneral ? 'general' : currentRow.mode;
-      const inst = isGeneral ? null : (currentRow.mode === 'sell'
-        ? { name: currentRow.sellInstrument, ticker: currentRow.sellInstrument }
-        : TRADE_INSTRUMENTS.find((i) => i.id === currentRow.instrumentId) || TRADE_INSTRUMENTS[0]);
-      const amt = isGeneral ? 0 : parseInt(currentRow.amount, 10);
-      const prompt = buildPrompt(mode, portfolioContext, years, inst, amt, holdingsForSell);
+      const prompt = buildPrompt(portfolioContext, years, validTrades, allHoldings);
       const res = await api.post('/chat', {
         model: 'claude-sonnet-4-20250514',
         max_tokens: 2500,
@@ -300,151 +257,130 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
         <MessageSquare size={18} className="text-accent" />
         <h2 className="font-display font-semibold text-white text-lg">Portfolio feedback</h2>
       </div>
-      <p className="text-muted text-sm mb-4">
-        0 rows = general insight. Add trade rows as tabs to get feedback on buy/sell.
-      </p>
-
-      {/* Tabs: General + Trade 1, Trade 2, ... + Add */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <button
-          type="button"
-          onClick={() => setActiveTab(0)}
-          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 0 ? 'bg-accent text-ink' : 'bg-surface text-soft hover:text-white'
-          }`}
-        >
-          General
-        </button>
-        {tradeRows.map((row, i) => (
-          <div key={i} className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setActiveTab(i + 1)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === i + 1 ? 'bg-accent text-ink' : 'bg-surface text-soft hover:text-white'
-              }`}
-            >
-              Trade {i + 1}
-            </button>
-            <button
-              type="button"
-              onClick={() => removeRow(i)}
-              className="p-1.5 rounded text-muted hover:text-rose hover:bg-rose/10"
-              title="Remove"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={addRow}
-          className="px-3 py-2 rounded-lg text-sm font-medium bg-surface text-soft hover:text-white flex items-center gap-1"
-        >
-          <Plus size={14} /> Add trade
-        </button>
-      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="label">Years to keep goal portfolio</label>
-          <select className="input w-auto" value={years} onChange={(e) => setYears(Number(e.target.value))}>
-            {YEAR_OPTIONS.map((y) => (
-              <option key={y} value={y}>{y} years</option>
-            ))}
-          </select>
-        </div>
-        <div>
           <label className="label">Portfolio / goal</label>
-          <textarea
-            className="input min-h-[72px] resize-y"
-            placeholder="e.g. Current: 50% Nifty, 30% Gold, 20% US. Goal: Balanced."
-            value={portfolioContext}
-            onChange={(e) => setPortfolioContext(e.target.value)}
-            rows={2}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <textarea
+              className="input min-h-[72px] resize-y flex-1 min-w-[200px]"
+              placeholder="e.g. Current: 50% Nifty, 30% Gold, 20% US. Goal: Balanced."
+              value={portfolioContext}
+              onChange={(e) => setPortfolioContext(e.target.value)}
+              rows={2}
+            />
+            <div className="flex items-center gap-2 shrink-0">
+              <label className="label text-sm">Years</label>
+              <select className="input w-auto py-2" value={years} onChange={(e) => setYears(Number(e.target.value))}>
+                {YEAR_OPTIONS.map((y) => (
+                  <option key={y} value={y}>{y}Y</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
-        {isGeneral ? (
-          <p className="text-muted text-sm">General insight: no trades. Analyze current holdings only.</p>
-        ) : currentRow && (
-          <div className="space-y-4 p-4 rounded-xl bg-surface/50 border border-border">
-            <div>
-              <label className="label">Mode</label>
-              <div className="flex gap-2">
-                {['buy', 'sell'].map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => updateRow(activeTab - 1, 'mode', m)}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium capitalize ${
-                      currentRow.mode === m ? 'bg-accent text-ink' : 'bg-card text-soft hover:text-white'
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {currentRow.mode === 'buy' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Instrument</label>
-                  <select
-                    className="input"
-                    value={currentRow.instrumentId}
-                    onChange={(e) => updateRow(activeTab - 1, 'instrumentId', e.target.value)}
-                  >
-                    {TRADE_INSTRUMENTS.map((i) => (
-                      <option key={i.id} value={i.id}>{i.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Amount (₹)</label>
-                  <input
-                    type="number"
-                    className="input"
-                    min={1}
-                    value={currentRow.amount}
-                    onChange={(e) => updateRow(activeTab - 1, 'amount', e.target.value)}
-                  />
-                </div>
-              </div>
-            )}
-            {currentRow.mode === 'sell' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Sell from</label>
-                  <select
-                    className="input"
-                    value={currentRow.sellInstrument}
-                    onChange={(e) => updateRow(activeTab - 1, 'sellInstrument', e.target.value)}
-                  >
-                    <option value="">Select holding</option>
-                    {holdingsForSell.map((h, i) => (
-                      <option key={i} value={h.instrument}>{h.instrument} — ₹{h.net?.toLocaleString('en-IN')}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Amount (₹)</label>
-                  <input
-                    type="number"
-                    className="input"
-                    min={1}
-                    value={currentRow.amount}
-                    onChange={(e) => updateRow(activeTab - 1, 'amount', e.target.value)}
-                  />
-                </div>
-              </div>
-            )}
+        {/* Trades form — below goal */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="label">Trades</label>
+            <button
+              type="button"
+              onClick={addRow}
+              className="btn-ghost text-sm flex items-center gap-1.5 text-accent hover:text-accent/80"
+            >
+              <Plus size={14} /> Add row
+            </button>
           </div>
-        )}
+          {tradeRows.length === 0 ? (
+            <p className="text-muted text-sm py-3 px-4 rounded-lg bg-surface/50 border border-border">
+              No trades. Add rows or get insight for general analysis.
+            </p>
+          ) : (
+            <div className="rounded-xl border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-surface/60 border-b border-border">
+                    <th className="text-left py-2.5 px-3 text-muted font-display text-xs uppercase tracking-wider w-24">Type</th>
+                    <th className="text-left py-2.5 px-3 text-muted font-display text-xs uppercase tracking-wider">Instrument</th>
+                    <th className="text-left py-2.5 px-3 text-muted font-display text-xs uppercase tracking-wider w-28">Amount (₹)</th>
+                    <th className="w-10" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {tradeRows.map((row, i) => (
+                    <tr key={i} className="border-b border-border/40 last:border-0 hover:bg-surface/30">
+                      <td className="py-2 px-3">
+                        <div className="flex gap-1">
+                          {['buy', 'sell'].map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => updateRow(i, 'mode', m)}
+                              className={`px-2 py-1 rounded text-xs font-medium capitalize ${
+                                row.mode === m ? 'bg-accent text-ink' : 'bg-card text-soft hover:text-white'
+                              }`}
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="py-2 px-3">
+                        {row.mode === 'buy' ? (
+                          <select
+                            className="input py-1.5 text-sm min-w-[140px]"
+                            value={row.instrumentId}
+                            onChange={(e) => updateRow(i, 'instrumentId', e.target.value)}
+                          >
+                            {TRADE_INSTRUMENTS.map((inst) => (
+                              <option key={inst.id} value={inst.id}>{inst.name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <select
+                            className="input py-1.5 text-sm min-w-[140px]"
+                            value={row.sellInstrument}
+                            onChange={(e) => updateRow(i, 'sellInstrument', e.target.value)}
+                          >
+                            <option value="">Select holding</option>
+                            {holdingsForSell.map((h, hi) => (
+                              <option key={hi} value={h.instrument}>{h.instrument} — ₹{h.net?.toLocaleString('en-IN')}</option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                      <td className="py-2 px-3">
+                        <input
+                          type="number"
+                          className="input py-1.5 text-sm w-24"
+                          min={1}
+                          placeholder="Amount"
+                          value={row.amount}
+                          onChange={(e) => updateRow(i, 'amount', e.target.value)}
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <button
+                          type="button"
+                          onClick={() => removeRow(i)}
+                          className="p-1.5 rounded text-muted hover:text-rose hover:bg-rose/10"
+                          title="Remove row"
+                        >
+                          <X size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
         <button type="submit" disabled={loading} className="btn-primary flex items-center gap-2">
           {loading ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />}
-          {loading ? 'Analyzing…' : isGeneral ? 'Get insight' : 'Get feedback'}
+          {loading ? 'Analyzing…' : 'Get insight'}
         </button>
       </form>
 
@@ -464,6 +400,19 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
                   </p>
                 )}
               </div>
+              {feedback.riskTakerAdvice && (
+                <div className="card">
+                  <p className="stat-label mb-3">By risk profile</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {['high', 'medium', 'low'].map((k) => (
+                      <div key={k} className="p-3 rounded-lg bg-surface/50 border border-border">
+                        <p className="text-xs font-semibold text-white uppercase tracking-wider mb-1.5 capitalize">{k} risk</p>
+                        <p className="text-sm text-soft leading-relaxed">{feedback.riskTakerAdvice[k] || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <RiskReturnChart data={feedback.riskReturnProjection} />
                 <AllocationChart data={feedback.allocationEvolution} />
