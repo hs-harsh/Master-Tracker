@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, Calculator, LineChart, LogOut, Settings, BarChart3, Menu, X, LogIn, Lock } from 'lucide-react';
+import InstallPrompt from './InstallPrompt';
 import api from '../lib/api';
 import { applyTheme } from '../lib/theme';
 import { setCurrencySymbol } from '../lib/utils';
@@ -120,7 +121,8 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="px-3 py-4 border-t border-border">
+        <div className="px-3 py-4 border-t border-border space-y-2">
+          <InstallPrompt />
           {isAuth ? (
             <button
               onClick={handleLogout}
