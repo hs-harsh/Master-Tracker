@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { Settings as SettingsIcon, Save, Trash2 } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Trash2, ExternalLink } from 'lucide-react';
 import { applyTheme } from '../lib/theme';
 
 const THEME_MODES = ['dark', 'light'];
@@ -121,7 +121,7 @@ export default function Settings() {
         <p className="text-sm text-soft mb-4">
           Use one Google Sheet with two tabs: <strong>Transactions</strong> and <strong>Investments</strong>. Publish each tab to the web as CSV, then paste the two links below. Sync from the <strong>Transactions</strong> or <strong>Investments</strong> tab to add new rows.
         </p>
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div>
             <label className="label">Transactions sheet CSV URL</label>
             <input
@@ -131,6 +131,29 @@ export default function Settings() {
               value={sheetUrlTransactions}
               onChange={e => setSheetUrlTransactions(e.target.value)}
             />
+            <div className="mt-2 flex items-center gap-2 rounded-lg bg-surface border border-border overflow-hidden">
+              <input
+                type="text"
+                readOnly
+                className="flex-1 min-w-0 bg-transparent px-3 py-2.5 text-sm text-soft font-mono truncate border-0 focus:ring-0"
+                value={sheetUrlTransactions || 'No link set'}
+                title={sheetUrlTransactions || 'Save a URL above first'}
+              />
+              <a
+                href={sheetUrlTransactions || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium shrink-0 ${
+                  sheetUrlTransactions
+                    ? 'text-accent hover:bg-accent/10'
+                    : 'text-muted cursor-not-allowed pointer-events-none'
+                }`}
+                onClick={e => !sheetUrlTransactions && e.preventDefault()}
+              >
+                <ExternalLink size={14} />
+                Open sheet
+              </a>
+            </div>
           </div>
           <div>
             <label className="label">Investments sheet CSV URL</label>
@@ -141,6 +164,29 @@ export default function Settings() {
               value={sheetUrlInvestments}
               onChange={e => setSheetUrlInvestments(e.target.value)}
             />
+            <div className="mt-2 flex items-center gap-2 rounded-lg bg-surface border border-border overflow-hidden">
+              <input
+                type="text"
+                readOnly
+                className="flex-1 min-w-0 bg-transparent px-3 py-2.5 text-sm text-soft font-mono truncate border-0 focus:ring-0"
+                value={sheetUrlInvestments || 'No link set'}
+                title={sheetUrlInvestments || 'Save a URL above first'}
+              />
+              <a
+                href={sheetUrlInvestments || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium shrink-0 ${
+                  sheetUrlInvestments
+                    ? 'text-accent hover:bg-accent/10'
+                    : 'text-muted cursor-not-allowed pointer-events-none'
+                }`}
+                onClick={e => !sheetUrlInvestments && e.preventDefault()}
+              >
+                <ExternalLink size={14} />
+                Open sheet
+              </a>
+            </div>
           </div>
         </div>
       </div>
