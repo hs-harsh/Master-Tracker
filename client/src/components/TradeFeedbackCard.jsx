@@ -24,14 +24,8 @@ const TRADE_INSTRUMENTS = [
 
 const YEAR_OPTIONS = [3, 5, 10, 15, 20];
 
-const JSON_SCHEMA = `{
-  "insight": "2-4 sentence assessment",
-  "recommendation": "GO_AHEAD" | "MODIFY_AMOUNT" | "AVOID" | "DEFER" | "STRONG" | "GOOD" | "NEEDS_ATTENTION" | "REBALANCE",
-  "riskTakerAdvice": {
-    "high": "1-2 sentences: what a high risk taker should do",
-    "medium": "1-2 sentences: what a medium risk taker should do",
-    "low": "1-2 sentences: what a low risk taker should do"
-  },
+const NO_TRADE_SCHEMA = `{
+  "insight": "2-4 sentence assessment of current portfolio",
   "riskReturnProjection": [
     { "years": 3, "expectedReturnPct": number, "riskPct": number },
     { "years": 5, "expectedReturnPct": number, "riskPct": number },
@@ -39,14 +33,37 @@ const JSON_SCHEMA = `{
     { "years": 15, "expectedReturnPct": number, "riskPct": number },
     { "years": 20, "expectedReturnPct": number, "riskPct": number }
   ],
-  "allocationEvolution": [
-    { "year": 3, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
-    { "year": 5, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
-    { "year": 10, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
-    { "year": 15, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
-    { "year": 20, "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number }
-  ],
-  "keyInsights": ["bullet 1", "bullet 2", "bullet 3"],
+  "byRiskLevel": {
+    "high": {
+      "targetRiskSplit": "e.g. 70% equity, 20% debt, 10% cash — ideal allocation for high risk taker",
+      "riskReturnChange": "1-2 sentences: how risk/return would change from current portfolio if they rebalance to target"
+    },
+    "medium": {
+      "targetRiskSplit": "e.g. 50% equity, 35% debt, 15% cash",
+      "riskReturnChange": "1-2 sentences: how risk/return would change from current"
+    },
+    "low": {
+      "targetRiskSplit": "e.g. 30% equity, 50% debt, 20% cash",
+      "riskReturnChange": "1-2 sentences: how risk/return would change from current"
+    }
+  },
+  "keyInsights": ["bullet 1", "bullet 2"],
+  "caveats": ["caveat 1"]
+}`;
+
+const TRADE_SCHEMA = `{
+  "insight": "2-4 sentence assessment of proposed trades",
+  "byRiskLevel": {
+    "high": {
+      "allocationBefore": { "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+      "allocationAfter": { "equityPct": number, "debtPct": number, "metalPct": number, "cashPct": number },
+      "riskReturnProfile": "1-2 sentences: changed risk-return after trades",
+      "optimalAmount": "1-2 sentences: recommended amount for each trade for this risk level (e.g. invest ₹X in Nifty, ₹Y in Gold)"
+    },
+    "medium": { "allocationBefore": {...}, "allocationAfter": {...}, "riskReturnProfile": "...", "optimalAmount": "..." },
+    "low": { "allocationBefore": {...}, "allocationAfter": {...}, "riskReturnProfile": "...", "optimalAmount": "..." }
+  },
+  "keyInsights": ["bullet 1", "bullet 2"],
   "caveats": ["caveat 1"]
 }`;
 
@@ -58,39 +75,46 @@ function buildPrompt(portfolioContext, years, trades, holdings) {
 
   const base = `You are a portfolio advisor. Return ONLY valid JSON. No markdown, no code fences.
 
-PORTFOLIO / GOAL CONTEXT:
+PORTFOLIO CONTEXT (derived from holdings):
 ${ctx || '(None provided)'}
 
-YEARS TO KEEP GOAL PORTFOLIO: ${years} years
+YEARS HORIZON: ${years} years
 
 ${holdingsStr}`;
 
-  const tradesStr = trades?.length
-    ? trades.map((t, i) => {
-        const inst = t.mode === 'sell'
-          ? t.sellInstrument
-          : (TRADE_INSTRUMENTS.find((x) => x.id === t.instrumentId)?.name || t.instrumentId);
-        return `${i + 1}. ${t.mode.toUpperCase()}: ₹${t.amount} in ${inst}`;
-      }).join('\n')
-    : null;
+  if (!trades?.length) {
+    return `${base}
 
-  const modeBlock = tradesStr
-    ? `PROPOSED TRADES (apply all together):\n${tradesStr}\n\nMODE: Analyze the combined effect of ALL trades on the portfolio.`
-    : 'MODE: General portfolio insight (no trades). Analyze current holdings only.';
+MODE: General insight (no trades). For each risk level (high, medium, low), provide:
+1. targetRiskSplit: ideal risk split (equity/debt/cash %) they should target
+2. riskReturnChange: how risk and return would change from current portfolio if they rebalance to that target
+
+Return this JSON:
+${NO_TRADE_SCHEMA}
+
+Use realistic CAGR and volatility for current allocation.`;
+  }
+
+  const tradesStr = trades.map((t, i) => {
+    const inst = t.mode === 'sell'
+      ? t.sellInstrument
+      : (TRADE_INSTRUMENTS.find((x) => x.id === t.instrumentId)?.name || t.instrumentId);
+    return `${i + 1}. ${t.mode.toUpperCase()}: ₹${t.amount} in ${inst}`;
+  }).join('\n');
 
   return `${base}
 
-${modeBlock}
+PROPOSED TRADES (apply all together):
+${tradesStr}
 
-IMPORTANT: Provide advice for three risk profiles. In riskTakerAdvice:
-- high: What should a HIGH risk taker do? (comfortable with volatility, can hold equity-heavy)
-- medium: What should a MEDIUM risk taker do? (balanced approach)
-- low: What should a LOW risk taker do? (prefers stability, debt/cash focus)
+MODE: Trade feedback. For each risk level (high, medium, low), provide:
+1. allocationBefore: current asset allocation (equityPct, debtPct, metalPct, cashPct)
+2. allocationAfter: allocation after applying the proposed trades
+3. riskReturnProfile: how risk-return changes after trades
+4. optimalAmount: recommendation for optimal amount for each trade for this risk level (may suggest scaling up/down)
 
 Return this JSON:
-${JSON_SCHEMA}
-
-Use realistic CAGR and volatility. Show how risk/return and allocation evolve over ${years}Y horizon.`;
+${TRADE_SCHEMA}`;
 }
 
 function tryParseJson(raw) {
@@ -199,7 +223,6 @@ const defaultTradeRow = () => ({
 });
 
 export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdings = [] }) {
-  const [portfolioContext, setPortfolioContext] = useState(defaultPortfolioContext);
   const [years, setYears] = useState(10);
   const [tradeRows, setTradeRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -233,7 +256,7 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
     setError(null);
     setFeedback(null);
     try {
-      const prompt = buildPrompt(portfolioContext, years, validTrades, allHoldings);
+      const prompt = buildPrompt(defaultPortfolioContext, years, validTrades, allHoldings);
       const res = await api.post('/chat', {
         model: 'claude-sonnet-4-20250514',
         max_tokens: 2500,
@@ -259,28 +282,16 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="label">Portfolio / goal</label>
-          <div className="flex flex-wrap items-center gap-3">
-            <textarea
-              className="input min-h-[72px] resize-y flex-1 min-w-[200px]"
-              placeholder="e.g. Current: 50% Nifty, 30% Gold, 20% US. Goal: Balanced."
-              value={portfolioContext}
-              onChange={(e) => setPortfolioContext(e.target.value)}
-              rows={2}
-            />
-            <div className="flex items-center gap-2 shrink-0">
-              <label className="label text-sm">Years</label>
-              <select className="input w-auto py-2" value={years} onChange={(e) => setYears(Number(e.target.value))}>
-                {YEAR_OPTIONS.map((y) => (
-                  <option key={y} value={y}>{y}Y</option>
-                ))}
-              </select>
-            </div>
-          </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="label text-sm">Years</label>
+          <select className="input w-auto py-2" value={years} onChange={(e) => setYears(Number(e.target.value))}>
+            {YEAR_OPTIONS.map((y) => (
+              <option key={y} value={y}>{y}Y</option>
+            ))}
+          </select>
         </div>
 
-        {/* Trades form — below goal */}
+        {/* Trades form */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="label">Trades</label>
@@ -394,29 +405,51 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
             <>
               <div className="p-4 rounded-xl bg-accent/5 border border-accent/20">
                 <p className="text-soft text-sm leading-relaxed">{feedback.insight}</p>
-                {feedback.recommendation && (
-                  <p className={`mt-2 font-semibold ${RECOMMENDATION_COLOR[feedback.recommendation] || 'text-white'}`}>
-                    {feedback.recommendation.replace(/_/g, ' ')}
-                  </p>
-                )}
               </div>
-              {feedback.riskTakerAdvice && (
+              {feedback.byRiskLevel && (
                 <div className="card">
                   <p className="stat-label mb-3">By risk profile</p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {['high', 'medium', 'low'].map((k) => (
-                      <div key={k} className="p-3 rounded-lg bg-surface/50 border border-border">
-                        <p className="text-xs font-semibold text-white uppercase tracking-wider mb-1.5 capitalize">{k} risk</p>
-                        <p className="text-sm text-soft leading-relaxed">{feedback.riskTakerAdvice[k] || '—'}</p>
-                      </div>
-                    ))}
+                    {['high', 'medium', 'low'].map((k) => {
+                      const r = feedback.byRiskLevel[k];
+                      if (!r) return null;
+                      const isTradeMode = r.allocationBefore != null && r.allocationAfter != null;
+                      return (
+                        <div key={k} className="p-3 rounded-lg bg-surface/50 border border-border space-y-2">
+                          <p className="text-xs font-semibold text-white uppercase tracking-wider capitalize">{k} risk</p>
+                          {isTradeMode ? (
+                            <>
+                              {r.allocationBefore && r.allocationAfter && (
+                                <div className="text-xs space-y-1">
+                                  <p className="text-muted">Allocation: before → after</p>
+                                  <p className="text-soft">
+                                    E{Number(r.allocationBefore.equityPct) || 0}% D{Number(r.allocationBefore.debtPct) || 0}% M{Number(r.allocationBefore.metalPct) || 0}% C{Number(r.allocationBefore.cashPct) || 0}%
+                                    {' → '}
+                                    E{Number(r.allocationAfter.equityPct) || 0}% D{Number(r.allocationAfter.debtPct) || 0}% M{Number(r.allocationAfter.metalPct) || 0}% C{Number(r.allocationAfter.cashPct) || 0}%
+                                  </p>
+                                </div>
+                              )}
+                              {r.riskReturnProfile && <p className="text-sm text-soft">{r.riskReturnProfile}</p>}
+                              {r.optimalAmount && <p className="text-sm text-accent font-medium">{r.optimalAmount}</p>}
+                            </>
+                          ) : (
+                            <>
+                              {r.targetRiskSplit && <p className="text-sm text-soft"><span className="text-muted">Target:</span> {r.targetRiskSplit}</p>}
+                              {r.riskReturnChange && <p className="text-sm text-soft"><span className="text-muted">Change:</span> {r.riskReturnChange}</p>}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <RiskReturnChart data={feedback.riskReturnProjection} />
-                <AllocationChart data={feedback.allocationEvolution} />
-              </div>
+              {feedback.riskReturnProjection?.length > 0 && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <RiskReturnChart data={feedback.riskReturnProjection} />
+                  {feedback.allocationEvolution?.length > 0 && <AllocationChart data={feedback.allocationEvolution} />}
+                </div>
+              )}
               {feedback.keyInsights?.length > 0 && (
                 <div className="card">
                   <p className="stat-label mb-2">Key insights</p>
