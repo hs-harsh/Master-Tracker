@@ -7,7 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 
 const TYPES = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
 
-function TransactionForm({ initial, defaultAccount, onSave, onCancel }) {
+function TransactionForm({ initial, defaultAccount, persons, onSave, onCancel }) {
   const EMPTY = { date: '', type: 'Major', account: defaultAccount || '', amount: 0, remark: '' };
   const [form, setForm] = useState(initial || { ...EMPTY });
   useEffect(() => {
@@ -36,7 +36,9 @@ function TransactionForm({ initial, defaultAccount, onSave, onCancel }) {
         </div>
         <div>
           <label className="label">Account</label>
-          <input name="account" value={form.account} onChange={onChange} className="input" readOnly />
+          <select name="account" value={form.account} onChange={onChange} className="input">
+            {(persons || []).map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
         </div>
         <div>
           <label className="label">Amount (₹)</label>
@@ -58,7 +60,7 @@ function TransactionForm({ initial, defaultAccount, onSave, onCancel }) {
 }
 
 export default function Transactions() {
-  const { personName } = useAuth();
+  const { personName, persons } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -162,6 +164,7 @@ export default function Transactions() {
         <TransactionForm
           initial={editing}
           defaultAccount={personName}
+          persons={persons}
           onSave={handleSave}
           onCancel={() => { setShowForm(false); setEditing(null); }}
         />
@@ -179,8 +182,8 @@ export default function Transactions() {
           />
         </div>
         <select className="input w-32" value={filters.account} onChange={e => setFilters(p => ({...p, account: e.target.value}))}>
-          <option value="">All Accounts</option>
-          <option value={personName}>{personName}</option>
+          <option value="">All</option>
+          {persons.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
         <select className="input w-36" value={filters.type} onChange={e => setFilters(p => ({...p, type: e.target.value}))}>
           <option value="">All Types</option>

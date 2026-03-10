@@ -8,7 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const SIDES = ['BUY', 'SELL'];
 
-function InvestmentForm({ initial, defaultAccount, onSave, onCancel }) {
+function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) {
   const EMPTY = {
     date: '',
     account: defaultAccount || '',
@@ -55,13 +55,14 @@ function InvestmentForm({ initial, defaultAccount, onSave, onCancel }) {
         </div>
         <div>
           <label className="label">Account</label>
-          <input
+          <select
             name="account"
             value={form.account}
             onChange={onChange}
             className="input"
-            readOnly
-          />
+          >
+            {(persons || []).map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
         </div>
         <div>
           <label className="label">Goal</label>
@@ -146,7 +147,7 @@ function InvestmentForm({ initial, defaultAccount, onSave, onCancel }) {
 }
 
 export default function Investments() {
-  const { personName } = useAuth();
+  const { personName, persons } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -280,6 +281,7 @@ export default function Investments() {
         <InvestmentForm
           initial={editing}
           defaultAccount={personName}
+          persons={persons}
           onSave={handleSave}
           onCancel={() => { setShowForm(false); setEditing(null); }}
         />
@@ -304,8 +306,8 @@ export default function Investments() {
           value={filters.account}
           onChange={e => setFilters(p => ({ ...p, account: e.target.value }))}
         >
-          <option value="">All Accounts</option>
-          <option value={personName}>{personName}</option>
+          <option value="">All</option>
+          {persons.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
         <select
           className="input w-40"

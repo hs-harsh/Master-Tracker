@@ -4,7 +4,6 @@ const auth = require('../middleware/auth');
 const { parse } = require('csv-parse/sync');
 
 const TYPES = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
-const ACCOUNTS = ['Harsh', 'Kirti'];
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const SIDES = ['BUY', 'SELL'];
 
@@ -68,12 +67,12 @@ router.get('/', auth, async (req, res) => {
       sheetUrl,
       defaultIdealSaving: defaultIdealSaving ? parseInt(defaultIdealSaving, 10) : 100000,
       defaultIncome: defaultIncome ? parseInt(defaultIncome, 10) : 0,
-      defaultAccount: defaultAccount || 'Harsh',
+      defaultAccount: defaultAccount || '',
       themeMode: themeMode || 'dark',
       theme: themeMode || 'dark',
       accent: accent || 'gold',
       currencyDisplay: currencyDisplay || 'INR',
-      dashboardDefaultProfile: dashboardDefaultProfile || 'Both',
+      dashboardDefaultProfile: dashboardDefaultProfile || '',
       anthropicApiKeySet: !!anthropicApiKey.trim(),
     });
   } catch (err) {
@@ -115,7 +114,7 @@ router.put('/', auth, async (req, res) => {
       await setSetting(SETTINGS_KEYS.defaultIncome, String(v));
     }
     if (body.defaultAccount !== undefined) {
-      const v = ['Harsh', 'Kirti'].includes(body.defaultAccount) ? body.defaultAccount : 'Harsh';
+      const v = typeof body.defaultAccount === 'string' ? body.defaultAccount.trim() : '';
       await setSetting(SETTINGS_KEYS.defaultAccount, v);
     }
     if (body.themeMode !== undefined) {
@@ -135,7 +134,7 @@ router.put('/', auth, async (req, res) => {
       await setSetting(SETTINGS_KEYS.currencyDisplay, v);
     }
     if (body.dashboardDefaultProfile !== undefined) {
-      const v = ['Harsh', 'Kirti', 'Both'].includes(body.dashboardDefaultProfile) ? body.dashboardDefaultProfile : 'Both';
+      const v = typeof body.dashboardDefaultProfile === 'string' ? body.dashboardDefaultProfile.trim() : '';
       await setSetting(SETTINGS_KEYS.dashboardDefaultProfile, v);
     }
     if (body.anthropicApiKey !== undefined) {
@@ -160,12 +159,12 @@ router.put('/', auth, async (req, res) => {
       sheetUrl,
       defaultIdealSaving: defaultIdealSaving ? parseInt(defaultIdealSaving, 10) : 100000,
       defaultIncome: defaultIncome ? parseInt(defaultIncome, 10) : 0,
-      defaultAccount: defaultAccount || 'Harsh',
+      defaultAccount: defaultAccount || '',
       themeMode: themeMode || 'dark',
       theme: themeMode || 'dark',
       accent: accent || 'gold',
       currencyDisplay: currencyDisplay || 'INR',
-      dashboardDefaultProfile: dashboardDefaultProfile || 'Both',
+      dashboardDefaultProfile: dashboardDefaultProfile || '',
       anthropicApiKeySet: !!anthropicApiKey.trim(),
     });
   } catch (err) {
@@ -206,7 +205,7 @@ router.post('/sync-from-sheet', auth, async (req, res) => {
         if (!date) { result.errors.push({ row: rowNum, message: 'date is required' }); continue; }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { result.errors.push({ row: rowNum, message: 'date must be YYYY-MM-DD' }); continue; }
         if (!TYPES.includes(txType)) { result.errors.push({ row: rowNum, message: `type must be one of: ${TYPES.join(', ')}` }); continue; }
-        if (!ACCOUNTS.includes(account)) { result.errors.push({ row: rowNum, message: `account must be one of: ${ACCOUNTS.join(', ')}` }); continue; }
+        if (!account) { result.errors.push({ row: rowNum, message: 'account is required' }); continue; }
         const amount = parseInt(amountRaw, 10);
         if (isNaN(amount) || amount < 0) { result.errors.push({ row: rowNum, message: 'amount must be a non-negative number' }); continue; }
         await pool.query(
@@ -233,7 +232,7 @@ router.post('/sync-from-sheet', auth, async (req, res) => {
         const r = rows[i];
         const rowNum = i + 2;
         const date = (r.date || '').trim();
-        const account = (r.account || '').trim() || 'Harsh';
+        const account = (r.account || '').trim();
         const goal = (r.goal || '').trim();
         const asset_class = (r.asset_class || '').trim();
         const instrument = (r.instrument || '').trim();
@@ -242,7 +241,7 @@ router.post('/sync-from-sheet', auth, async (req, res) => {
         const broker = (r.broker ?? '').trim() || null;
         if (!date) { result.errors.push({ row: rowNum, message: 'date is required' }); continue; }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { result.errors.push({ row: rowNum, message: 'date must be YYYY-MM-DD' }); continue; }
-        if (!ACCOUNTS.includes(account)) { result.errors.push({ row: rowNum, message: `account must be one of: ${ACCOUNTS.join(', ')}` }); continue; }
+        if (!account) { result.errors.push({ row: rowNum, message: 'account is required' }); continue; }
         if (!goal) { result.errors.push({ row: rowNum, message: 'goal is required' }); continue; }
         if (!ASSET_CLASSES.includes(asset_class)) { result.errors.push({ row: rowNum, message: `asset_class must be one of: ${ASSET_CLASSES.join(', ')}` }); continue; }
         if (!instrument) { result.errors.push({ row: rowNum, message: 'instrument is required' }); continue; }

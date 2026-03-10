@@ -16,6 +16,26 @@ BEGIN
   END IF;
 END $$;
 
+-- Persons associated with a user account (a household can have multiple people)
+CREATE TABLE IF NOT EXISTS user_persons (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  person_name VARCHAR(50) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, person_name)
+);
+
+-- Migrate existing person_name from users table into user_persons
+DO $$
+BEGIN
+  INSERT INTO user_persons (user_id, person_name)
+    SELECT id, person_name FROM users
+    WHERE person_name IS NOT NULL AND person_name != ''
+  ON CONFLICT DO NOTHING;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_user_persons_user_id ON user_persons(user_id);
+
 -- Drop CHECK constraints that restrict person/account to specific names (run once on migration)
 DO $$
 DECLARE

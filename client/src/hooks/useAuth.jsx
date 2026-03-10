@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import api from '../lib/api';
 
 const AuthCtx = createContext(null);
@@ -13,8 +13,23 @@ function parseJwt(token) {
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem('token'));
+  const [persons, setPersons] = useState([]);
 
   const personName = token ? (parseJwt(token).personName || '') : '';
+
+  const fetchPersons = useCallback(async () => {
+    try {
+      const { data } = await api.get('/persons');
+      setPersons(data);
+    } catch {
+      setPersons([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (token) fetchPersons();
+    else setPersons([]);
+  }, [token, fetchPersons]);
 
   const login = async (username, password) => {
     const { data } = await api.post('/auth/login', { username, password });
@@ -36,7 +51,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthCtx.Provider value={{ token, login, register, logout, isAuth: !!token, personName }}>
+    <AuthCtx.Provider value={{ token, login, register, logout, isAuth: !!token, personName, persons, fetchPersons }}>
       {children}
     </AuthCtx.Provider>
   );

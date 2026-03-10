@@ -260,23 +260,40 @@ function PersonPanel({ person, cashflowData, investments, compact }) {
 }
 
 export default function Dashboard() {
-  const { personName } = useAuth();
-  const [cashflow, setCashflow] = useState([]);
-  const [investments, setInvestments] = useState([]);
+  const { personName, persons } = useAuth();
+  const [selectedPerson, setSelectedPerson] = useState('');
+  const [cashflowMap, setCashflowMap] = useState({});
+  const [investmentsMap, setInvestmentsMap] = useState({});
   const [loading, setLoading] = useState(true);
 
+  // When persons list loads, default to first person (the user's own name)
   useEffect(() => {
-    if (!personName) return;
-    Promise.all([
-      api.get(`/cashflow?person=${personName}`),
-      api.get(`/investments?account=${personName}`),
-    ])
-      .then(([cf, inv]) => {
-        setCashflow(cf.data);
-        setInvestments(inv.data);
+    if (persons.length && !selectedPerson) {
+      setSelectedPerson(persons[0]);
+    }
+  }, [persons]);
+
+  useEffect(() => {
+    if (!persons.length) return;
+    setLoading(true);
+    Promise.all(
+      persons.map(p =>
+        Promise.all([
+          api.get(`/cashflow?person=${p}`),
+          api.get(`/investments?account=${p}`),
+        ]).then(([cf, inv]) => ({ person: p, cashflow: cf.data, investments: inv.data }))
+      )
+    )
+      .then(results => {
+        const cfMap = {}, invMap = {};
+        results.forEach(r => { cfMap[r.person] = r.cashflow; invMap[r.person] = r.investments; });
+        setCashflowMap(cfMap);
+        setInvestmentsMap(invMap);
       })
       .finally(() => setLoading(false));
-  }, [personName]);
+  }, [persons]);
+
+  const activePerson = selectedPerson || personName;
 
   if (loading)
     return (
@@ -290,11 +307,30 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0">
           <h1 className="font-display text-xl sm:text-2xl font-bold text-white truncate">Dashboard</h1>
-          <p className="text-muted text-xs sm:text-sm mt-0.5">Key info, cashflow & investment trends · {personName}</p>
+          <p className="text-muted text-xs sm:text-sm mt-0.5">Key info, cashflow & investment trends</p>
         </div>
+        {persons.length > 1 && (
+          <div className="flex gap-1.5 sm:gap-2 flex-shrink-0">
+            {persons.map(p => (
+              <button
+                key={p}
+                onClick={() => setSelectedPerson(p)}
+                className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${
+                  activePerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <PersonPanel person={personName} cashflowData={cashflow} investments={investments} />
+      <PersonPanel
+        person={activePerson}
+        cashflowData={cashflowMap[activePerson] || []}
+        investments={investmentsMap[activePerson] || []}
+      />
     </div>
   );
 }

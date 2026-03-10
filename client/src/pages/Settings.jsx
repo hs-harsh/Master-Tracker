@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { Settings as SettingsIcon, Save, Trash2 } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Trash2, UserPlus, X } from 'lucide-react';
 import { applyTheme } from '../lib/theme';
 import { useAuth } from '../hooks/useAuth';
 
@@ -18,7 +18,35 @@ const CURRENCY_OPTIONS = [
 ];
 
 export default function Settings() {
-  const { personName } = useAuth();
+  const { personName, persons, fetchPersons } = useAuth();
+  const [newPersonName, setNewPersonName] = useState('');
+  const [personError, setPersonError] = useState('');
+  const [addingPerson, setAddingPerson] = useState(false);
+
+  const handleAddPerson = async () => {
+    if (!newPersonName.trim()) return;
+    setPersonError('');
+    setAddingPerson(true);
+    try {
+      await api.post('/persons', { personName: newPersonName.trim() });
+      setNewPersonName('');
+      fetchPersons();
+    } catch (err) {
+      setPersonError(err.response?.data?.error || 'Failed to add person');
+    } finally {
+      setAddingPerson(false);
+    }
+  };
+
+  const handleRemovePerson = async (name) => {
+    if (!confirm(`Remove "${name}"? Their data won't be deleted.`)) return;
+    try {
+      await api.delete(`/persons/${encodeURIComponent(name)}`);
+      fetchPersons();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to remove');
+    }
+  };
   const [sheetUrlTransactions, setSheetUrlTransactions] = useState('');
   const [sheetUrlInvestments, setSheetUrlInvestments] = useState('');
   const [sheetUrl, setSheetUrl] = useState('');
@@ -114,6 +142,53 @@ export default function Settings() {
       <div>
         <h1 className="font-display text-2xl font-bold text-white">Settings</h1>
         <p className="text-muted text-sm mt-0.5">Sheet links, defaults, and appearance. Use <strong>Sync with sheet</strong> on Transactions or Investments to pull new rows.</p>
+      </div>
+
+      {/* People */}
+      <div className="card max-w-2xl">
+        <div className="flex items-center gap-2 mb-4">
+          <UserPlus size={18} className="text-accent" />
+          <h2 className="font-display font-bold text-white">People</h2>
+        </div>
+        <p className="text-sm text-soft mb-4">
+          Each person has their own transactions, investments and cashflow. Add household members here.
+        </p>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {persons.map(p => (
+            <div key={p} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-card/60 border border-border text-sm font-mono text-white">
+              {p}
+              {p !== personName && (
+                <button
+                  onClick={() => handleRemovePerson(p)}
+                  className="text-muted hover:text-rose ml-1 transition-colors"
+                  title={`Remove ${p}`}
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 items-start">
+          <div className="flex-1">
+            <input
+              className="input w-full"
+              placeholder="New person name (e.g. Bob)"
+              value={newPersonName}
+              onChange={e => { setNewPersonName(e.target.value); setPersonError(''); }}
+              onKeyDown={e => e.key === 'Enter' && handleAddPerson()}
+            />
+            {personError && <p className="text-rose text-xs mt-1">{personError}</p>}
+          </div>
+          <button
+            onClick={handleAddPerson}
+            disabled={addingPerson || !newPersonName.trim()}
+            className="btn-primary flex items-center gap-2 shrink-0"
+          >
+            <UserPlus size={14} />
+            Add
+          </button>
+        </div>
       </div>
 
       {/* Linked Google Sheet — 3 URL placeholders */}

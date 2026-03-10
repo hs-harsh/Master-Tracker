@@ -25,16 +25,23 @@ const riskForAsset = asset => {
 };
 
 export default function Portfolio() {
-  const { personName } = useAuth();
+  const { personName, persons } = useAuth();
+  const [selectedPerson, setSelectedPerson] = useState('');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [goalFilter, setGoalFilter] = useState('');
   const [brokerFilter, setBrokerFilter] = useState('');
 
+  useEffect(() => {
+    if (persons.length && !selectedPerson) setSelectedPerson(persons[0]);
+  }, [persons]);
+
+  const activePerson = selectedPerson || personName;
+
   const load = () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (personName) params.set('account', personName);
+    if (activePerson) params.set('account', activePerson);
     api
       .get(`/investments?${params}`)
       .then(r => setData(r.data))
@@ -43,7 +50,7 @@ export default function Portfolio() {
 
   useEffect(() => {
     load();
-  }, [personName]);
+  }, [activePerson]);
 
   const goals = useMemo(
     () => Array.from(new Set(data.map(d => d.goal))).sort(),
@@ -139,6 +146,21 @@ export default function Portfolio() {
               View by account and filter by goal
             </p>
           </div>
+          {persons.length > 1 && (
+            <div className="flex gap-1.5">
+              {persons.map(p => (
+                <button
+                  key={p}
+                  onClick={() => setSelectedPerson(p)}
+                  className={`px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
+                    activePerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">

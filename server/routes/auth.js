@@ -48,6 +48,12 @@ router.post('/register', async (req, res) => {
       [username, passwordHash, trimmedPersonName]
     );
 
+    // Seed the user_persons table with the initial person
+    await pool.query(
+      'INSERT INTO user_persons (user_id, person_name) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [rows[0].id, trimmedPersonName]
+    );
+
     const token = jwt.sign(
       { id: rows[0].id, username: rows[0].username, personName: rows[0].person_name },
       process.env.JWT_SECRET || 'dev_secret_change_me',

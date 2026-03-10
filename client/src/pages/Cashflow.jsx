@@ -5,19 +5,24 @@ import { fmt, fmtDate } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
 
 export default function Cashflow() {
-  const { personName } = useAuth();
+  const { personName, persons } = useAuth();
+  const [person, setPerson] = useState('');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const load = () => {
-    if (!personName) return;
+  useEffect(() => {
+    if (persons.length && !person) setPerson(persons[0]);
+  }, [persons]);
+
+  const activePerson = person || personName;
+
+  useEffect(() => {
+    if (!activePerson) return;
     setLoading(true);
-    api.get(`/cashflow?person=${personName}`)
+    api.get(`/cashflow?person=${activePerson}`)
       .then(r => setData(r.data))
       .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); }, [personName]);
+  }, [activePerson]);
 
   const chartData = data.slice(-12).map(r => ({
     month: fmtDate(r.month),
@@ -32,8 +37,18 @@ export default function Cashflow() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-white">Cashflow</h1>
-          <p className="text-muted text-sm mt-0.5">Monthly income, expenses & savings · {personName}</p>
+          <p className="text-muted text-sm mt-0.5">Monthly income, expenses & savings</p>
         </div>
+        {persons.length > 1 && (
+          <div className="flex gap-2">
+            {persons.map(p => (
+              <button key={p} onClick={() => setPerson(p)}
+                className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${activePerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
+                {p}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Chart */}
