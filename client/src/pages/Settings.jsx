@@ -17,7 +17,7 @@ const CURRENCY_OPTIONS = [
   { id: 'USD', label: '$ USD' },
 ];
 const CURRENT_YEAR = new Date().getFullYear();
-const YEAR_OPTIONS = [2025, 2026, 2027, 2028, 2029, 2030];
+const YEAR_OPTIONS = [2020,2021,2022,2023,2024,2025,2026,2027,2028,2029,2030];
 
 export default function Settings() {
   const { personName, persons, fetchPersons } = useAuth();
@@ -37,7 +37,6 @@ export default function Settings() {
   const [profileSaving,    setProfileSaving]    = useState(0);
   const [profileRegular,   setProfileRegular]   = useState(0);
   const [profileEmi,       setProfileEmi]       = useState(0);
-  const [savingDefaults,   setSavingDefaults]   = useState(false);
   const [applyingDefaults, setApplyingDefaults] = useState(false);
   const [applyMsg,         setApplyMsg]         = useState('');
 
@@ -100,31 +99,12 @@ export default function Settings() {
     if (selectedProfile) loadProfileDefaults(selectedProfile);
   }, [selectedProfile, loadProfileDefaults]);
 
-  // ── Save per-person defaults ────────────────────────────────────────────────
-  const handleSaveDefaults = async () => {
-    if (!selectedProfile) return;
-    setSavingDefaults(true);
-    try {
-      await api.put(`/settings/person-defaults/${encodeURIComponent(selectedProfile)}`, {
-        income: Number(profileIncome) || 0,
-        idealSaving: Number(profileSaving) || 0,
-        regularExpense: Number(profileRegular) || 0,
-        emi: Number(profileEmi) || 0,
-      });
-      setApplyMsg(`✓ Defaults saved for ${selectedProfile}.`);
-      setTimeout(() => setApplyMsg(''), 4000);
-    } catch (e) {
-      alert(e.response?.data?.error || 'Failed to save defaults');
-    } finally {
-      setSavingDefaults(false);
-    }
-  };
-
-  // ── Apply defaults to selected year ────────────────────────────────────────
+  // ── Apply defaults: save + seed year ───────────────────────────────────────
   const handleApplyDefaults = async () => {
     if (!selectedProfile) return;
-    if (!confirm(`Apply defaults to all 12 months of ${selectedYear} for ${selectedProfile}?\n\nIncome, Ideal Saving, Regular Expense and EMI will be updated. Other data is preserved.`)) return;
+    if (!confirm(`Apply defaults to all 12 months of ${selectedYear} for ${selectedProfile}?\n\nIncome, Ideal Saving, Regular Expense and EMI will be set. Other data is preserved.`)) return;
     setApplyingDefaults(true);
+    setApplyMsg(`Applying for ${selectedYear}…`);
     try {
       await api.put(`/settings/person-defaults/${encodeURIComponent(selectedProfile)}`, {
         income: Number(profileIncome) || 0,
@@ -133,9 +113,10 @@ export default function Settings() {
         emi: Number(profileEmi) || 0,
       });
       const r = await api.post('/settings/apply-year-defaults', { year: selectedYear, personName: selectedProfile });
-      setApplyMsg(`✓ Seeded ${r.data.seeded} months for ${selectedProfile} in ${selectedYear}.`);
+      setApplyMsg(`✓ Applied for ${selectedYear} — ${r.data.seeded} months seeded for ${selectedProfile}.`);
       setTimeout(() => setApplyMsg(''), 6000);
     } catch (e) {
+      setApplyMsg('');
       alert(e.response?.data?.error || 'Failed to apply defaults');
     } finally {
       setApplyingDefaults(false);
@@ -326,14 +307,25 @@ export default function Settings() {
           Set monthly defaults per profile. Choose a year, then <strong>Apply</strong> to seed all 12 months — override individual months in Cashflow.
         </p>
 
-        {/* Profile selector */}
+        {/* Profile + Year selectors side by side */}
         {persons.length > 0 && (
-          <div className="mb-5">
-            <label className="label">Profile</label>
-            <select className="input w-full max-w-xs" value={selectedProfile}
-              onChange={e => setSelectedProfile(e.target.value)}>
-              {persons.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
+          <div className="flex flex-wrap gap-3 mb-5">
+            <div className="flex-1 min-w-[140px]">
+              <label className="label">Profile</label>
+              <select className="input w-full" value={selectedProfile}
+                onChange={e => setSelectedProfile(e.target.value)}>
+                {persons.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div className="w-32">
+              <label className="label">Year</label>
+              <select className="input w-full" value={selectedYear}
+                onChange={e => setSelectedYear(Number(e.target.value))}>
+                {YEAR_OPTIONS.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
 
@@ -378,29 +370,13 @@ export default function Settings() {
         )}
 
         <div className="flex flex-wrap gap-2 items-center">
-          <button onClick={handleSaveDefaults} disabled={savingDefaults || !selectedProfile}
-            className="btn-primary flex items-center gap-1.5 text-sm">
-            <Save size={13} /> {savingDefaults ? 'Saving…' : 'Save defaults'}
+          <button onClick={handleApplyDefaults} disabled={applyingDefaults || !selectedProfile}
+            className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50">
+            <CalendarDays size={13} />
+            {applyingDefaults ? `Applying for ${selectedYear}…` : 'Apply Defaults'}
           </button>
-          {/* Year selector + Apply */}
-          <div className="flex items-center gap-0 rounded-lg border border-accent/40 overflow-hidden">
-            <select
-              className="bg-transparent text-accent text-sm px-3 py-2 outline-none cursor-pointer"
-              value={selectedYear}
-              onChange={e => setSelectedYear(Number(e.target.value))}
-            >
-              {YEAR_OPTIONS.map(y => (
-                <option key={y} value={y} className="bg-card text-white">{y}</option>
-              ))}
-            </select>
-            <button onClick={handleApplyDefaults} disabled={applyingDefaults || !selectedProfile}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50 border-l border-accent/40">
-              <CalendarDays size={13} />
-              {applyingDefaults ? 'Applying…' : 'Apply'}
-            </button>
-          </div>
         </div>
-        {applyMsg && (
+        {applyMsg && !applyingDefaults && (
           <div className="mt-3 flex items-center gap-2 text-sm text-teal">
             <CheckCircle2 size={14} /> {applyMsg}
           </div>

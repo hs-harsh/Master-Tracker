@@ -56,17 +56,16 @@ function CorpusChart({ data }) {
   const [range, setRange] = useState('ALL');
   const sliced = sliceByRange(data, range);
 
-  // Re-compute cumulative values within the sliced window
+  // Normalize all cumulative series to start from 0 in the chosen window
+  const baseCorpus = Number(sliced[0]?.corpus) || 0;
   let cumPlan = 0, cumIncome = 0;
-  // But corpus is already cumulative from all history — we take it as-is
-  // Planned corpus: sum of ideal_saving from beginning of sliced window
   const cd = sliced.map(r => {
     cumPlan   += Number(r.ideal_saving) || 0;
     cumIncome += (Number(r.income) || 0) + (Number(r.other_income) || 0);
     return {
       month:            fmtDate(r.month),
       'Planned Corpus': cumPlan,
-      'Actual Corpus':  Number(r.corpus) || 0,
+      'Actual Corpus':  Math.max(0, (Number(r.corpus) || 0) - baseCorpus),
       'Cumul. Income':  cumIncome,
     };
   });
@@ -110,36 +109,67 @@ function CorpusChart({ data }) {
   );
 }
 
-// ── Chart 2: Income vs Saving ─────────────────────────────────────────────────
+// ── Chart 2: Income breakdown (stacked) + Ideal Saving line ──────────────────
+// Stacked bar = Fixed (Regular+EMI) + Special (Major+NonRec+Trips) + Actual Saving
+// The gap between Actual Saving and Ideal Saving = drag from special expenses
 function SavingChart({ data }) {
   const [range, setRange] = useState('ALL');
-  const cd = sliceByRange(data, range).map(r => ({
-    month:           fmtDate(r.month),
-    Income:          (Number(r.income) || 0) + (Number(r.other_income) || 0),
-    'Actual Saving': Number(r.actual_saving) || 0,
-    'Ideal Saving':  Number(r.ideal_saving) || 0,
-  }));
+  const cd = sliceByRange(data, range).map(r => {
+    const income  = (Number(r.income) || 0) + (Number(r.other_income) || 0);
+    const fixed   = (Number(r.regular_expense) || 0) + (Number(r.emi) || 0);
+    const special = (Number(r.major_expense) || 0) + (Number(r.non_recurring_expense) || 0) + (Number(r.trips_expense) || 0);
+    const actual  = Math.max(0, income - fixed - special);
+    const ideal   = Number(r.ideal_saving) || 0;
+    return {
+      month:           fmtDate(r.month),
+      'Fixed Costs':   fixed,
+      'Special Exp':   special,
+      'Actual Saving': actual,
+      'Ideal Saving':  ideal,
+    };
+  });
+
+  // Custom tooltip to also show total income
+  const CustomTT = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    const total = payload.reduce((s, p) => p.dataKey !== 'Ideal Saving' ? s + (p.value || 0) : s, 0);
+    return (
+      <div style={TT.contentStyle} className="text-xs space-y-1 p-2">
+        <p style={TT.labelStyle}>{label}</p>
+        <p className="text-soft">Total Income: <span className="text-white font-mono">{fmt(total)}</span></p>
+        {payload.map(p => (
+          <p key={p.dataKey} style={{ color: p.fill || p.stroke }}>
+            {p.dataKey}: <span className="font-mono">{fmt(p.value)}</span>
+          </p>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="card">
-      <div className="flex items-start justify-between flex-wrap gap-2 mb-4">
+      <div className="flex items-start justify-between flex-wrap gap-2 mb-3">
         <div>
-          <p className="stat-label mb-0.5">Income vs Saving</p>
-          <p className="text-xs text-muted">Monthly income, what was saved, and the ideal saving target</p>
+          <p className="stat-label mb-0.5">Income Breakdown &amp; Saving</p>
+          <p className="text-xs text-muted">
+            Stacked bar = where your income goes. <span className="text-orange-400">Special expenses</span> are the gap between actual and ideal saving.
+          </p>
         </div>
         <RangeBar range={range} setRange={setRange} />
       </div>
       <ResponsiveContainer width="100%" height={220}>
-        <ComposedChart data={cd} barGap={2} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+        <ComposedChart data={cd} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
           <XAxis dataKey="month" {...AX} />
           <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
-          <Tooltip {...TT} />
-          <Bar dataKey="Income"        fill="#f0c040" opacity={0.35} radius={[2, 2, 0, 0]} />
-          <Bar dataKey="Actual Saving" fill="#2dd4bf" radius={[3, 3, 0, 0]} />
+          <Tooltip content={<CustomTT />} />
+          <Bar dataKey="Fixed Costs"   stackId="s" fill="#a78bfa" radius={[0,0,0,0]} />
+          <Bar dataKey="Special Exp"   stackId="s" fill="#fb923c" radius={[0,0,0,0]} />
+          <Bar dataKey="Actual Saving" stackId="s" fill="#2dd4bf" radius={[3,3,0,0]} />
           <Line type="monotone" dataKey="Ideal Saving" stroke="#6366f1" strokeWidth={2} dot={false} strokeDasharray="5 3" />
         </ComposedChart>
       </ResponsiveContainer>
-      <Leg items={[['Income', '#f0c040'], ['Actual Saving', '#2dd4bf'], ['Ideal Saving (target)', '#6366f1', true]]} />
+      <Leg items={[['Fixed (Regular+EMI)', '#a78bfa'], ['Special Expenses', '#fb923c'], ['Actual Saving', '#2dd4bf'], ['Ideal Saving', '#6366f1', true]]} />
     </div>
   );
 }
