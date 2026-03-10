@@ -13,13 +13,20 @@ export function AuthProvider({ children }) {
     return data;
   };
 
+  const register = async (username, password) => {
+    const { data } = await api.post('/auth/register', { username, password });
+    localStorage.setItem('token', data.token);
+    setToken(data.token);
+    return data;
+  };
+
   const logout = () => {
     localStorage.removeItem('token');
     setToken(null);
   };
 
   return (
-    <AuthCtx.Provider value={{ token, login, logout, isAuth: !!token }}>
+    <AuthCtx.Provider value={{ token, login, register, logout, isAuth: !!token }}>
       {children}
     </AuthCtx.Provider>
   );

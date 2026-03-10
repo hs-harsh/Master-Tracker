@@ -6,7 +6,7 @@ export default function Login() {
   const [form, setForm] = useState({ username: 'hskv', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, register } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -18,6 +18,20 @@ export default function Login() {
       navigate('/');
     } catch {
       setError('Invalid credentials');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await register(form.username, form.password);
+      navigate('/');
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Registration failed';
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -62,13 +76,23 @@ export default function Login() {
             />
           </div>
           {error && <p className="text-rose text-sm">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary w-full justify-center flex mt-2"
-          >
-            {loading ? 'Signing in…' : 'Sign In'}
-          </button>
+          <div className="space-y-2 mt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full justify-center flex"
+            >
+              {loading ? 'Signing in…' : 'Sign In'}
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={handleRegister}
+              className="btn-secondary w-full justify-center flex text-sm"
+            >
+              {loading ? 'Please wait…' : 'Create new account'}
+            </button>
+          </div>
         </form>
       </div>
     </div>
