@@ -15,6 +15,7 @@ const TT = {
   formatter:    (v) => [fmt(v), ''],
 };
 const AX = { tick: { fill: '#6b7280', fontSize: 11 }, tickLine: false, axisLine: false };
+
 function Leg({ items }) {
   return (
     <div className="flex flex-wrap gap-4 mt-3">
@@ -28,18 +29,58 @@ function Leg({ items }) {
   );
 }
 
-// ── Charts ────────────────────────────────────────────────────────────────────
+// ── Time-range selector ────────────────────────────────────────────────────────
+const RANGES = ['1Y', '2Y', '3Y', '5Y', 'ALL'];
+
+function RangeBar({ range, setRange }) {
+  return (
+    <div className="flex rounded-lg border border-border overflow-hidden text-xs self-start">
+      {RANGES.map(r => (
+        <button key={r} onClick={() => setRange(r)}
+          className={`px-3 py-1.5 transition-colors ${range === r ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'}`}>
+          {r}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function sliceByRange(data, range) {
+  if (range === 'ALL') return data;
+  const months = { '1Y': 12, '2Y': 24, '3Y': 36, '5Y': 60 }[range] || 12;
+  return data.slice(-months);
+}
+
+// ── Chart 1: Corpus + Cumulative Income ───────────────────────────────────────
 function CorpusChart({ data }) {
-  let cumPlan = 0;
-  const cd = data.map(r => {
-    cumPlan += Number(r.ideal_saving) || 0;
-    return { month: fmtDate(r.month), 'Planned': cumPlan, 'Actual': Number(r.corpus) || 0 };
+  const [range, setRange] = useState('ALL');
+  const sliced = sliceByRange(data, range);
+
+  // Re-compute cumulative values within the sliced window
+  let cumPlan = 0, cumIncome = 0;
+  // But corpus is already cumulative from all history — we take it as-is
+  // Planned corpus: sum of ideal_saving from beginning of sliced window
+  const cd = sliced.map(r => {
+    cumPlan   += Number(r.ideal_saving) || 0;
+    cumIncome += (Number(r.income) || 0) + (Number(r.other_income) || 0);
+    return {
+      month:            fmtDate(r.month),
+      'Planned Corpus': cumPlan,
+      'Actual Corpus':  Number(r.corpus) || 0,
+      'Cumul. Income':  cumIncome,
+    };
   });
+
   return (
     <div className="card">
-      <p className="stat-label mb-0.5">Planned vs Actual Corpus</p>
-      <p className="text-xs text-muted mb-4">Cumulative ideal-saving target vs real accumulated savings</p>
-      <ResponsiveContainer width="100%" height={210}>
+      <div className="flex items-start justify-between flex-wrap gap-2 mb-4">
+        <div>
+          <p className="stat-label mb-0.5">Corpus &amp; Cumulative Income</p>
+          <p className="text-xs text-muted">Planned corpus target vs actual savings vs total income earned</p>
+        </div>
+        <RangeBar range={range} setRange={setRange} />
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={cd} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
           <defs>
             <linearGradient id="gPlan" x1="0" y1="0" x2="0" y2="1">
@@ -50,97 +91,85 @@ function CorpusChart({ data }) {
               <stop offset="5%"  stopColor="#2dd4bf" stopOpacity={0.2} />
               <stop offset="95%" stopColor="#2dd4bf" stopOpacity={0} />
             </linearGradient>
+            <linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%"  stopColor="#f0c040" stopOpacity={0.12} />
+              <stop offset="95%" stopColor="#f0c040" stopOpacity={0} />
+            </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
           <XAxis dataKey="month" {...AX} />
-          <YAxis {...AX} tickFormatter={v => fmt(v)} width={58} />
+          <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
           <Tooltip {...TT} />
-          <Area type="monotone" dataKey="Planned" stroke="#6366f1" strokeWidth={1.8} fill="url(#gPlan)" dot={false} strokeDasharray="5 3" />
-          <Area type="monotone" dataKey="Actual"  stroke="#2dd4bf" strokeWidth={2.5} fill="url(#gAct)"  dot={false} />
+          <Area type="monotone" dataKey="Cumul. Income"  stroke="#f0c040" strokeWidth={1.5} fill="url(#gInc)" dot={false} strokeDasharray="4 2" />
+          <Area type="monotone" dataKey="Planned Corpus" stroke="#6366f1" strokeWidth={1.8} fill="url(#gPlan)" dot={false} strokeDasharray="5 3" />
+          <Area type="monotone" dataKey="Actual Corpus"  stroke="#2dd4bf" strokeWidth={2.5} fill="url(#gAct)"  dot={false} />
         </AreaChart>
       </ResponsiveContainer>
-      <Leg items={[['Planned Corpus', '#6366f1', true], ['Actual Corpus', '#2dd4bf']]} />
+      <Leg items={[['Cumul. Income', '#f0c040', true], ['Planned Corpus', '#6366f1', true], ['Actual Corpus', '#2dd4bf']]} />
     </div>
   );
 }
 
+// ── Chart 2: Income vs Saving ─────────────────────────────────────────────────
 function SavingChart({ data }) {
-  const cd = data.map(r => ({
-    month: fmtDate(r.month),
-    Income: (Number(r.income) || 0) + (Number(r.other_income) || 0),
+  const [range, setRange] = useState('ALL');
+  const cd = sliceByRange(data, range).map(r => ({
+    month:           fmtDate(r.month),
+    Income:          (Number(r.income) || 0) + (Number(r.other_income) || 0),
     'Actual Saving': Number(r.actual_saving) || 0,
     'Ideal Saving':  Number(r.ideal_saving) || 0,
   }));
   return (
     <div className="card">
-      <p className="stat-label mb-0.5">Income vs Saving</p>
-      <p className="text-xs text-muted mb-4">Monthly income, what was saved, and the ideal saving target</p>
-      <ResponsiveContainer width="100%" height={210}>
+      <div className="flex items-start justify-between flex-wrap gap-2 mb-4">
+        <div>
+          <p className="stat-label mb-0.5">Income vs Saving</p>
+          <p className="text-xs text-muted">Monthly income, what was saved, and the ideal saving target</p>
+        </div>
+        <RangeBar range={range} setRange={setRange} />
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={cd} barGap={2} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
           <XAxis dataKey="month" {...AX} />
-          <YAxis {...AX} tickFormatter={v => fmt(v)} width={58} />
+          <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
           <Tooltip {...TT} />
           <Bar dataKey="Income"        fill="#f0c040" opacity={0.35} radius={[2, 2, 0, 0]} />
           <Bar dataKey="Actual Saving" fill="#2dd4bf" radius={[3, 3, 0, 0]} />
           <Line type="monotone" dataKey="Ideal Saving" stroke="#6366f1" strokeWidth={2} dot={false} strokeDasharray="5 3" />
         </ComposedChart>
       </ResponsiveContainer>
-      <Leg items={[['Income', '#f0c040'], ['Actual Saving', '#2dd4bf'], ['Ideal Saving', '#6366f1', true]]} />
+      <Leg items={[['Income', '#f0c040'], ['Actual Saving', '#2dd4bf'], ['Ideal Saving (target)', '#6366f1', true]]} />
     </div>
   );
 }
 
-function CumulativeIncomeChart({ data }) {
-  let cum = 0;
-  const cd = data.map(r => {
-    cum += (Number(r.income) || 0) + (Number(r.other_income) || 0);
-    return { month: fmtDate(r.month), Monthly: (Number(r.income)||0) + (Number(r.other_income)||0), Cumulative: cum };
-  });
-  return (
-    <div className="card">
-      <p className="stat-label mb-0.5">Cumulative Income</p>
-      <p className="text-xs text-muted mb-4">Running total of salary + other income over time</p>
-      <ResponsiveContainer width="100%" height={210}>
-        <ComposedChart data={cd} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-          <defs>
-            <linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%"  stopColor="#f0c040" stopOpacity={0.15} />
-              <stop offset="95%" stopColor="#f0c040" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
-          <XAxis dataKey="month" {...AX} />
-          <YAxis {...AX} tickFormatter={v => fmt(v)} width={58} />
-          <Tooltip {...TT} />
-          <Bar dataKey="Monthly" fill="#f0c040" opacity={0.4} radius={[2, 2, 0, 0]} />
-          <Area type="monotone" dataKey="Cumulative" stroke="#f0c040" strokeWidth={2.5} fill="url(#gInc)" dot={false} />
-        </ComposedChart>
-      </ResponsiveContainer>
-      <Leg items={[['Monthly', '#f0c040'], ['Cumulative', '#f0c040']]} />
-    </div>
-  );
-}
-
+// ── Chart 3: Expense Breakdown ────────────────────────────────────────────────
 function ExpenseChart({ data }) {
-  const cd = data.map(r => ({
-    month:  fmtDate(r.month),
-    Major:  Number(r.major_expense) || 0,
-    'Non-Recurring': Number(r.non_recurring_expense) || 0,
-    Regular: Number(r.regular_expense) || 0,
-    EMI:    Number(r.emi) || 0,
-    Trips:  Number(r.trips_expense) || 0,
-  }));
+  const [range, setRange] = useState('ALL');
   const EXP = [['Major','#fb7185'],['Non-Recurring','#f97316'],['Regular','#facc15'],['EMI','#a78bfa'],['Trips','#60a5fa']];
+  const cd = sliceByRange(data, range).map(r => ({
+    month:           fmtDate(r.month),
+    Major:           Number(r.major_expense) || 0,
+    'Non-Recurring': Number(r.non_recurring_expense) || 0,
+    Regular:         Number(r.regular_expense) || 0,
+    EMI:             Number(r.emi) || 0,
+    Trips:           Number(r.trips_expense) || 0,
+  }));
   return (
     <div className="card">
-      <p className="stat-label mb-0.5">Expense Breakdown</p>
-      <p className="text-xs text-muted mb-4">Monthly spend stacked by category</p>
-      <ResponsiveContainer width="100%" height={210}>
+      <div className="flex items-start justify-between flex-wrap gap-2 mb-4">
+        <div>
+          <p className="stat-label mb-0.5">Expense Breakdown</p>
+          <p className="text-xs text-muted">Monthly spend stacked by category</p>
+        </div>
+        <RangeBar range={range} setRange={setRange} />
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
         <BarChart data={cd} barSize={18} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
           <XAxis dataKey="month" {...AX} />
-          <YAxis {...AX} tickFormatter={v => fmt(v)} width={58} />
+          <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
           <Tooltip {...TT} />
           {EXP.map(([k, c], i) => (
             <Bar key={k} dataKey={k} stackId="e" fill={c}
@@ -167,17 +196,18 @@ const EMPTY = (def = {}) => ({
   ideal_saving:           def.idealSaving     ?? def.ideal_saving ?? '',
 });
 
-function Field({ label, name, form, setForm, type = 'number', readOnly = false }) {
+function Field({ label, name, form, setForm, readOnly = false, hint }) {
   return (
     <div>
       <label className="label">{label}</label>
       <input
-        type={type}
+        type="number"
         className={`input w-full ${readOnly ? 'opacity-60 cursor-not-allowed' : ''}`}
         value={form[name]}
         readOnly={readOnly}
         onChange={e => !readOnly && setForm(f => ({ ...f, [name]: e.target.value }))}
       />
+      {hint && <p className="text-xs text-muted mt-0.5">{hint}</p>}
     </div>
   );
 }
@@ -186,11 +216,8 @@ function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
   const isEdit = !!editRow?.id;
   const [form, setForm] = useState(() => {
     if (editRow) {
-      // Pre-fill from existing row (may or may not have a DB id).
-      // The row already has defaults applied by the cashflow query, so all fields are populated.
       return {
         ...editRow,
-        // Ensure month is in YYYY-MM-DD format
         month: editRow.month ? String(editRow.month).slice(0, 10) : '',
       };
     }
@@ -198,7 +225,6 @@ function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
   });
   const [saving, setSaving] = useState(false);
 
-  // derived values shown live
   const income       = Number(form.income) || 0;
   const otherInc     = Number(form.other_income) || 0;
   const majorExp     = Number(form.major_expense) || 0;
@@ -209,6 +235,8 @@ function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
   const netExp       = majorExp + nonRec + regular + emi + trips;
   const actualSaving = (income + otherInc) - netExp;
   const idealSaving  = Number(form.ideal_saving) || 0;
+  // Ideal saving = Income - Regular - EMI (no special expenses)
+  const suggestedIdeal = income + otherInc - regular - emi;
 
   const handleSave = async () => {
     if (!form.month || !form.person) return alert('Month and person are required.');
@@ -222,10 +250,8 @@ function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
         target:        idealSaving,
       };
       if (isEdit) {
-        // Existing DB row — use PUT
         await api.put(`/cashflow/${editRow.id}`, payload);
       } else {
-        // New row or transaction-only row — POST uses ON CONFLICT UPDATE
         await api.post('/cashflow', payload);
       }
       onSaved();
@@ -239,7 +265,6 @@ function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-card border border-border rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-border sticky top-0 bg-card z-10">
           <h2 className="font-display font-bold text-white">{isEdit ? 'Edit Month' : 'Add Month'}</h2>
           <button onClick={onClose} className="text-muted hover:text-white transition-colors"><X size={18} /></button>
@@ -268,12 +293,12 @@ function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* Income defaults */}
+          {/* Income */}
           <div>
             <p className="text-xs text-muted uppercase tracking-wider mb-2 font-display">Income</p>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Salary / Income" name="income" form={form} setForm={setForm} />
-              <Field label="Other Income"    name="other_income" form={form} setForm={setForm} />
+              <Field label="Salary / Income"  name="income"       form={form} setForm={setForm} />
+              <Field label="Other Income"     name="other_income" form={form} setForm={setForm} />
             </div>
           </div>
 
@@ -281,7 +306,8 @@ function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
           <div>
             <p className="text-xs text-muted uppercase tracking-wider mb-2 font-display">Saving Target</p>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Ideal Saving" name="ideal_saving" form={form} setForm={setForm} />
+              <Field label="Ideal Saving" name="ideal_saving" form={form} setForm={setForm}
+                hint={suggestedIdeal > 0 ? `Income − Regular − EMI = ${fmt(suggestedIdeal)}` : undefined} />
               <div className="flex flex-col justify-end">
                 <label className="label">Actual Saving (auto)</label>
                 <div className={`input w-full font-mono ${actualSaving >= idealSaving ? 'text-teal' : 'text-rose'}`}>
@@ -293,7 +319,11 @@ function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
 
           {/* Fixed expenses */}
           <div>
-            <p className="text-xs text-muted uppercase tracking-wider mb-2 font-display">Fixed Expenses (from settings defaults)</p>
+            <p className="text-xs text-muted uppercase tracking-wider mb-2 font-display">Fixed Expenses</p>
+            <p className="text-xs text-muted mb-2">
+              Without special expenses (Major / Non-Recurring / Trips), Actual Saving = Income − Regular − EMI.
+              Set Ideal Saving equal to this for a balanced budget.
+            </p>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Regular Expense" name="regular_expense" form={form} setForm={setForm} />
               <Field label="EMI"             name="emi"             form={form} setForm={setForm} />
@@ -302,16 +332,15 @@ function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
 
           {/* Variable expenses */}
           <div>
-            <p className="text-xs text-muted uppercase tracking-wider mb-2 font-display">Variable Expenses (from transactions)</p>
-            <p className="text-xs text-muted mb-2">These are normally auto-filled from your transactions. Override here only if needed.</p>
+            <p className="text-xs text-muted uppercase tracking-wider mb-2 font-display">Special / Variable Expenses</p>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Major Expense"       name="major_expense"          form={form} setForm={setForm} />
-              <Field label="Non-Recurring Exp"   name="non_recurring_expense"  form={form} setForm={setForm} />
-              <Field label="Trips Expense"       name="trips_expense"          form={form} setForm={setForm} />
+              <Field label="Major Expense"     name="major_expense"         form={form} setForm={setForm} />
+              <Field label="Non-Recurring"     name="non_recurring_expense" form={form} setForm={setForm} />
+              <Field label="Trips Expense"     name="trips_expense"         form={form} setForm={setForm} />
             </div>
           </div>
 
-          {/* Computed summary */}
+          {/* Summary */}
           <div className="rounded-lg bg-surface border border-border p-4 grid grid-cols-3 gap-3 text-sm">
             <div>
               <p className="text-muted text-xs">Net Expense</p>
@@ -331,8 +360,7 @@ function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
         </div>
 
         <div className="flex gap-2 p-5 border-t border-border">
-          <button onClick={handleSave} disabled={saving}
-            className="btn-primary flex items-center gap-2">
+          <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">
             <Save size={14} /> {saving ? 'Saving…' : 'Save'}
           </button>
           <button onClick={onClose} className="btn-ghost">Cancel</button>
@@ -345,11 +373,11 @@ function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function Cashflow() {
   const { personName, persons } = useAuth();
-  const [person, setPerson] = useState('');
-  const [data, setData]     = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [person, setPerson]     = useState('');
+  const [data, setData]         = useState([]);
+  const [loading, setLoading]   = useState(true);
   const [activeTab, setActiveTab] = useState('charts');
-  const [modal, setModal]   = useState(null); // null | 'add' | rowObj (edit)
+  const [modal, setModal]       = useState(null);
   const [defaults, setDefaults] = useState(null);
 
   useEffect(() => {
@@ -385,7 +413,7 @@ export default function Cashflow() {
   };
 
   const handleDelete = async (row) => {
-    if (!row.id) return alert('This row has no saved cashflow record to delete. Only transaction data exists.');
+    if (!row.id) return alert('This row has no saved cashflow record to delete.');
     if (!confirm(`Delete cashflow record for ${fmtDate(row.month)} (${row.person})?`)) return;
     try {
       await api.delete(`/cashflow/${row.id}`);
@@ -394,8 +422,6 @@ export default function Cashflow() {
       alert(e.response?.data?.error || 'Failed to delete');
     }
   };
-
-  const chartData = data.slice(-24);
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -432,9 +458,7 @@ export default function Cashflow() {
         <div className="card py-12 text-center space-y-2">
           <p className="text-muted">No cashflow data yet.</p>
           <p className="text-xs text-muted">
-            Click <strong>Add Month</strong> to enter a month manually, or set defaults in
-            <strong> Settings → Apply to year</strong> to seed the whole year at once.
-            Expense transactions are automatically aggregated here.
+            Click <strong>Add Month</strong> to enter a month, or use <strong>Settings → Apply to year</strong> to seed all 12 months at once.
           </p>
         </div>
       )}
@@ -442,10 +466,9 @@ export default function Cashflow() {
       {/* Charts */}
       {!loading && data.length > 0 && activeTab === 'charts' && (
         <div className="space-y-4">
-          <CorpusChart  data={chartData} />
-          <SavingChart  data={chartData} />
-          <CumulativeIncomeChart data={chartData} />
-          <ExpenseChart data={chartData} />
+          <CorpusChart  data={data} />
+          <SavingChart  data={data} />
+          <ExpenseChart data={data} />
         </div>
       )}
 
@@ -481,10 +504,10 @@ export default function Cashflow() {
                       <td className="py-3 px-3 font-mono text-white">{fmt(row.corpus)}</td>
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => openEdit(row)} className="p-1.5 rounded hover:bg-surface text-muted hover:text-white transition-colors" title="Edit">
+                          <button onClick={() => openEdit(row)} className="p-1.5 rounded hover:bg-surface text-muted hover:text-white" title="Edit">
                             <Pencil size={13} />
                           </button>
-                          <button onClick={() => handleDelete(row)} className="p-1.5 rounded hover:bg-rose/10 text-muted hover:text-rose transition-colors" title="Delete">
+                          <button onClick={() => handleDelete(row)} className="p-1.5 rounded hover:bg-rose/10 text-muted hover:text-rose" title="Delete">
                             <Trash2 size={13} />
                           </button>
                         </div>
@@ -498,19 +521,13 @@ export default function Cashflow() {
         </div>
       )}
 
-      {/* Modal */}
       {modal && (
         <MonthModal
           persons={persons.length ? persons : [activePerson]}
           defaults={defaults || {}}
           editRow={modal === 'add' ? null : modal}
           onClose={() => setModal(null)}
-          onSaved={() => {
-            setModal(null);
-            load();
-            // Switch to Charts tab so the updated plots are immediately visible
-            setActiveTab('charts');
-          }}
+          onSaved={() => { setModal(null); load(); setActiveTab('charts'); }}
         />
       )}
     </div>

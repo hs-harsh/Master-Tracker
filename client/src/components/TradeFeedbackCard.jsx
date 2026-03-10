@@ -22,7 +22,7 @@ const TRADE_INSTRUMENTS = [
   { id: 'russell1000', name: 'Russell 1000', ticker: 'IWB / RUI' },
 ];
 
-const YEAR_OPTIONS = [3, 5, 10, 15, 20];
+const DEFAULT_YEARS = 10;
 
 const NO_TRADE_SCHEMA = `{
   "insight": "2-4 sentence assessment of current portfolio",
@@ -319,7 +319,7 @@ const defaultTradeRow = () => ({
 });
 
 export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdings = [] }) {
-  const [years, setYears] = useState(10);
+  const years = DEFAULT_YEARS;
   const [tradeRows, setTradeRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -378,15 +378,6 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="label text-sm">Years</label>
-          <select className="input w-auto py-2" value={years} onChange={(e) => setYears(Number(e.target.value))}>
-            {YEAR_OPTIONS.map((y) => (
-              <option key={y} value={y}>{y}Y</option>
-            ))}
-          </select>
-        </div>
-
         {/* Trades form */}
         <div>
           <div className="flex items-center justify-between mb-2">

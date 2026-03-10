@@ -16,7 +16,8 @@ const CURRENCY_OPTIONS = [
   { id: 'INR', label: '₹ INR' },
   { id: 'USD', label: '$ USD' },
 ];
-const YEAR = new Date().getFullYear();
+const CURRENT_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = [2025, 2026, 2027, 2028, 2029, 2030];
 
 export default function Settings() {
   const { personName, persons, fetchPersons } = useAuth();
@@ -31,6 +32,7 @@ export default function Settings() {
 
   // ── Per-person cashflow defaults ────────────────────────────────────────────
   const [selectedProfile,  setSelectedProfile]  = useState('');
+  const [selectedYear,     setSelectedYear]     = useState(CURRENT_YEAR);
   const [profileIncome,    setProfileIncome]    = useState(0);
   const [profileSaving,    setProfileSaving]    = useState(0);
   const [profileRegular,   setProfileRegular]   = useState(0);
@@ -118,21 +120,20 @@ export default function Settings() {
     }
   };
 
-  // ── Apply defaults to current year ─────────────────────────────────────────
+  // ── Apply defaults to selected year ────────────────────────────────────────
   const handleApplyDefaults = async () => {
     if (!selectedProfile) return;
-    if (!confirm(`Apply defaults to all 12 months of ${YEAR} for ${selectedProfile}?\n\nIncome, Ideal Saving, Regular Expense and EMI will be updated. Other data is preserved.`)) return;
+    if (!confirm(`Apply defaults to all 12 months of ${selectedYear} for ${selectedProfile}?\n\nIncome, Ideal Saving, Regular Expense and EMI will be updated. Other data is preserved.`)) return;
     setApplyingDefaults(true);
     try {
-      // Save first, then apply
       await api.put(`/settings/person-defaults/${encodeURIComponent(selectedProfile)}`, {
         income: Number(profileIncome) || 0,
         idealSaving: Number(profileSaving) || 0,
         regularExpense: Number(profileRegular) || 0,
         emi: Number(profileEmi) || 0,
       });
-      const r = await api.post('/settings/apply-year-defaults', { year: YEAR, personName: selectedProfile });
-      setApplyMsg(`✓ Seeded ${r.data.seeded} months for ${selectedProfile} in ${YEAR}.`);
+      const r = await api.post('/settings/apply-year-defaults', { year: selectedYear, personName: selectedProfile });
+      setApplyMsg(`✓ Seeded ${r.data.seeded} months for ${selectedProfile} in ${selectedYear}.`);
       setTimeout(() => setApplyMsg(''), 6000);
     } catch (e) {
       alert(e.response?.data?.error || 'Failed to apply defaults');
@@ -180,7 +181,7 @@ export default function Settings() {
         regularExpense: Number(profileRegular) || 0,
         emi: Number(profileEmi) || 0,
       });
-      const r = await api.post('/settings/apply-year-defaults', { year: YEAR, personName: quickSetupPerson });
+      await api.post('/settings/apply-year-defaults', { year: selectedYear, personName: quickSetupPerson });
       setQuickSetupDone(true);
       setTimeout(() => setQuickSetupPerson(null), 3000);
     } catch (err) {
@@ -289,14 +290,18 @@ export default function Settings() {
           <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 p-4 flex items-start gap-3">
             <CalendarDays size={16} className="text-accent mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-white font-semibold">Populate {YEAR} for <span className="text-accent">{quickSetupPerson}</span>?</p>
-              <p className="text-xs text-muted mt-0.5">Uses the defaults you set below. You can edit individual months in Cashflow.</p>
-              <div className="flex gap-2 mt-3">
+              <p className="text-sm text-white font-semibold">Populate <span className="text-accent">{quickSetupPerson}</span>?</p>
+              <p className="text-xs text-muted mt-0.5">Uses the defaults set below. You can edit individual months in Cashflow.</p>
+              <div className="flex gap-2 mt-3 items-center">
+                <select className="input text-xs py-1 px-2" value={selectedYear}
+                  onChange={e => setSelectedYear(Number(e.target.value))}>
+                  {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
                 <button onClick={handleQuickSetup} disabled={quickSetupLoading}
                   className="btn-primary text-xs flex items-center gap-1.5 py-1.5">
                   {quickSetupLoading
                     ? <><Loader2 size={12} className="animate-spin" />Populating…</>
-                    : <><CalendarDays size={12} />Yes, populate {YEAR}</>}
+                    : <><CalendarDays size={12} />Populate</>}
                 </button>
                 <button onClick={() => setQuickSetupPerson(null)} disabled={quickSetupLoading}
                   className="btn-ghost text-xs text-muted py-1.5">Skip</button>
@@ -306,7 +311,7 @@ export default function Settings() {
         )}
         {quickSetupPerson && quickSetupDone && (
           <div className="mt-4 rounded-xl border border-teal/30 bg-teal/5 p-3 flex items-center gap-2 text-sm text-teal">
-            <CheckCircle2 size={15} /> All 12 months of {YEAR} populated for <strong>{quickSetupPerson}</strong>.
+            <CheckCircle2 size={15} /> All 12 months of {selectedYear} populated for <strong>{quickSetupPerson}</strong>.
           </div>
         )}
       </div>
@@ -318,7 +323,7 @@ export default function Settings() {
           <h2 className="font-display font-bold text-white">Cashflow Defaults</h2>
         </div>
         <p className="text-sm text-soft mb-4">
-          Set monthly defaults per profile. Use <strong>Apply to {YEAR}</strong> to seed all 12 months — override individual months in Cashflow.
+          Set monthly defaults per profile. Choose a year, then <strong>Apply</strong> to seed all 12 months — override individual months in Cashflow.
         </p>
 
         {/* Profile selector */}
@@ -377,11 +382,23 @@ export default function Settings() {
             className="btn-primary flex items-center gap-1.5 text-sm">
             <Save size={13} /> {savingDefaults ? 'Saving…' : 'Save defaults'}
           </button>
-          <button onClick={handleApplyDefaults} disabled={applyingDefaults || !selectedProfile}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm border border-accent/40 text-accent hover:bg-accent/10 transition-colors disabled:opacity-50">
-            <CalendarDays size={13} />
-            {applyingDefaults ? 'Applying…' : `Apply to ${YEAR}`}
-          </button>
+          {/* Year selector + Apply */}
+          <div className="flex items-center gap-0 rounded-lg border border-accent/40 overflow-hidden">
+            <select
+              className="bg-transparent text-accent text-sm px-3 py-2 outline-none cursor-pointer"
+              value={selectedYear}
+              onChange={e => setSelectedYear(Number(e.target.value))}
+            >
+              {YEAR_OPTIONS.map(y => (
+                <option key={y} value={y} className="bg-card text-white">{y}</option>
+              ))}
+            </select>
+            <button onClick={handleApplyDefaults} disabled={applyingDefaults || !selectedProfile}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50 border-l border-accent/40">
+              <CalendarDays size={13} />
+              {applyingDefaults ? 'Applying…' : 'Apply'}
+            </button>
+          </div>
         </div>
         {applyMsg && (
           <div className="mt-3 flex items-center gap-2 text-sm text-teal">

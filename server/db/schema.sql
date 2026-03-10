@@ -294,11 +294,12 @@ BEGIN
   END IF;
 END $$;
 
--- Migrate global settings to per-user settings for existing users (skip anthropic key)
+-- Migrate global settings to per-user settings for existing users
+-- Exclude anthropic_api_key (stays global) and sheet URLs (must start blank for new users)
 INSERT INTO user_settings (user_id, key, value)
   SELECT u.id, s.key, s.value
   FROM settings s CROSS JOIN users u
-  WHERE s.key NOT IN ('anthropic_api_key')
+  WHERE s.key NOT IN ('anthropic_api_key', 'sheet_url', 'sheet_url_transactions', 'sheet_url_investments')
 ON CONFLICT DO NOTHING;
 
 -- Migrate monthly_cashflow unique constraint to include user_id (multi-tenant safe)
