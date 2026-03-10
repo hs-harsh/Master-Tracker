@@ -106,16 +106,18 @@ router.post('/send-otp', async (req, res) => {
       );
     }
 
-    // Try to send email; on failure log OTP to console in dev mode
+    // Try to send email; log actual error to console in all environments
     try {
       await sendLoginOtp(email, otp, isNewUser);
     } catch (emailErr) {
+      console.error(`\n❌ [SMTP ERROR] Failed to send OTP to ${email}:`, emailErr.message, '\n');
       if (IS_DEV) {
-        console.log(`\n📧 [DEV] OTP email failed — code for ${email}: ${otp}\n`);
-        // Still return success so the OTP flow can be tested without SMTP
+        console.log(`📧 [DEV] OTP code for ${email}: ${otp}\n`);
         return res.json({ isNewUser, devOtp: otp });
       }
-      return res.status(500).json({ error: 'Failed to send code. Check SMTP settings in your .env file.' });
+      return res.status(500).json({
+        error: `Failed to send code: ${emailErr.message}`,
+      });
     }
 
     res.json({ isNewUser });

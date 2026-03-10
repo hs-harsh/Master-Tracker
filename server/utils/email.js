@@ -1,12 +1,20 @@
 const nodemailer = require('nodemailer');
 
 function createTransporter() {
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!user || !pass) {
+    throw new Error(`SMTP not configured — SMTP_USER=${user ? 'set' : 'MISSING'}, SMTP_PASS=${pass ? 'set' : 'MISSING'}`);
+  }
+
+  // Explicit Gmail SMTP settings are more reliable than service:'gmail' in hosted envs
   return nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,           // SSL on port 465
+    auth: { user, pass },
+    tls: { rejectUnauthorized: false },
   });
 }
 
