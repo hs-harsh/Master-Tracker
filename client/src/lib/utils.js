@@ -37,8 +37,13 @@ export const fmtMonthKey = (d) => {
   return new Date(d).toISOString().slice(0, 7);
 };
 
-export const colorFor = (person) =>
-  person === 'Harsh' ? '#f0c040' : '#a78bfa';
+const PERSON_COLORS = ['#f0c040', '#a78bfa', '#2dd4bf', '#fb7185', '#60a5fa', '#f97316'];
+export const colorFor = (person) => {
+  if (!person) return PERSON_COLORS[0];
+  let hash = 0;
+  for (let i = 0; i < person.length; i++) hash = person.charCodeAt(i) + ((hash << 5) - hash);
+  return PERSON_COLORS[Math.abs(hash) % PERSON_COLORS.length];
+};
 
 export const ASSET_COLORS = {
   cash: '#60a5fa',

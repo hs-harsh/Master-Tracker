@@ -3,26 +3,25 @@ import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save, RefreshCw, ExternalLink } from 'lucide-react';
 import SyncResultModal, { downloadBackupCsv } from '../components/SyncResultModal';
+import { useAuth } from '../hooks/useAuth';
 
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const SIDES = ['BUY', 'SELL'];
-const ACCOUNTS = ['Harsh', 'Kirti'];
-
-const EMPTY = {
-  date: '',
-  account: 'Harsh',
-  goal: '',
-  asset_class: 'Equity',
-  instrument: '',
-  side: 'BUY',
-  amount: 0,
-  broker: '',
-};
 
 function InvestmentForm({ initial, defaultAccount, onSave, onCancel }) {
-  const [form, setForm] = useState(initial || { ...EMPTY, account: defaultAccount || 'Harsh' });
+  const EMPTY = {
+    date: '',
+    account: defaultAccount || '',
+    goal: '',
+    asset_class: 'Equity',
+    instrument: '',
+    side: 'BUY',
+    amount: 0,
+    broker: '',
+  };
+  const [form, setForm] = useState(initial || { ...EMPTY });
   useEffect(() => {
-    setForm(initial || { ...EMPTY, account: defaultAccount || 'Harsh' });
+    setForm(initial || { ...EMPTY, account: defaultAccount || '' });
   }, [initial?.id, defaultAccount]);
 
   const onChange = e => {
@@ -56,16 +55,13 @@ function InvestmentForm({ initial, defaultAccount, onSave, onCancel }) {
         </div>
         <div>
           <label className="label">Account</label>
-          <select
+          <input
             name="account"
             value={form.account}
             onChange={onChange}
             className="input"
-          >
-            {ACCOUNTS.map(a => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
+            readOnly
+          />
         </div>
         <div>
           <label className="label">Goal</label>
@@ -150,19 +146,18 @@ function InvestmentForm({ initial, defaultAccount, onSave, onCancel }) {
 }
 
 export default function Investments() {
+  const { personName } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [filters, setFilters] = useState({ account: '', goal: '', asset_class: '', search: '' });
-  const [defaultAccount, setDefaultAccount] = useState('Harsh');
   const [syncResult, setSyncResult] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [sheetUrl, setSheetUrl] = useState('');
 
   useEffect(() => {
     api.get('/settings').then(r => {
-      if (r.data?.defaultAccount) setDefaultAccount(r.data.defaultAccount);
       if (r.data?.sheetUrl) setSheetUrl(r.data.sheetUrl);
     }).catch(() => {});
   }, []);
@@ -284,7 +279,7 @@ export default function Investments() {
       {(showForm || editing) && (
         <InvestmentForm
           initial={editing}
-          defaultAccount={defaultAccount}
+          defaultAccount={personName}
           onSave={handleSave}
           onCancel={() => { setShowForm(false); setEditing(null); }}
         />
@@ -310,9 +305,7 @@ export default function Investments() {
           onChange={e => setFilters(p => ({ ...p, account: e.target.value }))}
         >
           <option value="">All Accounts</option>
-          {ACCOUNTS.map(a => (
-            <option key={a}>{a}</option>
-          ))}
+          <option value={personName}>{personName}</option>
         </select>
         <select
           className="input w-40"
@@ -400,8 +393,8 @@ export default function Investments() {
                       {fmtDate(row.date)}
                     </td>
                     <td className="py-3 px-4 text-xs">
-                      <span className={`tag tag-${(row.account || 'Harsh').toLowerCase()}`}>
-                        {row.account || 'Harsh'}
+                      <span className="tag">
+                        {row.account}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-soft text-xs">{row.goal}</td>

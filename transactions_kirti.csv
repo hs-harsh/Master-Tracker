@@ -1,0 +1,24 @@
+date,type,account,amount,remark
+2025-06-01,Income,Kirti,220000,Income
+2025-06-01,Major,Kirti,200000,Major
+2025-06-01,Regular,Kirti,83500,Regular
+2025-06-01,Trips,Kirti,22000,Trips
+2025-07-01,Income,Kirti,220000,Income
+2025-07-01,Regular,Kirti,83500,Regular
+2025-07-01,EMI,Kirti,63000,EMI
+2025-07-01,Trips,Kirti,20000,Trips
+2025-08-01,Income,Kirti,220000,Income
+2025-08-01,Other Income,Kirti,88000,Other Income
+2025-08-01,Major,Kirti,106000,Major
+2025-08-01,Non-Recurring,Kirti,31000,Non-Recurring
+2025-08-01,Regular,Kirti,83500,Regular
+2025-08-01,EMI,Kirti,63000,EMI
+2025-08-01,Trips,Kirti,34000,Trips
+2025-09-01,Income,Kirti,220000,Income
+2025-09-01,Regular,Kirti,83500,Regular
+2025-09-01,EMI,Kirti,63000,EMI
+2025-09-01,Trips,Kirti,25000,Trips
+2025-10-01,Income,Kirti,220000,Income
+2025-10-01,Other Income,Kirti,5000,Other Income
+2025-10-01,Regular,Kirti,83500,Regular
+2025-10-01,EMI,Kirti,63000,EMI

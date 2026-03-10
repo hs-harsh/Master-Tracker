@@ -3,8 +3,18 @@ import api from '../lib/api';
 
 const AuthCtx = createContext(null);
 
+function parseJwt(token) {
+  try {
+    return JSON.parse(atob(token.split('.')[1]));
+  } catch {
+    return {};
+  }
+}
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem('token'));
+
+  const personName = token ? (parseJwt(token).personName || '') : '';
 
   const login = async (username, password) => {
     const { data } = await api.post('/auth/login', { username, password });
@@ -13,8 +23,8 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const register = async (username, password) => {
-    const { data } = await api.post('/auth/register', { username, password });
+  const register = async (username, password, pName) => {
+    const { data } = await api.post('/auth/register', { username, password, personName: pName });
     localStorage.setItem('token', data.token);
     setToken(data.token);
     return data;
@@ -26,7 +36,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthCtx.Provider value={{ token, login, register, logout, isAuth: !!token }}>
+    <AuthCtx.Provider value={{ token, login, register, logout, isAuth: !!token, personName }}>
       {children}
     </AuthCtx.Provider>
   );

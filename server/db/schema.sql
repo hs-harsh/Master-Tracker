@@ -4,13 +4,69 @@ CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  person_name VARCHAR(50) DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Add person_name column if upgrading from older schema
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'person_name') THEN
+    ALTER TABLE users ADD COLUMN person_name VARCHAR(50) DEFAULT '';
+  END IF;
+END $$;
+
+-- Drop CHECK constraints that restrict person/account to specific names (run once on migration)
+DO $$
+DECLARE
+  cname TEXT;
+BEGIN
+  SELECT conname INTO cname FROM pg_constraint
+    WHERE conrelid = 'monthly_cashflow'::regclass AND contype = 'c' LIMIT 1;
+  IF cname IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE monthly_cashflow DROP CONSTRAINT ' || quote_ident(cname);
+  END IF;
+END $$;
+DO $$
+DECLARE
+  cname TEXT;
+BEGIN
+  SELECT conname INTO cname FROM pg_constraint
+    WHERE conrelid = 'transactions'::regclass AND contype = 'c' LIMIT 1;
+  IF cname IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE transactions DROP CONSTRAINT ' || quote_ident(cname);
+  END IF;
+END $$;
+DO $$
+DECLARE
+  cname TEXT;
+BEGIN
+  FOR cname IN SELECT conname FROM pg_constraint WHERE conrelid = 'investments'::regclass AND contype = 'c' AND conname LIKE '%account%' LOOP
+    EXECUTE 'ALTER TABLE investments DROP CONSTRAINT ' || quote_ident(cname);
+  END LOOP;
+END $$;
+
+-- Widen person/account columns to support any name (no-op if already wide enough)
+DO $$
+BEGIN
+  ALTER TABLE monthly_cashflow ALTER COLUMN person TYPE VARCHAR(50);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE transactions ALTER COLUMN account TYPE VARCHAR(50);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER TABLE investments ALTER COLUMN account TYPE VARCHAR(50);
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS monthly_cashflow (
   id SERIAL PRIMARY KEY,
   month DATE NOT NULL,
-  person VARCHAR(10) NOT NULL CHECK (person IN ('Harsh', 'Kirti')),
+  person VARCHAR(50) NOT NULL,
   income BIGINT DEFAULT 0,
   other_income BIGINT DEFAULT 0,
   major_expense BIGINT DEFAULT 0,
@@ -56,7 +112,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   id SERIAL PRIMARY KEY,
   date DATE NOT NULL,
   type VARCHAR(30) NOT NULL,
-  account VARCHAR(10) NOT NULL CHECK (account IN ('Harsh', 'Kirti')),
+  account VARCHAR(50) NOT NULL,
   amount BIGINT NOT NULL DEFAULT 0,
   remark TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -65,7 +121,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE TABLE IF NOT EXISTS investments (
   id SERIAL PRIMARY KEY,
   date DATE NOT NULL,
-  account VARCHAR(10) NOT NULL DEFAULT 'Harsh' CHECK (account IN ('Harsh', 'Kirti')),
+  account VARCHAR(50) NOT NULL DEFAULT '',
   goal VARCHAR(100) NOT NULL,
   asset_class VARCHAR(30) NOT NULL,
   instrument VARCHAR(100) NOT NULL,
@@ -79,7 +135,7 @@ CREATE TABLE IF NOT EXISTS investments (
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'investments' AND column_name = 'account') THEN
-    ALTER TABLE investments ADD COLUMN account VARCHAR(10) NOT NULL DEFAULT 'Harsh' CHECK (account IN ('Harsh', 'Kirti'));
+    ALTER TABLE investments ADD COLUMN account VARCHAR(50) NOT NULL DEFAULT '';
   END IF;
 END $$;
 

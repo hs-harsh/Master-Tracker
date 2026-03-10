@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AreaChart,
   Area,
@@ -16,8 +16,8 @@ import {
 import api from '../lib/api';
 import { fmt, fmtDate, colorFor, ASSET_COLORS } from '../lib/utils';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 
-const PROFILES = ['Harsh', 'Kirti', 'Both'];
 const RISK_COLORS = ['#60a5fa', '#fbbf24', '#f97316'];
 
 function StatCard({ label, value, sub, trend }) {
@@ -260,41 +260,23 @@ function PersonPanel({ person, cashflowData, investments, compact }) {
 }
 
 export default function Dashboard() {
-  const [profile, setProfile] = useState('Both');
-  const [harshCashflow, setHarshCashflow] = useState([]);
-
-  useEffect(() => {
-    api.get('/settings').then(r => {
-      const p = r.data?.dashboardDefaultProfile;
-      if (p && PROFILES.includes(p)) setProfile(p);
-    }).catch(() => {});
-  }, []);
-  const [kirtiCashflow, setKirtiCashflow] = useState([]);
-  const [harshInvestments, setHarshInvestments] = useState([]);
-  const [kirtiInvestments, setKirtiInvestments] = useState([]);
+  const { personName } = useAuth();
+  const [cashflow, setCashflow] = useState([]);
+  const [investments, setInvestments] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!personName) return;
     Promise.all([
-      api.get('/cashflow?person=Harsh'),
-      api.get('/cashflow?person=Kirti'),
-      api.get('/investments?account=Harsh'),
-      api.get('/investments?account=Kirti'),
+      api.get(`/cashflow?person=${personName}`),
+      api.get(`/investments?account=${personName}`),
     ])
-      .then(([hCf, kCf, hInv, kInv]) => {
-        setHarshCashflow(hCf.data);
-        setKirtiCashflow(kCf.data);
-        setHarshInvestments(hInv.data);
-        setKirtiInvestments(kInv.data);
+      .then(([cf, inv]) => {
+        setCashflow(cf.data);
+        setInvestments(inv.data);
       })
       .finally(() => setLoading(false));
-  }, []);
-
-  const combinedNetAsset = useMemo(() => {
-    const h = harshCashflow[harshCashflow.length - 1];
-    const k = kirtiCashflow[kirtiCashflow.length - 1];
-    return (Number(h?.net_asset || 0)) + (Number(k?.net_asset || 0));
-  }, [harshCashflow, kirtiCashflow]);
+  }, [personName]);
 
   if (loading)
     return (
@@ -308,59 +290,11 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0">
           <h1 className="font-display text-xl sm:text-2xl font-bold text-white truncate">Dashboard</h1>
-          <p className="text-muted text-xs sm:text-sm mt-0.5">Key info, cashflow & investment trends · MoM</p>
-        </div>
-        <div className="flex gap-1.5 sm:gap-2 flex-shrink-0">
-          {PROFILES.map(p => (
-            <button
-              key={p}
-              onClick={() => setProfile(p)}
-              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${
-                profile === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'
-              }`}
-            >
-              {p}
-            </button>
-          ))}
+          <p className="text-muted text-xs sm:text-sm mt-0.5">Key info, cashflow & investment trends · {personName}</p>
         </div>
       </div>
 
-      {profile === 'Both' && (
-        <div className="card border-accent/20 bg-accent/5">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="stat-label text-accent/70">Combined Net Asset</p>
-              <p className="font-display text-3xl font-extrabold text-accent mt-1">{fmt(combinedNetAsset)}</p>
-            </div>
-            <div className="flex gap-8">
-              <div>
-                <p className="stat-label">Harsh Corpus</p>
-                <p className="font-mono text-lg text-white">{fmt(harshCashflow[harshCashflow.length - 1]?.corpus)}</p>
-              </div>
-              <div>
-                <p className="stat-label">Kirti Corpus</p>
-                <p className="font-mono text-lg text-white">{fmt(kirtiCashflow[kirtiCashflow.length - 1]?.corpus)}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {profile === 'Both' && (
-        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
-          <PersonPanel person="Harsh" cashflowData={harshCashflow} investments={harshInvestments} compact />
-          <div className="w-full lg:w-px lg:h-auto h-px bg-border shrink-0" />
-          <PersonPanel person="Kirti" cashflowData={kirtiCashflow} investments={kirtiInvestments} compact />
-        </div>
-      )}
-
-      {profile === 'Harsh' && (
-        <PersonPanel person="Harsh" cashflowData={harshCashflow} investments={harshInvestments} />
-      )}
-
-      {profile === 'Kirti' && (
-        <PersonPanel person="Kirti" cashflowData={kirtiCashflow} investments={kirtiInvestments} />
-      )}
+      <PersonPanel person={personName} cashflowData={cashflow} investments={investments} />
     </div>
   );
 }

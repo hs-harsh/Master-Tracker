@@ -3,16 +3,15 @@ import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save, RefreshCw, ExternalLink } from 'lucide-react';
 import SyncResultModal, { downloadBackupCsv } from '../components/SyncResultModal';
+import { useAuth } from '../hooks/useAuth';
 
 const TYPES = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
-const ACCOUNTS = ['Harsh', 'Kirti'];
-
-const EMPTY = { date: '', type: 'Major', account: 'Harsh', amount: 0, remark: '' };
 
 function TransactionForm({ initial, defaultAccount, onSave, onCancel }) {
-  const [form, setForm] = useState(initial || { ...EMPTY, account: defaultAccount || 'Harsh' });
+  const EMPTY = { date: '', type: 'Major', account: defaultAccount || '', amount: 0, remark: '' };
+  const [form, setForm] = useState(initial || { ...EMPTY });
   useEffect(() => {
-    setForm(initial || { ...EMPTY, account: defaultAccount || 'Harsh' });
+    setForm(initial || { ...EMPTY, account: defaultAccount || '' });
   }, [initial?.id, defaultAccount]);
   const onChange = e => {
     const { name, value } = e.target;
@@ -37,9 +36,7 @@ function TransactionForm({ initial, defaultAccount, onSave, onCancel }) {
         </div>
         <div>
           <label className="label">Account</label>
-          <select name="account" value={form.account} onChange={onChange} className="input">
-            {ACCOUNTS.map(a => <option key={a}>{a}</option>)}
-          </select>
+          <input name="account" value={form.account} onChange={onChange} className="input" readOnly />
         </div>
         <div>
           <label className="label">Amount (₹)</label>
@@ -61,19 +58,18 @@ function TransactionForm({ initial, defaultAccount, onSave, onCancel }) {
 }
 
 export default function Transactions() {
+  const { personName } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [filters, setFilters] = useState({ account: '', type: '', search: '' });
-  const [defaultAccount, setDefaultAccount] = useState('Harsh');
   const [syncResult, setSyncResult] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [sheetUrl, setSheetUrl] = useState('');
 
   useEffect(() => {
     api.get('/settings').then(r => {
-      if (r.data?.defaultAccount) setDefaultAccount(r.data.defaultAccount);
       if (r.data?.sheetUrl) setSheetUrl(r.data.sheetUrl);
     }).catch(() => {});
   }, []);
@@ -165,7 +161,7 @@ export default function Transactions() {
       {(showForm || editing) && (
         <TransactionForm
           initial={editing}
-          defaultAccount={defaultAccount}
+          defaultAccount={personName}
           onSave={handleSave}
           onCancel={() => { setShowForm(false); setEditing(null); }}
         />
@@ -184,7 +180,7 @@ export default function Transactions() {
         </div>
         <select className="input w-32" value={filters.account} onChange={e => setFilters(p => ({...p, account: e.target.value}))}>
           <option value="">All Accounts</option>
-          {ACCOUNTS.map(a => <option key={a}>{a}</option>)}
+          <option value={personName}>{personName}</option>
         </select>
         <select className="input w-36" value={filters.type} onChange={e => setFilters(p => ({...p, type: e.target.value}))}>
           <option value="">All Types</option>

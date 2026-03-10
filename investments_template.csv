@@ -1,0 +1,12 @@
+date,account,goal,asset_class,instrument,side,amount,broker
+2026-01-01,Harsh,VNS Plot,Equity,Large Cap,BUY,912000,Mummy Groww
+2026-01-01,Harsh,VNS Plot,Equity,US Port,BUY,836000,Mummy IBKR
+2026-01-01,Harsh,VNS Plot,Equity,Nifty IT,BUY,79000,Mummy Groww
+2026-01-01,Harsh,VNS Plot,Equity,Parag Parikh,BUY,260000,Mummy Groww
+2026-01-01,Harsh,VNS Plot,Gold,gold+silver,BUY,837000,Mummy Groww
+2026-01-01,Harsh,VNS Plot,Debt,Medium Term,BUY,1377000,Mummy Groww
+2026-01-01,Harsh,rupsagar home,Equity,US,BUY,1100000,Papa IBKR
+2026-01-01,Harsh,rupsagar home,Equity,China/Crypto,BUY,550000,Papa IBKR
+2026-01-01,Harsh,rupsagar home,Equity,India,BUY,609000,Mummy Zerodha
+2026-01-01,Harsh,rupsagar home,Gold,gold,BUY,717000,Mummy Zerodha
+2026-01-01,Harsh,rupsagar home,Debt,Medium Term,BUY,875000,Mummy Coin

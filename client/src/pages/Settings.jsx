@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { Settings as SettingsIcon, Save, Trash2 } from 'lucide-react';
 import { applyTheme } from '../lib/theme';
+import { useAuth } from '../hooks/useAuth';
 
 const THEME_MODES = ['dark', 'light'];
 const ACCENT_OPTIONS = [
@@ -15,15 +16,15 @@ const CURRENCY_OPTIONS = [
   { id: 'INR', label: '₹ INR' },
   { id: 'USD', label: '$ USD' },
 ];
-const DASHBOARD_PROFILES = ['Harsh', 'Kirti', 'Both'];
 
 export default function Settings() {
+  const { personName } = useAuth();
   const [sheetUrlTransactions, setSheetUrlTransactions] = useState('');
   const [sheetUrlInvestments, setSheetUrlInvestments] = useState('');
   const [sheetUrl, setSheetUrl] = useState('');
   const [defaultIdealSaving, setDefaultIdealSaving] = useState(100000);
   const [defaultIncome, setDefaultIncome] = useState(0);
-  const [defaultAccount, setDefaultAccount] = useState('Harsh');
+  const [defaultAccount, setDefaultAccount] = useState('');
   const [themeMode, setThemeMode] = useState('dark');
   const [accent, setAccent] = useState('gold');
   const [currencyDisplay, setCurrencyDisplay] = useState('INR');
@@ -42,7 +43,7 @@ export default function Settings() {
       setSheetUrl(d.sheetUrl || '');
       setDefaultIdealSaving(d.defaultIdealSaving ?? 100000);
       setDefaultIncome(d.defaultIncome ?? 0);
-      setDefaultAccount(d.defaultAccount || 'Harsh');
+      setDefaultAccount(d.defaultAccount || personName || '');
       setThemeMode(d.themeMode || 'dark');
       setAccent(d.accent || 'gold');
       setCurrencyDisplay(d.currencyDisplay || 'INR');
@@ -190,22 +191,9 @@ export default function Settings() {
         <h2 className="font-display font-bold text-white mb-4">Preferences</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="label">Default account</label>
-            <select className="input w-full" value={defaultAccount} onChange={e => setDefaultAccount(e.target.value)}>
-              {['Harsh', 'Kirti'].map(a => <option key={a}>{a}</option>)}
-            </select>
-            <p className="text-xs text-muted mt-1">Pre-fill when adding Transaction or Investment</p>
-          </div>
-          <div>
             <label className="label">Currency</label>
             <select className="input w-full" value={currencyDisplay} onChange={e => setCurrencyDisplay(e.target.value)}>
               {CURRENCY_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Dashboard default profile</label>
-            <select className="input w-full" value={dashboardDefaultProfile} onChange={e => setDashboardDefaultProfile(e.target.value)}>
-              {DASHBOARD_PROFILES.map(p => <option key={p}>{p}</option>)}
             </select>
           </div>
         </div>

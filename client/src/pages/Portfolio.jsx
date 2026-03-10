@@ -4,6 +4,7 @@ import { PieChart as PieIcon, Target, Wallet } from 'lucide-react';
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 import TradeFeedbackCard from '../components/TradeFeedbackCard';
+import { useAuth } from '../hooks/useAuth';
 
 const RISK_COLORS = { Low: '#60a5fa', Medium: '#fbbf24', High: '#f97316' };
 const ASSET_COLORS = { Equity: '#f97316', Debt: '#60a5fa', Gold: '#fbbf24', Cash: '#6b7280', 'Real Estate': '#a78bfa', Crypto: '#ec4899' };
@@ -23,19 +24,17 @@ const riskForAsset = asset => {
   }
 };
 
-const PERSON_OPTIONS = ['Harsh', 'Kirti', 'Both'];
-
 export default function Portfolio() {
+  const { personName } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [person, setPerson] = useState('Harsh');
   const [goalFilter, setGoalFilter] = useState('');
   const [brokerFilter, setBrokerFilter] = useState('');
 
   const load = () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (person !== 'Both') params.set('account', person);
+    if (personName) params.set('account', personName);
     api
       .get(`/investments?${params}`)
       .then(r => setData(r.data))
@@ -44,7 +43,7 @@ export default function Portfolio() {
 
   useEffect(() => {
     load();
-  }, [person]);
+  }, [personName]);
 
   const goals = useMemo(
     () => Array.from(new Set(data.map(d => d.goal))).sort(),
@@ -142,20 +141,6 @@ export default function Portfolio() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-muted text-xs uppercase tracking-wider">Account</span>
-            {PERSON_OPTIONS.map(p => (
-              <button
-                key={p}
-                onClick={() => setPerson(p)}
-                className={`px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
-                  person === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
           <div className="flex items-center gap-2">
             <label htmlFor="portfolio-goal" className="text-muted text-xs uppercase tracking-wider">Goal</label>
             <select

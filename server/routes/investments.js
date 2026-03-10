@@ -2,7 +2,6 @@ const router = require('express').Router();
 const pool = require('../db');
 const auth = require('../middleware/auth');
 
-const ACCOUNTS = ['Harsh', 'Kirti'];
 const CSV_HEADER = 'date,account,goal,asset_class,instrument,side,amount,broker';
 function escapeCsvField(v) {
   const s = String(v ?? '');
@@ -52,7 +51,7 @@ router.post('/', auth, async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO investments (date, account, goal, asset_class, instrument, side, amount, broker)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [date, account || 'Harsh', goal, asset_class, instrument, side, amount, broker]
+      [date, account, goal, asset_class, instrument, side, amount, broker]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -68,7 +67,7 @@ router.put('/:id', auth, async (req, res) => {
       `UPDATE investments
        SET date=$1, account=$2, goal=$3, asset_class=$4, instrument=$5, side=$6, amount=$7, broker=$8
        WHERE id=$9 RETURNING *`,
-      [date, account || 'Harsh', goal, asset_class, instrument, side, amount, broker, req.params.id]
+      [date, account, goal, asset_class, instrument, side, amount, broker, req.params.id]
     );
     res.json(rows[0]);
   } catch (err) {

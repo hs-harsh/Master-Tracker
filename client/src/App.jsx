@@ -14,20 +14,25 @@ import Settings from './pages/Settings';
 import { Lock, Loader2 } from 'lucide-react';
 
 function LoginPrompt() {
-  const [form, setForm] = useState({ username: 'hskv', password: '' });
+  const [form, setForm] = useState({ username: '', password: '', personName: '' });
+  const [mode, setMode] = useState('login'); // 'login' | 'register'
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, register } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(form.username, form.password);
-      // ProtectedOutlet re-renders automatically after login — no navigate needed
-    } catch {
-      setError('Invalid credentials');
+      if (mode === 'login') {
+        await login(form.username, form.password);
+      } else {
+        if (!form.personName.trim()) { setError('Person name is required'); setLoading(false); return; }
+        await register(form.username, form.password, form.personName);
+      }
+    } catch (err) {
+      setError(mode === 'login' ? 'Invalid credentials' : (err.response?.data?.error || 'Registration failed'));
     } finally {
       setLoading(false);
     }
@@ -40,8 +45,10 @@ function LoginPrompt() {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-accent/10 border border-accent/20 mb-4">
             <Lock size={22} className="text-accent" />
           </div>
-          <h2 className="font-display text-xl font-bold text-white">Sign in required</h2>
-          <p className="text-muted text-sm mt-1">This section is private. Sign in to continue.</p>
+          <h2 className="font-display text-xl font-bold text-white">
+            {mode === 'login' ? 'Sign in required' : 'Create account'}
+          </h2>
+          <p className="text-muted text-sm mt-1">This section is private.</p>
         </div>
         <form onSubmit={handleSubmit} className="card space-y-4">
           <div>
@@ -51,6 +58,7 @@ function LoginPrompt() {
               value={form.username}
               onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))}
               autoComplete="username"
+              placeholder="Enter username"
             />
           </div>
           <div>
@@ -60,18 +68,39 @@ function LoginPrompt() {
               className="input"
               value={form.password}
               onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-              autoComplete="current-password"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               placeholder="••••••••"
             />
           </div>
+          {mode === 'register' && (
+            <div>
+              <label className="label">Your Name</label>
+              <input
+                className="input"
+                value={form.personName}
+                onChange={(e) => setForm((p) => ({ ...p, personName: e.target.value }))}
+                placeholder="e.g. Alice"
+                autoComplete="name"
+              />
+              <p className="text-muted text-xs mt-1">This name tags all your data (transactions, investments, etc.)</p>
+            </div>
+          )}
           {error && <p className="text-rose text-sm">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary w-full justify-center flex"
-          >
-            {loading ? <><Loader2 size={16} className="animate-spin mr-2" />Signing in…</> : 'Sign In'}
-          </button>
+          <div className="space-y-2">
+            <button type="submit" disabled={loading} className="btn-primary w-full justify-center flex">
+              {loading
+                ? <><Loader2 size={16} className="animate-spin mr-2" />{mode === 'login' ? 'Signing in…' : 'Creating…'}</>
+                : mode === 'login' ? 'Sign In' : 'Create Account'}
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); }}
+              className="btn-ghost w-full justify-center flex text-sm text-soft hover:text-accent border border-border hover:border-accent/30"
+            >
+              {mode === 'login' ? 'Create new account' : 'Back to sign in'}
+            </button>
+          </div>
         </form>
       </div>
     </div>

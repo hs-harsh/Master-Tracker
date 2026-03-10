@@ -81,7 +81,7 @@ export default function Layout() {
             <X size={20} />
           </button>
         </div>
-        {isAuth && <p className="text-muted text-xs px-5 pb-2 font-body hidden md:block">Harsh & Kirti</p>}
+        {isAuth && <p className="text-muted text-xs px-5 pb-2 font-body hidden md:block">InvestTrack</p>}
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {/* Public tabs — always accessible */}

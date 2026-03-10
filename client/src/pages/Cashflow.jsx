@@ -2,22 +2,22 @@ import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
-
-const PERSONS = ['Harsh', 'Kirti'];
+import { useAuth } from '../hooks/useAuth';
 
 export default function Cashflow() {
+  const { personName } = useAuth();
   const [data, setData] = useState([]);
-  const [person, setPerson] = useState('Harsh');
   const [loading, setLoading] = useState(true);
 
   const load = () => {
+    if (!personName) return;
     setLoading(true);
-    api.get(`/cashflow?person=${person}`)
+    api.get(`/cashflow?person=${personName}`)
       .then(r => setData(r.data))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [person]);
+  useEffect(() => { load(); }, [personName]);
 
   const chartData = data.slice(-12).map(r => ({
     month: fmtDate(r.month),
@@ -32,15 +32,7 @@ export default function Cashflow() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-white">Cashflow</h1>
-          <p className="text-muted text-sm mt-0.5">Monthly income, expenses & savings from transactions</p>
-        </div>
-        <div className="flex gap-2">
-          {PERSONS.map(p => (
-            <button key={p} onClick={() => setPerson(p)}
-              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${person === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
-              {p}
-            </button>
-          ))}
+          <p className="text-muted text-sm mt-0.5">Monthly income, expenses & savings · {personName}</p>
         </div>
       </div>
 
