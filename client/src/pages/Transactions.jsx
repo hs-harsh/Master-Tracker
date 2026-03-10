@@ -69,10 +69,12 @@ export default function Transactions() {
   const [syncResult, setSyncResult] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [sheetUrl, setSheetUrl] = useState('');
+  const [sheetUrlTx, setSheetUrlTx] = useState('');
 
   useEffect(() => {
     api.get('/settings').then(r => {
       if (r.data?.sheetUrl) setSheetUrl(r.data.sheetUrl);
+      if (r.data?.sheetUrlTransactions) setSheetUrlTx(r.data.sheetUrlTransactions);
     }).catch(() => {});
   }, []);
 
@@ -104,7 +106,21 @@ export default function Transactions() {
     load();
   };
 
+  const handleOpenSheet = () => {
+    const url = sheetUrlTx || sheetUrl;
+    if (!url) {
+      alert('No sheet URL configured.\n\nGo to Settings → Linked Google Sheet and add your Transactions Sheet CSV URL first.');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const handleSync = async () => {
+    const url = sheetUrlTx || sheetUrl;
+    if (!url) {
+      alert('No sheet URL configured.\n\nGo to Settings → Linked Google Sheet and add your Transactions Sheet CSV URL first.');
+      return;
+    }
     setSyncing(true);
     setSyncResult(null);
     try {
@@ -113,7 +129,7 @@ export default function Transactions() {
       setSyncResult(r.data);
       load();
     } catch (e) {
-      alert(e.response?.data?.error || 'Sync failed. Add sheet URLs in Settings.');
+      alert(e.response?.data?.error || 'Sync failed. Check your sheet URL in Settings.');
     } finally {
       setSyncing(false);
     }
@@ -135,12 +151,10 @@ export default function Transactions() {
           <p className="text-muted text-sm mt-0.5">All income, major, non-recurring & trip expenses</p>
         </div>
         <div className="flex items-center gap-4 flex-wrap">
-          {sheetUrl && (
-            <a href={sheetUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:text-accent/80 flex items-center gap-2 text-sm font-medium border-b border-accent/40 pb-0.5" title="Open Google Sheet">
-              <ExternalLink size={14} />
-              Open sheet
-            </a>
-          )}
+          <button onClick={handleOpenSheet}
+            className="text-accent hover:text-accent/80 flex items-center gap-2 text-sm font-medium border-b border-accent/40 pb-0.5">
+            <ExternalLink size={14} /> Open sheet
+          </button>
           <div className="flex gap-2 border-l border-border pl-4">
           <button
             onClick={handleSync}

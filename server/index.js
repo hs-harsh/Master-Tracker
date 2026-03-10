@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -25,6 +25,7 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/chat', require('./routes/finsight'));
 app.use('/api/prices', require('./routes/prices'));
 app.use('/api/stocks', require('./routes/stocks'));
+app.use('/api/admin', require('./routes/admin'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));

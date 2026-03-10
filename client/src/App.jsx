@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
-import { useState } from 'react';
+import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -11,97 +11,312 @@ import ExpenseAnalyser from './pages/ExpenseAnalyser';
 import Trade from './pages/Trade';
 import StockTrade from './pages/StockTrade';
 import Settings from './pages/Settings';
-import { Lock, Loader2 } from 'lucide-react';
+import Admin from './pages/Admin';
+import { Lock, Mail, Loader2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 
-function LoginPrompt() {
-  const [form, setForm] = useState({ username: '', password: '', personName: '' });
-  const [mode, setMode] = useState('login'); // 'login' | 'register'
+// ── OTP digit input row ────────────────────────────────────────────────────────
+function OtpBoxes({ otp, setOtp, inputsRef }) {
+  const handleChange = (i, val) => {
+    if (val.length === 6 && /^\d{6}$/.test(val)) {
+      setOtp(val.split(''));
+      inputsRef.current[5]?.focus();
+      return;
+    }
+    if (!/^\d?$/.test(val)) return;
+    const next = [...otp];
+    next[i] = val;
+    setOtp(next);
+    if (val && i < 5) inputsRef.current[i + 1]?.focus();
+  };
+  const handleKeyDown = (i, e) => {
+    if (e.key === 'Backspace' && !otp[i] && i > 0) inputsRef.current[i - 1]?.focus();
+  };
+  return (
+    <div className="flex justify-center gap-2">
+      {otp.map((digit, i) => (
+        <input
+          key={i}
+          ref={el => (inputsRef.current[i] = el)}
+          type="text"
+          inputMode="numeric"
+          maxLength={i === 0 ? 6 : 1}
+          value={digit}
+          onChange={e => handleChange(i, e.target.value)}
+          onKeyDown={e => handleKeyDown(i, e)}
+          onFocus={e => e.target.select()}
+          className={`w-11 h-14 text-center text-xl font-bold rounded-xl border-2 transition-all outline-none bg-surface text-white
+            ${digit ? 'border-accent' : 'border-border'} focus:border-accent`}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ── Shared auth form (used inline when not logged in) ─────────────────────────
+export function OtpLoginForm() {
+  const { login, register, sendOtp, verifyOtp } = useAuth();
+
+  // mode: 'signin' | 'otp-send' | 'otp-verify' | 'register'
+  const [mode, setMode] = useState('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [personName, setPersonName] = useState('');
+  const [isNewUser, setIsNewUser] = useState(false);
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, register } = useAuth();
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+  const [devOtp, setDevOtp] = useState('');
+  const otpInputs = useRef([]);
 
-  const handleSubmit = async (e) => {
+  useEffect(() => {
+    if (mode === 'otp-verify') setTimeout(() => otpInputs.current[0]?.focus(), 80);
+  }, [mode]);
+
+  const reset = (nextMode) => {
+    setError('');
+    setOtp(['', '', '', '', '', '']);
+    setDevOtp('');
+    setMode(nextMode);
+  };
+
+  // ── Password sign in ────────────────────────────────────────────────────────
+  const handlePasswordLogin = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      if (mode === 'login') {
-        await login(form.username, form.password);
-      } else {
-        if (!form.personName.trim()) { setError('Person name is required'); setLoading(false); return; }
-        await register(form.username, form.password, form.personName);
-      }
+      await login(email, password);
     } catch (err) {
-      setError(mode === 'login' ? 'Invalid credentials' : (err.response?.data?.error || 'Registration failed'));
+      setError(err.response?.data?.error || 'Invalid credentials');
     } finally {
       setLoading(false);
     }
   };
 
+  // ── Register ────────────────────────────────────────────────────────────────
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    if (!personName.trim()) { setError('Your name is required'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      await register(email, password, personName);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Registration failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Send OTP ─────────────────────────────────────────────────────────────────
+  const handleSendOtp = async (e) => {
+    e?.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const res = await sendOtp(email.trim().toLowerCase());
+      setIsNewUser(res.isNewUser);
+      if (res.devOtp) setDevOtp(res.devOtp); // dev fallback
+      setMode('otp-verify');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Verify OTP ───────────────────────────────────────────────────────────────
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    const code = otp.join('');
+    if (code.length !== 6) { setError('Enter all 6 digits'); return; }
+    if (isNewUser && !personName.trim()) { setError('Your name is required'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      await verifyOtp(email, code, personName);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Incorrect code');
+      setOtp(['', '', '', '', '', '']);
+      otpInputs.current[0]?.focus();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setResending(true);
+    setError('');
+    try {
+      const res = await sendOtp(email.trim().toLowerCase());
+      if (res.devOtp) setDevOtp(res.devOtp);
+      setOtp(['', '', '', '', '', '']);
+      setResent(true);
+      setTimeout(() => setResent(false), 4000);
+      otpInputs.current[0]?.focus();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to resend');
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const heading = mode === 'register' ? 'Create account' : 'Sign in required';
+
   return (
     <div className="flex-1 flex items-center justify-center min-h-full p-6">
       <div className="w-full max-w-sm">
+        {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-accent/10 border border-accent/20 mb-4">
-            <Lock size={22} className="text-accent" />
+            {mode === 'otp-verify' ? <Mail size={22} className="text-accent" /> : <Lock size={22} className="text-accent" />}
           </div>
-          <h2 className="font-display text-xl font-bold text-white">
-            {mode === 'login' ? 'Sign in required' : 'Create account'}
-          </h2>
-          <p className="text-muted text-sm mt-1">This section is private.</p>
+          <h2 className="font-display text-xl font-bold text-white">{heading}</h2>
+          <p className="text-muted text-sm mt-1">
+            {mode === 'otp-verify'
+              ? <>Code sent to <span className="text-text font-medium">{email}</span></>
+              : 'This section is private.'}
+          </p>
         </div>
-        <form onSubmit={handleSubmit} className="card space-y-4">
-          <div>
-            <label className="label">Username</label>
-            <input
-              className="input"
-              value={form.username}
-              onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))}
-              autoComplete="username"
-              placeholder="Enter username"
-            />
-          </div>
-          <div>
-            <label className="label">Password</label>
-            <input
-              type="password"
-              className="input"
-              value={form.password}
-              onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              placeholder="••••••••"
-            />
-          </div>
-          {mode === 'register' && (
+
+        {/* ── Password sign in ── */}
+        {mode === 'signin' && (
+          <form onSubmit={handlePasswordLogin} className="card space-y-4">
             <div>
-              <label className="label">Your Name</label>
-              <input
-                className="input"
-                value={form.personName}
-                onChange={(e) => setForm((p) => ({ ...p, personName: e.target.value }))}
-                placeholder="e.g. Alice"
-                autoComplete="name"
-              />
-              <p className="text-muted text-xs mt-1">This name tags all your data (transactions, investments, etc.)</p>
+              <label className="label">Email</label>
+              <input type="email" className="input" value={email} onChange={e => setEmail(e.target.value)}
+                autoComplete="email" placeholder="you@example.com" required />
             </div>
-          )}
-          {error && <p className="text-rose text-sm">{error}</p>}
-          <div className="space-y-2">
-            <button type="submit" disabled={loading} className="btn-primary w-full justify-center flex">
-              {loading
-                ? <><Loader2 size={16} className="animate-spin mr-2" />{mode === 'login' ? 'Signing in…' : 'Creating…'}</>
-                : mode === 'login' ? 'Sign In' : 'Create Account'}
+            <div>
+              <label className="label">Password</label>
+              <div className="relative">
+                <input type={showPw ? 'text' : 'password'} className="input pr-10" value={password}
+                  onChange={e => setPassword(e.target.value)} autoComplete="current-password" placeholder="••••••••" required />
+                <button type="button" onClick={() => setShowPw(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-text transition-colors">
+                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+            {error && <p className="text-rose text-sm">{error}</p>}
+            <div className="space-y-2">
+              <button type="submit" disabled={loading} className="btn-primary w-full justify-center flex">
+                {loading ? <><Loader2 size={16} className="animate-spin mr-2" />Signing in…</> : 'Sign In'}
+              </button>
+              <button type="button" onClick={() => { reset('otp-send'); }}
+                className="btn-ghost w-full justify-center flex text-sm text-soft hover:text-accent border border-border hover:border-accent/30">
+                <Mail size={14} className="mr-2" />Sign in with code instead
+              </button>
+            </div>
+            <p className="text-center text-xs text-muted pt-1">
+              No account?{' '}
+              <button type="button" onClick={() => reset('register')} className="text-accent hover:underline">Create one</button>
+            </p>
+          </form>
+        )}
+
+        {/* ── Send OTP step ── */}
+        {mode === 'otp-send' && (
+          <form onSubmit={handleSendOtp} className="card space-y-4">
+            <div>
+              <label className="label">Email</label>
+              <input type="email" className="input" value={email} onChange={e => setEmail(e.target.value)}
+                autoComplete="email" placeholder="you@example.com" required autoFocus />
+            </div>
+            {error && <p className="text-rose text-sm">{error}</p>}
+            <div className="space-y-2">
+              <button type="submit" disabled={loading || !email.trim()} className="btn-primary w-full justify-center flex gap-2">
+                {loading ? <><Loader2 size={16} className="animate-spin" />Sending…</> : <><Mail size={15} />Send Code</>}
+              </button>
+              <button type="button" onClick={() => reset('signin')}
+                className="btn-ghost w-full justify-center flex text-sm text-soft border border-border">
+                <ArrowLeft size={14} className="mr-2" />Use password instead
+              </button>
+            </div>
+            <p className="text-center text-xs text-muted pt-1">
+              No account?{' '}
+              <button type="button" onClick={() => reset('register')} className="text-accent hover:underline">Create one</button>
+            </p>
+          </form>
+        )}
+
+        {/* ── OTP verify step ── */}
+        {mode === 'otp-verify' && (
+          <form onSubmit={handleVerifyOtp} className="card space-y-5">
+            {isNewUser && (
+              <div>
+                <label className="label">Your name</label>
+                <input className="input" value={personName} onChange={e => setPersonName(e.target.value)}
+                  placeholder="e.g. Alice" autoComplete="name" />
+                <p className="text-muted text-xs mt-1">Labels your data — can change later in Settings</p>
+              </div>
+            )}
+            <div>
+              <label className="label text-center block mb-3">6-digit code</label>
+              <OtpBoxes otp={otp} setOtp={setOtp} inputsRef={otpInputs} />
+            </div>
+            {devOtp && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400">
+                <span className="font-semibold">Dev mode —</span> email not sent. Code: <span className="font-mono font-bold">{devOtp}</span>
+              </div>
+            )}
+            {error && <p className="text-center text-rose text-sm">{error}</p>}
+            {resent && <p className="text-center text-green-400 text-sm">New code sent!</p>}
+            <button type="submit" disabled={loading || otp.join('').length !== 6} className="btn-primary w-full justify-center flex">
+              {loading ? <><Loader2 size={16} className="animate-spin mr-2" />Verifying…</> : isNewUser ? 'Create Account' : 'Sign In'}
             </button>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); }}
-              className="btn-ghost w-full justify-center flex text-sm text-soft hover:text-accent border border-border hover:border-accent/30"
-            >
-              {mode === 'login' ? 'Create new account' : 'Back to sign in'}
-            </button>
-          </div>
-        </form>
+            <div className="flex items-center justify-between text-xs text-muted">
+              <button type="button" onClick={() => reset('otp-send')} className="flex items-center gap-1 hover:text-text transition-colors">
+                <ArrowLeft size={12} /> Change email
+              </button>
+              <button type="button" onClick={handleResend} disabled={resending}
+                className="text-accent hover:text-accent/80 disabled:opacity-50 transition-colors">
+                {resending ? 'Sending…' : 'Resend code'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* ── Register ── */}
+        {mode === 'register' && (
+          <form onSubmit={handleRegister} className="card space-y-4">
+            <div>
+              <label className="label">Email</label>
+              <input type="email" className="input" value={email} onChange={e => setEmail(e.target.value)}
+                autoComplete="email" placeholder="you@example.com" required />
+            </div>
+            <div>
+              <label className="label">Your name</label>
+              <input className="input" value={personName} onChange={e => setPersonName(e.target.value)}
+                placeholder="e.g. Alice" autoComplete="name" />
+              <p className="text-muted text-xs mt-1">Labels your data — can change later in Settings</p>
+            </div>
+            <div>
+              <label className="label">Password</label>
+              <div className="relative">
+                <input type={showPw ? 'text' : 'password'} className="input pr-10" value={password}
+                  onChange={e => setPassword(e.target.value)} autoComplete="new-password" placeholder="••••••••" required />
+                <button type="button" onClick={() => setShowPw(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-text transition-colors">
+                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+            {error && <p className="text-rose text-sm">{error}</p>}
+            <div className="space-y-2">
+              <button type="submit" disabled={loading} className="btn-primary w-full justify-center flex">
+                {loading ? <><Loader2 size={16} className="animate-spin mr-2" />Creating…</> : 'Create Account'}
+              </button>
+            </div>
+            <p className="text-center text-xs text-muted pt-1">
+              Already have an account?{' '}
+              <button type="button" onClick={() => reset('signin')} className="text-accent hover:underline">Sign in</button>
+            </p>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -109,7 +324,14 @@ function LoginPrompt() {
 
 function ProtectedOutlet() {
   const { isAuth } = useAuth();
-  return isAuth ? <Outlet /> : <LoginPrompt />;
+  return isAuth ? <Outlet /> : <OtpLoginForm />;
+}
+
+function AdminOutlet() {
+  const { isAuth, isAdmin } = useAuth();
+  if (!isAuth) return <OtpLoginForm />;
+  if (!isAdmin) return <Navigate to="/" replace />;
+  return <Outlet />;
 }
 
 export default function App() {
@@ -118,10 +340,8 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Layout />}>
-            {/* Public — no login required */}
             <Route path="trade" element={<Trade />} />
             <Route path="stock-trade" element={<StockTrade />} />
-            {/* Private — shows inline login prompt if not authenticated */}
             <Route element={<ProtectedOutlet />}>
               <Route index element={<Dashboard />} />
               <Route path="portfolio" element={<Portfolio />} />
@@ -130,6 +350,9 @@ export default function App() {
               <Route path="transactions" element={<Transactions />} />
               <Route path="expense-analyser" element={<ExpenseAnalyser />} />
               <Route path="settings" element={<Settings />} />
+            </Route>
+            <Route element={<AdminOutlet />}>
+              <Route path="admin" element={<Admin />} />
             </Route>
           </Route>
         </Routes>

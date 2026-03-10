@@ -156,10 +156,12 @@ export default function Investments() {
   const [syncResult, setSyncResult] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [sheetUrl, setSheetUrl] = useState('');
+  const [sheetUrlInv, setSheetUrlInv] = useState('');
 
   useEffect(() => {
     api.get('/settings').then(r => {
       if (r.data?.sheetUrl) setSheetUrl(r.data.sheetUrl);
+      if (r.data?.sheetUrlInvestments) setSheetUrlInv(r.data.sheetUrlInvestments);
     }).catch(() => {});
   }, []);
 
@@ -201,7 +203,21 @@ export default function Investments() {
     load();
   };
 
+  const handleOpenSheet = () => {
+    const url = sheetUrlInv || sheetUrl;
+    if (!url) {
+      alert('No sheet URL configured.\n\nGo to Settings → Linked Google Sheet and add your Investment Sheet CSV URL first.');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const handleSync = async () => {
+    const url = sheetUrlInv || sheetUrl;
+    if (!url) {
+      alert('No sheet URL configured.\n\nGo to Settings → Linked Google Sheet and add your Investment Sheet CSV URL first.');
+      return;
+    }
     setSyncing(true);
     setSyncResult(null);
     try {
@@ -210,7 +226,7 @@ export default function Investments() {
       setSyncResult(r.data);
       load();
     } catch (e) {
-      alert(e.response?.data?.error || 'Sync failed. Add sheet URLs in Settings.');
+      alert(e.response?.data?.error || 'Sync failed. Check your sheet URL in Settings.');
     } finally {
       setSyncing(false);
     }
@@ -249,12 +265,10 @@ export default function Investments() {
           </p>
         </div>
         <div className="flex items-center gap-4 flex-wrap">
-          {sheetUrl && (
-            <a href={sheetUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:text-accent/80 flex items-center gap-2 text-sm font-medium border-b border-accent/40 pb-0.5" title="Open Google Sheet">
-              <ExternalLink size={14} />
-              Open sheet
-            </a>
-          )}
+          <button onClick={handleOpenSheet}
+            className="text-accent hover:text-accent/80 flex items-center gap-2 text-sm font-medium border-b border-accent/40 pb-0.5">
+            <ExternalLink size={14} /> Open sheet
+          </button>
           <div className="flex gap-2 border-l border-border pl-4">
           <button
             onClick={handleSync}

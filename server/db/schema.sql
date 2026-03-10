@@ -187,10 +187,144 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL DEFAULT ''
 );
 
+-- Per-user settings (sheet URLs, defaults, theme per user)
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (user_id, key)
+);
+
+-- Add is_admin flag to users
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'is_admin') THEN
+    ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
+  END IF;
+END $$;
+
+-- OTP fields for login (replaces passwords) and legacy admin 2FA
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'admin_otp') THEN
+    ALTER TABLE users ADD COLUMN admin_otp VARCHAR(6);
+    ALTER TABLE users ADD COLUMN admin_otp_expires TIMESTAMPTZ;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'login_otp') THEN
+    ALTER TABLE users ADD COLUMN login_otp VARCHAR(6);
+    ALTER TABLE users ADD COLUMN login_otp_expires TIMESTAMPTZ;
+  END IF;
+END $$;
+
+-- Pending OTPs for email verification before account creation
+CREATE TABLE IF NOT EXISTS pending_otps (
+  email TEXT PRIMARY KEY,
+  otp VARCHAR(6) NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
+-- Set harshsingh.iitd@gmail.com as the designated admin
+UPDATE users SET is_admin = TRUE WHERE username = 'harshsingh.iitd@gmail.com';
+
+-- Add account status and activity tracking
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'is_active') THEN
+    ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'last_login_at') THEN
+    ALTER TABLE users ADD COLUMN last_login_at TIMESTAMPTZ;
+  END IF;
+END $$;
+
+-- Remove auto-first-user admin (replaced by explicit email above)
+-- (No-op if already set correctly)
+
+-- Add user_id to transactions (true ownership, replaces person-name scoping)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'transactions' AND column_name = 'user_id') THEN
+    ALTER TABLE transactions ADD COLUMN user_id INT REFERENCES users(id);
+    -- Migrate existing rows: link via user_persons mapping
+    UPDATE transactions t SET user_id = up.user_id
+      FROM user_persons up WHERE t.account = up.person_name AND t.user_id IS NULL;
+  END IF;
+END $$;
+
+-- Add user_id to investments
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'investments' AND column_name = 'user_id') THEN
+    ALTER TABLE investments ADD COLUMN user_id INT REFERENCES users(id);
+    UPDATE investments i SET user_id = up.user_id
+      FROM user_persons up WHERE i.account = up.person_name AND i.user_id IS NULL;
+  END IF;
+END $$;
+
+-- Add user_id to monthly_cashflow
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'monthly_cashflow' AND column_name = 'user_id') THEN
+    ALTER TABLE monthly_cashflow ADD COLUMN user_id INT REFERENCES users(id);
+    UPDATE monthly_cashflow m SET user_id = up.user_id
+      FROM user_persons up WHERE m.person = up.person_name AND m.user_id IS NULL;
+  END IF;
+END $$;
+
+-- Upgrade user_id foreign keys to ON DELETE CASCADE so deleting a user auto-cleans all data
+DO $$
+BEGIN
+  -- transactions
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transactions_user_id_fkey') THEN
+    ALTER TABLE transactions DROP CONSTRAINT transactions_user_id_fkey;
+    ALTER TABLE transactions ADD CONSTRAINT transactions_user_id_fkey
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+  END IF;
+  -- investments
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'investments_user_id_fkey') THEN
+    ALTER TABLE investments DROP CONSTRAINT investments_user_id_fkey;
+    ALTER TABLE investments ADD CONSTRAINT investments_user_id_fkey
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+  END IF;
+  -- monthly_cashflow
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'monthly_cashflow_user_id_fkey') THEN
+    ALTER TABLE monthly_cashflow DROP CONSTRAINT monthly_cashflow_user_id_fkey;
+    ALTER TABLE monthly_cashflow ADD CONSTRAINT monthly_cashflow_user_id_fkey
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- Migrate global settings to per-user settings for existing users (skip anthropic key)
+INSERT INTO user_settings (user_id, key, value)
+  SELECT u.id, s.key, s.value
+  FROM settings s CROSS JOIN users u
+  WHERE s.key NOT IN ('anthropic_api_key')
+ON CONFLICT DO NOTHING;
+
+-- Migrate monthly_cashflow unique constraint to include user_id (multi-tenant safe)
+DO $$
+BEGIN
+  -- Drop old single-user constraint
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'monthly_cashflow_month_person_key' AND contype = 'u') THEN
+    ALTER TABLE monthly_cashflow DROP CONSTRAINT monthly_cashflow_month_person_key;
+  END IF;
+  -- Remove any cross-user duplicates (keep lowest id per user_id+month+person)
+  DELETE FROM monthly_cashflow a USING monthly_cashflow b
+    WHERE a.id > b.id AND a.user_id = b.user_id AND a.month = b.month AND a.person = b.person;
+  -- Add user-scoped unique constraint
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_cashflow_user_month_person') THEN
+    ALTER TABLE monthly_cashflow ADD CONSTRAINT uq_cashflow_user_month_person UNIQUE (user_id, month, person);
+  END IF;
+END $$;
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_cashflow_month_person ON monthly_cashflow(month, person);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_investments_goal ON investments(goal);
 CREATE INDEX IF NOT EXISTS idx_investments_date ON investments(date);
 CREATE INDEX IF NOT EXISTS idx_investments_account ON investments(account);
+CREATE INDEX IF NOT EXISTS idx_investments_user_id ON investments(user_id);
+CREATE INDEX IF NOT EXISTS idx_cashflow_user_id ON monthly_cashflow(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_settings ON user_settings(user_id);

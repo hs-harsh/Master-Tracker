@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, Calculator, LineChart, LogOut, Settings, BarChart3, Menu, X, LogIn, Lock } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase, Calculator, LineChart, LogOut, Settings, BarChart3, Menu, X, LogIn, Lock, Shield } from 'lucide-react';
 import InstallPrompt from './InstallPrompt';
 import api from '../lib/api';
 import { applyTheme } from '../lib/theme';
@@ -23,7 +23,7 @@ const PRIVATE_NAV = [
 ];
 
 export default function Layout() {
-  const { logout, isAuth } = useAuth();
+  const { logout, isAuth, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -119,6 +119,27 @@ export default function Layout() {
               {!isAuth && <Lock size={12} className="text-muted shrink-0" />}
             </NavLink>
           ))}
+
+          {/* Admin-only link */}
+          {isAdmin && (
+            <>
+              <div className="pt-2 pb-1">
+                <div className="border-t border-border" />
+              </div>
+              <NavLink
+                to="/admin"
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-body transition-all min-h-[44px] ${
+                    isActive ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-amber-500/70 hover:text-amber-400 hover:bg-amber-500/5'
+                  }`
+                }
+                onClick={closeSidebar}
+              >
+                <Shield size={18} />
+                Admin
+              </NavLink>
+            </>
+          )}
         </nav>
 
         <div className="px-3 py-4 border-t border-border space-y-2">
