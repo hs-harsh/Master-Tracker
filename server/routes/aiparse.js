@@ -3,7 +3,7 @@ const pool = require('../db');
 const auth = require('../middleware/auth');
 const router = express.Router();
 
-const TX_TYPES  = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
+const TX_TYPES    = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
 const INV_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const INV_SIDES   = ['BUY', 'SELL'];
 
@@ -13,57 +13,91 @@ async function getApiKey() {
 }
 
 function buildTxPrompt(userText, persons, today) {
-  return `You are a financial data parser. Extract transaction entries from the user's text.
+  return `You are a financial data parser. Extract transaction entries from the user's input.
 
 Today's date: ${today}
 Available accounts (persons): ${persons.join(', ')}
 Transaction types: ${TX_TYPES.join(', ')}
 
-Rules:
-- Return ONLY a valid JSON array, no explanation, no markdown.
+RULES:
+- Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
 - Each object: { "date": "YYYY-MM-DD", "type": "...", "account": "...", "amount": <number>, "remark": "..." }
-- Infer type from context: groceries/food/fuel/utilities → Regular; rent/emi/loan → EMI; travel/trip/holiday → Trips; salary/income → Income; large one-off purchase → Major; misc non-repeating → Non-Recurring
+- For narrative text: infer type from context (groceries/food/fuel → Regular; emi/loan → EMI; travel/trip → Trips; salary/income → Income; large one-off → Major; misc non-repeating → Non-Recurring)
+- For a TABLE with columns like Month, Income, Other Income, Major Expense, Non-Recurring, Regular Expense, EMI, Trips Expense:
+  * Create one transaction entry per non-zero cell per row
+  * Map columns: "Income" → type "Income", "Other Income" → "Other Income", "Major Expense" → "Major", "Non-Recurring Expense" → "Non-Recurring", "Regular Expense" → "Regular", "EMI" → "EMI", "Trips Expense" → "Trips"
+  * For month rows like "April-2023", use the 1st of that month: "2023-04-01"
+  * Skip rows with label "Initial Balance" or header rows
+  * Skip cells with value 0 or ₹0
+  * Strip ₹ symbols and commas from numbers (₹1,377,420 → 1377420)
 - Use today's date if no date mentioned
 - Pick the closest matching account from available accounts, or the first one if unclear
-- Amount must be a positive number (no currency symbols)
-- Remark should be short and descriptive
+- Amount must be a positive number
+- Remark should describe what the entry is (e.g. "Income - April 2023", "Regular Expense - April 2023")
 
-User text: "${userText}"`;
+User input:
+${userText}`;
 }
 
 function buildInvPrompt(userText, persons, today) {
-  return `You are a financial data parser. Extract investment entries from the user's text.
+  return `You are a financial data parser. Extract investment entries from the user's input.
 
 Today's date: ${today}
 Available accounts (persons): ${persons.join(', ')}
 Asset classes: ${INV_CLASSES.join(', ')}
 Sides: ${INV_SIDES.join(', ')}
 
-Rules:
-- Return ONLY a valid JSON array, no explanation, no markdown.
+RULES:
+- Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
 - Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "...", "asset_class": "...", "instrument": "...", "side": "BUY" or "SELL", "amount": <number>, "broker": "..." }
 - Infer asset class: stocks/shares/equity/mutual fund → Equity; bonds/fd/ppf/debt → Debt; gold/silver → Gold; crypto/bitcoin → Crypto; property/real estate → Real Estate
 - Use today's date if no date mentioned
-- If goal is not mentioned, leave it as empty string ""
-- If broker is not mentioned, leave it as empty string ""
-- Amount must be a positive number (the rupee/dollar value invested, not number of units)
-- Instrument should be the name of the stock/fund/asset
+- If goal is not mentioned, leave it as ""
+- If broker is not mentioned, leave it as ""
+- Strip ₹ symbols and commas from amounts
+- Amount must be a positive number (the total rupee value)
 
-User text: "${userText}"`;
+User input:
+${userText}`;
 }
 
-// POST /api/ai/parse
+function buildCashflowPrompt(userText, persons, today) {
+  return `You are a financial data parser. Extract monthly cashflow entries from a table.
+
+Available accounts (persons): ${persons.join(', ')}
+
+RULES:
+- Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
+- Each object represents ONE MONTH:
+  { "month": "YYYY-MM-01", "person": "...", "income": <number>, "other_income": <number>, "major_expense": <number>, "non_recurring_expense": <number>, "regular_expense": <number>, "emi": <number>, "trips_expense": <number>, "ideal_saving": <number> }
+- Parse table columns: Month/Date → month, Income → income, Other Income → other_income, Major Expense → major_expense, Non-Recurring/Non-Reccuring → non_recurring_expense, Regular Expense → regular_expense, EMI → emi, Trips Expense → trips_expense
+- For month like "April-2023" use "2023-04-01", "Jan-2024" use "2024-01-01"
+- Skip rows with label "Initial Balance" or header rows
+- Strip ₹ symbols and commas from numbers (₹1,377,420 → 1377420)
+- All numeric fields default to 0 if missing or empty
+- ideal_saving defaults to 0 unless explicitly provided
+- Pick the person from the text context (e.g. "for harsh" → pick "Harsh" or closest match). If unclear, use first available account.
+
+User input:
+${userText}`;
+}
+
+// POST /api/ai/parse — supports type: transactions | investments | cashflow
 router.post('/parse', auth, async (req, res) => {
   const { prompt, type, persons = [], today } = req.body;
   if (!prompt?.trim()) return res.status(400).json({ error: 'Prompt is required' });
-  if (!['transactions', 'investments'].includes(type)) return res.status(400).json({ error: 'type must be transactions or investments' });
+  if (!['transactions', 'investments', 'cashflow'].includes(type)) {
+    return res.status(400).json({ error: 'type must be transactions, investments, or cashflow' });
+  }
 
   const key = await getApiKey();
   if (!key) return res.status(500).json({ error: 'Anthropic API key not set. Add it in Settings → Expense Analyser.' });
 
-  const systemPrompt = type === 'transactions'
-    ? buildTxPrompt(prompt.trim(), persons, today || new Date().toISOString().slice(0, 10))
-    : buildInvPrompt(prompt.trim(), persons, today || new Date().toISOString().slice(0, 10));
+  const todayStr = today || new Date().toISOString().slice(0, 10);
+  const systemPrompt =
+    type === 'transactions' ? buildTxPrompt(prompt.trim(), persons, todayStr) :
+    type === 'cashflow'     ? buildCashflowPrompt(prompt.trim(), persons, todayStr) :
+                              buildInvPrompt(prompt.trim(), persons, todayStr);
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -75,7 +109,7 @@ router.post('/parse', auth, async (req, res) => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
+        max_tokens: 8192,   // large enough for 200+ row tables
         messages: [{ role: 'user', content: systemPrompt }],
       }),
     });
@@ -84,30 +118,31 @@ router.post('/parse', auth, async (req, res) => {
     if (!r.ok) return res.status(r.status).json({ error: data?.error?.message || 'Claude API error' });
 
     const text = (data.content || []).map(c => c.text || '').join('').trim();
-    console.log('[AI parse] raw response:', text.slice(0, 300));
+    console.log('[AI parse] raw response (first 400):', text.slice(0, 400));
 
-    // Extract JSON array — strip markdown fences, grab first [...] block
-    const cleaned = text.replace(/```json|```/g, '').trim();
+    // Strip markdown fences, grab first [...] block
+    const cleaned = text.replace(/```json\s*|```\s*/g, '').trim();
     const match = cleaned.match(/\[[\s\S]*\]/);
     if (!match) {
-      console.error('[AI parse] no JSON array found in:', text);
-      return res.status(422).json({ error: 'Could not extract entries from AI response. Try a more specific prompt.' });
+      console.error('[AI parse] no JSON array found. Full response:', text);
+      return res.status(422).json({ error: 'Could not extract entries. Try a more specific prompt.' });
     }
 
     let entries;
     try {
       entries = JSON.parse(match[0]);
     } catch (jsonErr) {
-      console.error('[AI parse] JSON parse error:', jsonErr.message, 'raw:', match[0].slice(0, 200));
-      return res.status(422).json({ error: 'AI returned malformed data. Try rephrasing your prompt.' });
+      console.error('[AI parse] JSON parse error:', jsonErr.message, '\nRaw:', match[0].slice(0, 300));
+      return res.status(422).json({ error: 'AI returned malformed JSON. Try rephrasing.' });
     }
 
     if (!Array.isArray(entries) || entries.length === 0) {
-      return res.status(422).json({ error: 'No entries found. Try a more specific prompt.' });
+      return res.status(422).json({ error: 'No entries found. Check the input format.' });
     }
 
     res.json({ entries });
   } catch (err) {
+    console.error('[AI parse] upstream error:', err.message);
     res.status(502).json({ error: 'AI service error: ' + err.message });
   }
 });

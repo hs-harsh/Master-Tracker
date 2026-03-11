@@ -7,6 +7,7 @@ import { Plus, Pencil, Trash2, X, Save } from 'lucide-react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
+import AiEntryPanel from '../components/AiEntryPanel';
 
 // ── Shared chart helpers ───────────────────────────────────────────────────────
 const TT = {
@@ -442,6 +443,30 @@ export default function Cashflow() {
     setModal(row);
   };
 
+  const handleAiAdd = async (entries) => {
+    for (const e of entries) {
+      const net = (Number(e.major_expense)||0) + (Number(e.non_recurring_expense)||0) +
+                  (Number(e.regular_expense)||0) + (Number(e.emi)||0) + (Number(e.trips_expense)||0);
+      const actual = (Number(e.income)||0) + (Number(e.other_income)||0) - net;
+      await api.post('/cashflow', {
+        month:                 e.month,
+        person:                e.person || activePerson,
+        income:                Number(e.income)               || 0,
+        other_income:          Number(e.other_income)         || 0,
+        major_expense:         Number(e.major_expense)        || 0,
+        non_recurring_expense: Number(e.non_recurring_expense)|| 0,
+        regular_expense:       Number(e.regular_expense)      || 0,
+        emi:                   Number(e.emi)                  || 0,
+        trips_expense:         Number(e.trips_expense)        || 0,
+        ideal_saving:          Number(e.ideal_saving)         || 0,
+        net_expense:           net,
+        actual_saving:         actual,
+        target:                Number(e.ideal_saving)         || 0,
+      });
+    }
+    load();
+  };
+
   const handleDelete = async (row) => {
     if (!row.id) return alert('This row has no saved cashflow record to delete.');
     if (!confirm(`Delete cashflow record for ${fmtDate(row.month)} (${row.person})?`)) return;
@@ -481,6 +506,8 @@ export default function Cashflow() {
           </div>
         </div>
       </div>
+
+      <AiEntryPanel type="cashflow" persons={persons.length ? persons : [activePerson]} onAdd={handleAiAdd} />
 
       {loading && <div className="py-16 text-center text-muted text-sm">Loading…</div>}
 

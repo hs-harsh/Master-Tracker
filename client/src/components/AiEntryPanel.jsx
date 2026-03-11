@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Sparkles, Loader2, Check, X, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Sparkles, Loader2, Check, X, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import api from '../lib/api';
 
-const TX_TYPES = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
+const TX_TYPES    = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
 const INV_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
-const INV_SIDES = ['BUY', 'SELL'];
+const INV_SIDES   = ['BUY', 'SELL'];
 
 // ── Inline editable cell ──────────────────────────────────────────────────────
 function EditCell({ value, onChange, type = 'text', options }) {
@@ -106,6 +106,53 @@ function InvConfirmTable({ entries, setEntries, persons }) {
   );
 }
 
+// ── Cashflow confirmation table ───────────────────────────────────────────────
+function CfConfirmTable({ entries, setEntries, persons }) {
+  const update = (i, field, val) =>
+    setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
+  const remove = i => setEntries(prev => prev.filter((_, idx) => idx !== i));
+  const COLS = [
+    ['month','Month','date'],['person','Person','text'],
+    ['income','Income','number'],['other_income','Other Inc','number'],
+    ['major_expense','Major','number'],['non_recurring_expense','Non-Rec','number'],
+    ['regular_expense','Regular','number'],['emi','EMI','number'],
+    ['trips_expense','Trips','number'],['ideal_saving','Ideal Save','number'],
+  ];
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-border bg-surface/60">
+            {COLS.map(([,h]) => (
+              <th key={h} className="text-left py-2.5 px-2 text-muted font-display uppercase tracking-wider whitespace-nowrap">{h}</th>
+            ))}
+            <th className="w-8" />
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((e, i) => (
+            <tr key={i} className="border-b border-border/50 hover:bg-surface/40">
+              {COLS.map(([field, , colType]) => (
+                <td key={field} className="py-1.5 px-2">
+                  {field === 'person'
+                    ? <EditCell value={e[field] || ''} onChange={v => update(i, field, v)} options={persons} />
+                    : <EditCell value={e[field] ?? 0} onChange={v => update(i, field, v)} type={colType} />
+                  }
+                </td>
+              ))}
+              <td className="py-1.5 px-2">
+                <button onClick={() => remove(i)} className="p-1 rounded hover:bg-rose/10 text-muted hover:text-rose">
+                  <Trash2 size={12} />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Main AiEntryPanel ─────────────────────────────────────────────────────────
 export default function AiEntryPanel({ type, persons, onAdd }) {
   const [open, setOpen]         = useState(false);
@@ -116,9 +163,12 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
   const [error, setError]       = useState('');
   const [done, setDone]         = useState(false);
 
-  const placeholder = type === 'transactions'
-    ? 'e.g. "Spent 1200 on groceries and 800 on fuel today, also paid 45000 EMI on 1st March"'
-    : 'e.g. "Bought 50 units of Nifty 50 index fund for 15000 via Zerodha on 5th March, goal: retirement"';
+  const placeholder =
+    type === 'transactions'
+      ? 'Describe transactions in plain text, or paste a month-wise table (Month | Income | Major Expense | Regular | EMI …)'
+      : type === 'cashflow'
+      ? 'Paste a monthly cashflow table (Month | Income | Other Income | Major Expense | Non-Recurring | Regular | EMI | Trips)'
+      : 'e.g. "Bought 50 units of Nifty 50 index fund for 15000 via Zerodha on 5th March, goal: retirement"';
 
   const handleParse = async () => {
     if (!prompt.trim()) return;
@@ -230,10 +280,9 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
                 </button>
               </div>
 
-              {type === 'transactions'
-                ? <TxConfirmTable entries={entries} setEntries={setEntries} persons={persons} />
-                : <InvConfirmTable entries={entries} setEntries={setEntries} persons={persons} />
-              }
+              {type === 'transactions' && <TxConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
+              {type === 'investments' && <InvConfirmTable entries={entries} setEntries={setEntries} persons={persons} />}
+              {type === 'cashflow'    && <CfConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
 
               <div className="flex gap-2 items-center">
                 <button
