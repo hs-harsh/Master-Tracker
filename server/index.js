@@ -23,6 +23,7 @@ app.use('/api/investments', require('./routes/investments'));
 app.use('/api/portfolio', require('./routes/portfolio'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/chat', require('./routes/finsight'));
+app.use('/api/ai',   require('./routes/aiparse'));
 app.use('/api/prices', require('./routes/prices'));
 app.use('/api/stocks', require('./routes/stocks'));
 app.use('/api/admin', require('./routes/admin'));

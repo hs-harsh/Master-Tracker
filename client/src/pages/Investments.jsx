@@ -3,6 +3,7 @@ import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save, RefreshCw, ExternalLink } from 'lucide-react';
 import SyncResultModal, { downloadBackupCsv } from '../components/SyncResultModal';
+import AiEntryPanel from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
@@ -232,6 +233,22 @@ export default function Investments() {
     }
   };
 
+  const handleAiAdd = async (entries) => {
+    for (const e of entries) {
+      await api.post('/investments', {
+        date:        e.date,
+        account:     e.account,
+        goal:        e.goal || '',
+        asset_class: e.asset_class || 'Equity',
+        instrument:  e.instrument || '',
+        side:        e.side || 'BUY',
+        amount:      Number(e.amount) || 0,
+        broker:      e.broker || '',
+      });
+    }
+    load();
+  };
+
   const filtered = data.filter(inv => {
     if (filters.search) {
       const q = filters.search.toLowerCase();
@@ -290,6 +307,8 @@ export default function Investments() {
       </div>
 
       {syncResult && <SyncResultModal result={syncResult} syncType="investments" onClose={() => setSyncResult(null)} />}
+
+      <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
 
       {(showForm || editing) && (
         <InvestmentForm

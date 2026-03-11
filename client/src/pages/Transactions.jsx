@@ -3,6 +3,7 @@ import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save, RefreshCw, ExternalLink } from 'lucide-react';
 import SyncResultModal, { downloadBackupCsv } from '../components/SyncResultModal';
+import AiEntryPanel from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
 const TYPES = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
@@ -135,6 +136,19 @@ export default function Transactions() {
     }
   };
 
+  const handleAiAdd = async (entries) => {
+    for (const e of entries) {
+      await api.post('/transactions', {
+        date:    e.date,
+        type:    e.type,
+        account: e.account,
+        amount:  Number(e.amount) || 0,
+        remark:  e.remark || '',
+      });
+    }
+    load();
+  };
+
   const filtered = data.filter(t =>
     !filters.search ||
     t.remark?.toLowerCase().includes(filters.search.toLowerCase()) ||
@@ -173,6 +187,8 @@ export default function Transactions() {
       </div>
 
       {syncResult && <SyncResultModal result={syncResult} syncType="transactions" onClose={() => setSyncResult(null)} />}
+
+      <AiEntryPanel type="transactions" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
 
       {(showForm || editing) && (
         <TransactionForm
