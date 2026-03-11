@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../db');
-const { auth } = require('../middleware/auth');
+const auth = require('../middleware/auth');
 const router = express.Router();
 
 const TX_TYPES  = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
@@ -84,16 +84,22 @@ router.post('/parse', auth, async (req, res) => {
     if (!r.ok) return res.status(r.status).json({ error: data?.error?.message || 'Claude API error' });
 
     const text = (data.content || []).map(c => c.text || '').join('').trim();
+    console.log('[AI parse] raw response:', text.slice(0, 300));
 
-    // Extract JSON array from response (handle markdown code fences)
-    const match = text.match(/\[[\s\S]*\]/);
-    if (!match) return res.status(422).json({ error: 'Could not parse response. Try a more specific prompt.', raw: text });
+    // Extract JSON array — strip markdown fences, grab first [...] block
+    const cleaned = text.replace(/```json|```/g, '').trim();
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    if (!match) {
+      console.error('[AI parse] no JSON array found in:', text);
+      return res.status(422).json({ error: 'Could not extract entries from AI response. Try a more specific prompt.' });
+    }
 
     let entries;
     try {
       entries = JSON.parse(match[0]);
-    } catch {
-      return res.status(422).json({ error: 'Invalid JSON from AI. Try rephrasing.', raw: text });
+    } catch (jsonErr) {
+      console.error('[AI parse] JSON parse error:', jsonErr.message, 'raw:', match[0].slice(0, 200));
+      return res.status(422).json({ error: 'AI returned malformed data. Try rephrasing your prompt.' });
     }
 
     if (!Array.isArray(entries) || entries.length === 0) {
