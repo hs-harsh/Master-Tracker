@@ -1,7 +1,6 @@
 const router = require('express').Router();
 const pool = require('../db');
 const adminAuth = require('../middleware/adminAuth');
-const nodemailer = require('nodemailer');
 
 // ── GET /api/admin/users ───────────────────────────────────────────────────────
 router.get('/users', adminAuth, async (req, res) => {
@@ -169,42 +168,31 @@ router.delete('/users/:id/data', adminAuth, async (req, res) => {
   }
 });
 
-// ── GET /api/admin/test-smtp ───────────────────────────────────────────────────
-// Verifies SMTP connectivity without sending an email. Useful for Railway debugging.
-router.get('/test-smtp', adminAuth, async (req, res) => {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+// ── GET /api/admin/test-email ──────────────────────────────────────────────────
+// Verifies Resend API key is configured. Useful for Railway debugging.
+router.get('/test-email', adminAuth, async (req, res) => {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from   = process.env.RESEND_FROM || 'onboarding@resend.dev';
 
-  if (!user || !pass) {
+  if (!apiKey) {
     return res.status(500).json({
       ok: false,
-      error: 'SMTP_USER or SMTP_PASS not set in environment variables',
-      smtp_user: user ? `${user.slice(0, 3)}***` : 'MISSING',
-      smtp_pass: pass ? 'set' : 'MISSING',
+      error: 'RESEND_API_KEY is not set in Railway environment variables.',
+      hint: 'Sign up at resend.com, create an API key, and add RESEND_API_KEY to Railway Variables.',
     });
   }
 
-  const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    requireTLS: true,
-    auth: { user, pass },
-    tls: { rejectUnauthorized: false },
-  });
-
   try {
-    await transporter.verify();
-    res.json({ ok: true, message: 'SMTP connection verified successfully', smtp_user: user });
-  } catch (err) {
-    res.status(500).json({
-      ok: false,
-      error: err.message,
-      hint: err.message.includes('Invalid login') || err.message.includes('Username and Password')
-        ? 'Gmail rejected the credentials. Make sure SMTP_PASS is an App Password, not your regular Google password. Generate one at https://myaccount.google.com/apppasswords (requires 2FA).'
-        : 'Check Railway logs for more detail.',
-      smtp_user: `${user.slice(0, 3)}***`,
+    const resp = await fetch('https://api.resend.com/domains', {
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(`${resp.status}: ${body.message || resp.statusText}`);
+    }
+    res.json({ ok: true, message: 'Resend API key is valid', from });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

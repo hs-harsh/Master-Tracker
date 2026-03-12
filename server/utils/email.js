@@ -1,36 +1,42 @@
-const nodemailer = require('nodemailer');
+// Email sending via Resend HTTP API (port 443 — works on Railway, no SMTP needed)
+// Requires: RESEND_API_KEY env var
+// Optional: RESEND_FROM env var (defaults to onboarding@resend.dev for testing)
+//   Note: onboarding@resend.dev can only send to your own verified email.
+//   To send to any email, add and verify a domain at resend.com and set RESEND_FROM.
 
-function createTransporter() {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+const RESEND_API = 'https://api.resend.com/emails';
 
-  if (!user || !pass) {
+function getConfig() {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
     throw new Error(
-      `SMTP not configured — set SMTP_USER and SMTP_PASS in Railway environment variables. ` +
-      `SMTP_USER must be your Gmail address. SMTP_PASS must be a Gmail App Password (NOT your regular ` +
-      `Google password) — generate one at myaccount.google.com/apppasswords (requires 2FA on your Google account).`
+      'RESEND_API_KEY is not set. Sign up at resend.com, create an API key, ' +
+      'and add it as a Railway environment variable.'
     );
   }
+  const from = process.env.RESEND_FROM || 'onboarding@resend.dev';
+  return { apiKey, from };
+}
 
-  // Port 587 + STARTTLS is the standard submission port and most reliable across cloud hosts.
-  // Short timeouts so a blocked port fails fast rather than hanging for minutes.
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,          // STARTTLS — upgrades to TLS after connect
-    requireTLS: true,
-    family: 4,              // force IPv4 — Railway doesn't support outbound IPv6
-    auth: { user, pass },
-    tls: { rejectUnauthorized: false },
-    connectionTimeout: 10000,   // 10 s to establish TCP connection
-    greetingTimeout:   8000,    // 8 s to receive SMTP greeting
-    socketTimeout:     15000,   // 15 s idle socket timeout
+async function sendViaResend({ to, subject, html, text }) {
+  const { apiKey, from } = getConfig();
+
+  const resp = await fetch(RESEND_API, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from: `InvestTrack <${from}>`, to, subject, html, text }),
   });
+
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(`Resend API error ${resp.status}: ${body.message || body.name || resp.statusText}`);
+  }
 }
 
 async function sendAdminOtp(toEmail, otp) {
-  const transporter = createTransporter();
-
   const html = `
 <!DOCTYPE html>
 <html>
@@ -79,22 +85,18 @@ async function sendAdminOtp(toEmail, otp) {
     </div>
   </div>
 </body>
-</html>
-  `.trim();
+</html>`.trim();
 
-  await transporter.sendMail({
-    from: `"InvestTrack" <${process.env.SMTP_USER}>`,
+  await sendViaResend({
     to: toEmail,
     subject: `${otp} — Your InvestTrack Admin Code`,
     html,
-    text: `Your InvestTrack admin verification code is: ${otp}\n\nThis code expires in 10 minutes.\n\nIf you did not attempt to log in, please secure your account.`,
+    text: `Your InvestTrack admin verification code is: ${otp}\n\nExpires in 10 minutes.\n\nIf you did not attempt to log in, please secure your account.`,
   });
 }
 
 async function sendLoginOtp(toEmail, otp, isNewUser = false) {
-  const transporter = createTransporter();
-
-  const title = isNewUser ? 'Verify your email' : 'Sign-in code';
+  const title    = isNewUser ? 'Verify your email' : 'Sign-in code';
   const subtitle = isNewUser
     ? 'Use this code to create your InvestTrack account'
     : 'Use this code to sign in to InvestTrack';
@@ -137,7 +139,7 @@ async function sendLoginOtp(toEmail, otp, isNewUser = false) {
         <div class="expiry">Expires in 10 minutes</div>
       </div>
       <div class="note">
-        If you didn't request this code, you can safely ignore this email. Someone may have typed your email by mistake.
+        If you didn't request this code, you can safely ignore this email.
       </div>
     </div>
     <div class="footer">
@@ -147,8 +149,7 @@ async function sendLoginOtp(toEmail, otp, isNewUser = false) {
 </body>
 </html>`.trim();
 
-  await transporter.sendMail({
-    from: `"InvestTrack" <${process.env.SMTP_USER}>`,
+  await sendViaResend({
     to: toEmail,
     subject: `${otp} is your InvestTrack${isNewUser ? ' verification' : ' sign-in'} code`,
     html,
