@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const pool = require('../db');
 const adminAuth = require('../middleware/adminAuth');
+const nodemailer = require('nodemailer');
 
 // ── GET /api/admin/users ───────────────────────────────────────────────────────
 router.get('/users', adminAuth, async (req, res) => {
@@ -165,6 +166,45 @@ router.delete('/users/:id/data', adminAuth, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/admin/test-smtp ───────────────────────────────────────────────────
+// Verifies SMTP connectivity without sending an email. Useful for Railway debugging.
+router.get('/test-smtp', adminAuth, async (req, res) => {
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!user || !pass) {
+    return res.status(500).json({
+      ok: false,
+      error: 'SMTP_USER or SMTP_PASS not set in environment variables',
+      smtp_user: user ? `${user.slice(0, 3)}***` : 'MISSING',
+      smtp_pass: pass ? 'set' : 'MISSING',
+    });
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    auth: { user, pass },
+    tls: { rejectUnauthorized: false },
+  });
+
+  try {
+    await transporter.verify();
+    res.json({ ok: true, message: 'SMTP connection verified successfully', smtp_user: user });
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err.message,
+      hint: err.message.includes('Invalid login') || err.message.includes('Username and Password')
+        ? 'Gmail rejected the credentials. Make sure SMTP_PASS is an App Password, not your regular Google password. Generate one at https://myaccount.google.com/apppasswords (requires 2FA).'
+        : 'Check Railway logs for more detail.',
+      smtp_user: `${user.slice(0, 3)}***`,
+    });
   }
 });
 

@@ -5,14 +5,20 @@ function createTransporter() {
   const pass = process.env.SMTP_PASS;
 
   if (!user || !pass) {
-    throw new Error(`SMTP not configured — SMTP_USER=${user ? 'set' : 'MISSING'}, SMTP_PASS=${pass ? 'set' : 'MISSING'}`);
+    throw new Error(
+      `SMTP not configured — set SMTP_USER and SMTP_PASS in Railway environment variables. ` +
+      `SMTP_USER must be your Gmail address. SMTP_PASS must be a Gmail App Password (NOT your regular ` +
+      `Google password) — generate one at myaccount.google.com/apppasswords (requires 2FA on your Google account).`
+    );
   }
 
-  // Explicit Gmail SMTP settings are more reliable than service:'gmail' in hosted envs
+  // Port 587 + STARTTLS is the standard submission port and most reliable across cloud hosts.
+  // Port 465 (SSL) can be blocked by some providers.
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,           // SSL on port 465
+    port: 587,
+    secure: false,          // STARTTLS — upgrades to TLS after connect
+    requireTLS: true,
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
   });
