@@ -208,6 +208,17 @@ export default function Investments() {
     load();
   };
 
+  const handleAiEdit = async (operations) => {
+    for (const op of operations) {
+      if (op.action === 'delete') {
+        await api.delete(`/investments/${op.id}`);
+      } else if (op.action === 'update' && op.changes) {
+        await api.put(`/investments/${op.id}`, op.changes);
+      }
+    }
+    load();
+  };
+
   const filtered = data.filter(inv => {
     if (filters.search) {
       const q = filters.search.toLowerCase();
@@ -250,7 +261,7 @@ export default function Investments() {
         </div>
       </div>
 
-      <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
+      <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} onEdit={handleAiEdit} />
 
       {(showForm || editing) && (
         <InvestmentForm

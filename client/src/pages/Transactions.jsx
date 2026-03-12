@@ -108,6 +108,17 @@ export default function Transactions() {
     load();
   };
 
+  const handleAiEdit = async (operations) => {
+    for (const op of operations) {
+      if (op.action === 'delete') {
+        await api.delete(`/transactions/${op.id}`);
+      } else if (op.action === 'update' && op.changes) {
+        await api.put(`/transactions/${op.id}`, op.changes);
+      }
+    }
+    load();
+  };
+
   const filtered = data.filter(t =>
     !filters.search ||
     t.remark?.toLowerCase().includes(filters.search.toLowerCase()) ||
@@ -130,7 +141,7 @@ export default function Transactions() {
         </div>
       </div>
 
-      <AiEntryPanel type="transactions" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
+      <AiEntryPanel type="transactions" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} onEdit={handleAiEdit} />
 
       {(showForm || editing) && (
         <TransactionForm

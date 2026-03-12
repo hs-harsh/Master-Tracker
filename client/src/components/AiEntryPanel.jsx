@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, Loader2, Check, X, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Sparkles, Loader2, Check, X, Trash2, ChevronDown, ChevronUp, Pencil, Plus } from 'lucide-react';
 import api from '../lib/api';
 
 const TX_TYPES    = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
@@ -29,12 +29,11 @@ function EditCell({ value, onChange, type = 'text', options }) {
   );
 }
 
-// ── Transaction confirmation table ────────────────────────────────────────────
+// ── Transaction confirmation table (add mode) ─────────────────────────────────
 function TxConfirmTable({ entries, setEntries, persons }) {
   const update = (i, field, val) =>
     setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
   const remove = i => setEntries(prev => prev.filter((_, idx) => idx !== i));
-
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full text-xs">
@@ -66,12 +65,11 @@ function TxConfirmTable({ entries, setEntries, persons }) {
   );
 }
 
-// ── Investment confirmation table ─────────────────────────────────────────────
+// ── Investment confirmation table (add mode) ──────────────────────────────────
 function InvConfirmTable({ entries, setEntries, persons }) {
   const update = (i, field, val) =>
     setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
   const remove = i => setEntries(prev => prev.filter((_, idx) => idx !== i));
-
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full text-xs">
@@ -106,7 +104,7 @@ function InvConfirmTable({ entries, setEntries, persons }) {
   );
 }
 
-// ── Cashflow confirmation table ───────────────────────────────────────────────
+// ── Cashflow confirmation table (add mode) ────────────────────────────────────
 function CfConfirmTable({ entries, setEntries, persons }) {
   const update = (i, field, val) =>
     setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
@@ -153,33 +151,141 @@ function CfConfirmTable({ entries, setEntries, persons }) {
   );
 }
 
+// ── Operations review table (edit/delete mode) ────────────────────────────────
+function OperationsTable({ operations, setOperations, type }) {
+  const remove = i => setOperations(prev => prev.filter((_, idx) => idx !== i));
+  const updateChange = (i, field, val) =>
+    setOperations(prev => prev.map((op, idx) =>
+      idx === i ? { ...op, changes: { ...op.changes, [field]: val } } : op
+    ));
+
+  const txFields  = ['date', 'type', 'account', 'amount', 'remark'];
+  const invFields = ['date', 'account', 'goal', 'asset_class', 'instrument', 'side', 'amount', 'broker'];
+  const fields    = type === 'transactions' ? txFields : invFields;
+
+  const fmt = v => v == null ? '—' : String(v);
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-border bg-surface/60">
+            <th className="text-left py-2.5 px-3 text-muted font-display uppercase tracking-wider whitespace-nowrap">Action</th>
+            <th className="text-left py-2.5 px-3 text-muted font-display uppercase tracking-wider whitespace-nowrap">Entry</th>
+            <th className="text-left py-2.5 px-3 text-muted font-display uppercase tracking-wider whitespace-nowrap">Changes</th>
+            <th className="w-8" />
+          </tr>
+        </thead>
+        <tbody>
+          {operations.map((op, i) => {
+            const orig = op.original;
+            return (
+              <tr key={i} className="border-b border-border/50 hover:bg-surface/40 align-top">
+                {/* Action badge */}
+                <td className="py-2.5 px-3 whitespace-nowrap">
+                  {op.action === 'delete'
+                    ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-rose/15 text-rose">DELETE</span>
+                    : <span className="px-2 py-0.5 rounded text-xs font-bold bg-accent/15 text-accent">UPDATE</span>
+                  }
+                </td>
+
+                {/* Original entry summary */}
+                <td className="py-2.5 px-3">
+                  <p className="font-mono text-white">{fmt(orig?.amount) !== '—' ? `₹${Number(orig.amount).toLocaleString('en-IN')}` : '—'}</p>
+                  <p className="text-muted mt-0.5">
+                    {type === 'transactions'
+                      ? `${orig?.type} · ${orig?.account} · ${orig?.date}`
+                      : `${orig?.instrument || orig?.asset_class} · ${orig?.account} · ${orig?.date}`
+                    }
+                  </p>
+                  {orig?.remark && <p className="text-muted/70 mt-0.5 truncate max-w-[180px]">{orig.remark}</p>}
+                  {orig?.goal && <p className="text-muted/70 mt-0.5">Goal: {orig.goal}</p>}
+                </td>
+
+                {/* Changes (editable for updates) */}
+                <td className="py-2 px-3 min-w-[200px]">
+                  {op.action === 'delete' ? (
+                    <span className="text-muted italic">Entry will be deleted</span>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {Object.entries(op.changes || {}).map(([field, val]) => (
+                        <div key={field} className="flex items-center gap-2">
+                          <span className="text-muted w-20 shrink-0 capitalize">{field.replace(/_/g, ' ')}:</span>
+                          {field === 'type' ? (
+                            <EditCell value={val} onChange={v => updateChange(i, field, v)} options={TX_TYPES} />
+                          ) : field === 'asset_class' ? (
+                            <EditCell value={val} onChange={v => updateChange(i, field, v)} options={INV_CLASSES} />
+                          ) : field === 'side' ? (
+                            <EditCell value={val} onChange={v => updateChange(i, field, v)} options={INV_SIDES} />
+                          ) : field === 'amount' ? (
+                            <EditCell value={val} onChange={v => updateChange(i, field, Number(v))} type="number" />
+                          ) : field === 'date' ? (
+                            <EditCell value={val} onChange={v => updateChange(i, field, v)} type="date" />
+                          ) : (
+                            <EditCell value={val ?? ''} onChange={v => updateChange(i, field, v)} />
+                          )}
+                          <span className="text-muted/50 text-xs shrink-0">(was: {fmt(orig?.[field])})</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </td>
+
+                {/* Remove from list */}
+                <td className="py-2.5 px-3">
+                  <button onClick={() => remove(i)} className="p-1 rounded hover:bg-rose/10 text-muted hover:text-rose transition-colors" title="Remove this operation">
+                    <X size={12} />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Main AiEntryPanel ─────────────────────────────────────────────────────────
-export default function AiEntryPanel({ type, persons, onAdd }) {
+export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
   const [open, setOpen]         = useState(false);
+  const [mode, setMode]         = useState('add');   // 'add' | 'edit'
   const [prompt, setPrompt]     = useState('');
   const [parsing, setParsing]   = useState(false);
-  const [entries, setEntries]   = useState(null);  // null = not parsed yet
-  const [adding, setAdding]     = useState(false);
+  const [entries, setEntries]   = useState(null);      // add mode: parsed entries
+  const [operations, setOps]    = useState(null);      // edit mode: operations
+  const [applying, setApplying] = useState(false);
   const [error, setError]       = useState('');
   const [done, setDone]         = useState(false);
 
-  const placeholder =
+  const addPlaceholder =
     type === 'transactions'
-      ? 'Describe transactions in plain text, or paste a month-wise table (Month | Income | Major Expense | Regular | EMI …)'
+      ? 'Describe transactions, or paste a month-wise table (Month | Income | Major | Regular | EMI …)'
       : type === 'cashflow'
-      ? 'Paste a monthly cashflow table (Month | Income | Other Income | Major Expense | Non-Recurring | Regular | EMI | Trips)'
-      : 'e.g. "Bought 50 units of Nifty 50 index fund for 15000 via Zerodha on 5th March, goal: retirement"';
+      ? 'Paste a monthly cashflow table (Month | Income | Other Income | Major | Non-Recurring | Regular | EMI | Trips)'
+      : 'e.g. "Bought 50 units of Nifty 50 index fund for ₹15,000 via Zerodha on 5th March, goal: retirement"';
+
+  const editPlaceholder =
+    type === 'transactions'
+      ? 'e.g. "Delete all Regular transactions for March 2025" or "Change remark of ₹50000 income on Jan 1 to Bonus"'
+      : 'e.g. "Set goal to Rupsagar Home for all Mummy Groww investments" or "Delete all SELL entries before 2024"';
 
   const handleParse = async () => {
     if (!prompt.trim()) return;
     setParsing(true);
     setError('');
     setEntries(null);
+    setOps(null);
     setDone(false);
     try {
       const today = new Date().toISOString().slice(0, 10);
-      const r = await api.post('/ai/parse', { prompt, type, persons, today });
-      setEntries(r.data.entries);
+      if (mode === 'add') {
+        const r = await api.post('/ai/parse', { prompt, type, persons, today });
+        setEntries(r.data.entries);
+      } else {
+        const r = await api.post('/ai/edit', { prompt, type, persons, today });
+        setOps(r.data.operations);
+      }
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to parse. Try again.');
     } finally {
@@ -187,9 +293,9 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
     }
   };
 
-  const handleAdd = async () => {
+  const handleConfirmAdd = async () => {
     if (!entries?.length) return;
-    setAdding(true);
+    setApplying(true);
     try {
       await onAdd(entries);
       setDone(true);
@@ -199,15 +305,43 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to add entries.');
     } finally {
-      setAdding(false);
+      setApplying(false);
+    }
+  };
+
+  const handleConfirmEdit = async () => {
+    if (!operations?.length) return;
+    setApplying(true);
+    try {
+      await onEdit(operations);
+      setDone(true);
+      setOps(null);
+      setPrompt('');
+      setTimeout(() => { setDone(false); setOpen(false); }, 2000);
+    } catch (e) {
+      setError(e.response?.data?.error || 'Failed to apply changes.');
+    } finally {
+      setApplying(false);
     }
   };
 
   const handleReset = () => {
     setEntries(null);
+    setOps(null);
     setError('');
     setDone(false);
   };
+
+  const switchMode = (m) => {
+    setMode(m);
+    handleReset();
+    setPrompt('');
+  };
+
+  const isParsed  = mode === 'add' ? !!entries : !!operations;
+  const itemCount = mode === 'add' ? (entries?.length || 0) : (operations?.length || 0);
+  const delCount  = mode === 'edit' ? (operations?.filter(o => o.action === 'delete').length || 0) : 0;
+  const updCount  = mode === 'edit' ? (operations?.filter(o => o.action === 'update').length || 0) : 0;
 
   return (
     <div className="card border-accent/30 bg-gradient-to-br from-accent/5 to-transparent">
@@ -218,21 +352,43 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
       >
         <div className="flex items-center gap-2">
           <Sparkles size={16} className="text-accent" />
-          <span className="font-display font-semibold text-white text-sm">Add with AI</span>
-          <span className="text-xs text-muted">— describe in plain text, AI creates the entries</span>
+          <span className="font-display font-semibold text-white text-sm">AI Assistant</span>
+          <span className="text-xs text-muted">— add, edit or delete entries with plain text</span>
         </div>
         {open ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
       </button>
 
       {open && (
         <div className="mt-4 space-y-3">
+          {/* Mode toggle — only for transactions and investments */}
+          {type !== 'cashflow' && (
+            <div className="flex gap-1 p-0.5 bg-surface rounded-lg w-fit border border-border">
+              <button
+                onClick={() => switchMode('add')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  mode === 'add' ? 'bg-accent text-ink font-bold' : 'text-muted hover:text-white'
+                }`}
+              >
+                <Plus size={12} /> Add entries
+              </button>
+              <button
+                onClick={() => switchMode('edit')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  mode === 'edit' ? 'bg-accent text-ink font-bold' : 'text-muted hover:text-white'
+                }`}
+              >
+                <Pencil size={12} /> Edit / Delete
+              </button>
+            </div>
+          )}
+
           {/* Prompt input */}
-          {!entries && (
+          {!isParsed && (
             <>
               <textarea
                 className="input w-full resize-none text-sm leading-relaxed"
                 rows={3}
-                placeholder={placeholder}
+                placeholder={mode === 'add' ? addPlaceholder : editPlaceholder}
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleParse(); }}
@@ -245,7 +401,7 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
                 >
                   {parsing
                     ? <><Loader2 size={14} className="animate-spin" />Parsing…</>
-                    : <><Sparkles size={14} />Parse</>}
+                    : <><Sparkles size={14} />{mode === 'add' ? 'Parse' : 'Find matches'}</>}
                 </button>
                 <span className="text-xs text-muted">Ctrl+Enter to parse</span>
               </div>
@@ -263,36 +419,65 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
           {/* Success */}
           {done && (
             <div className="rounded-lg bg-teal/10 border border-teal/30 px-3 py-2 text-sm text-teal flex items-center gap-2">
-              <Check size={14} /> Entries added successfully!
+              <Check size={14} /> {mode === 'add' ? 'Entries added successfully!' : 'Changes applied successfully!'}
             </div>
           )}
 
-          {/* Confirmation table */}
-          {entries && entries.length > 0 && (
+          {/* ── Add mode: confirmation table ── */}
+          {mode === 'add' && entries && entries.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-white font-semibold">
                   {entries.length} entr{entries.length === 1 ? 'y' : 'ies'} parsed —
                   <span className="text-muted font-normal"> review and edit below, then confirm</span>
                 </p>
-                <button onClick={handleReset} className="text-xs text-muted hover:text-white underline">
-                  ← Change prompt
-                </button>
+                <button onClick={handleReset} className="text-xs text-muted hover:text-white underline">← Change prompt</button>
               </div>
-
               {type === 'transactions' && <TxConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
               {type === 'investments' && <InvConfirmTable entries={entries} setEntries={setEntries} persons={persons} />}
               {type === 'cashflow'    && <CfConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
-
               <div className="flex gap-2 items-center">
                 <button
-                  onClick={handleAdd}
-                  disabled={adding || entries.length === 0}
+                  onClick={handleConfirmAdd}
+                  disabled={applying || entries.length === 0}
                   className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50"
                 >
-                  {adding
+                  {applying
                     ? <><Loader2 size={14} className="animate-spin" />Adding…</>
                     : <><Check size={14} />Confirm &amp; Add {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}</>
+                  }
+                </button>
+                <button onClick={handleReset} className="btn-ghost text-sm">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Edit mode: operations review table ── */}
+          {mode === 'edit' && operations && operations.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-white font-semibold">
+                  {itemCount} operation{itemCount !== 1 ? 's' : ''} found
+                  {updCount > 0 && <span className="text-accent font-normal"> · {updCount} update{updCount !== 1 ? 's' : ''}</span>}
+                  {delCount > 0 && <span className="text-rose font-normal"> · {delCount} delete{delCount !== 1 ? 's' : ''}</span>}
+                  <span className="text-muted font-normal"> — review below, then apply</span>
+                </p>
+                <button onClick={handleReset} className="text-xs text-muted hover:text-white underline">← Change prompt</button>
+              </div>
+              <OperationsTable operations={operations} setOperations={setOps} type={type} />
+              <div className="flex gap-2 items-center">
+                <button
+                  onClick={handleConfirmEdit}
+                  disabled={applying || operations.length === 0}
+                  className={`flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 ${
+                    delCount > 0 && updCount === 0
+                      ? 'bg-rose/80 hover:bg-rose text-white'
+                      : 'btn-primary'
+                  }`}
+                >
+                  {applying
+                    ? <><Loader2 size={14} className="animate-spin" />Applying…</>
+                    : <><Check size={14} />Apply {itemCount} operation{itemCount !== 1 ? 's' : ''}</>
                   }
                 </button>
                 <button onClick={handleReset} className="btn-ghost text-sm">Cancel</button>

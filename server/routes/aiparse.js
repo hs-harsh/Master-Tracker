@@ -82,6 +82,155 @@ User input:
 ${userText}`;
 }
 
+function buildTxEditPrompt(userText, entries, persons, today) {
+  return `You are a financial data editor. The user wants to update or delete existing transaction entries.
+
+Today's date: ${today}
+Available accounts: ${persons.join(', ')}
+Transaction types: ${TX_TYPES.join(', ')}
+
+Existing transactions (JSON array):
+${JSON.stringify(entries)}
+
+RULES:
+- Return ONLY a valid JSON array of operations, no explanation, no markdown, no code fences.
+- Each operation must be one of:
+    { "action": "update", "id": <number>, "changes": { field: newValue, ... } }
+    { "action": "delete", "id": <number> }
+- Only reference IDs that exist in the provided data above.
+- For "update", include only the fields that need to change in "changes".
+- Match entries by their content (remark, amount, account, date, type) based on the user's description.
+- If the user says "update all X" or "delete all Y", return multiple operations covering all matches.
+- For date fields use YYYY-MM-DD. Amounts must be positive numbers.
+- If nothing matches, return an empty array [].
+
+User request:
+${userText}`;
+}
+
+function buildInvEditPrompt(userText, entries, persons, today) {
+  return `You are a financial data editor. The user wants to update or delete existing investment entries.
+
+Today's date: ${today}
+Available accounts: ${persons.join(', ')}
+Asset classes: ${INV_CLASSES.join(', ')}
+Sides: ${INV_SIDES.join(', ')}
+
+Existing investments (JSON array):
+${JSON.stringify(entries)}
+
+RULES:
+- Return ONLY a valid JSON array of operations, no explanation, no markdown, no code fences.
+- Each operation must be one of:
+    { "action": "update", "id": <number>, "changes": { field: newValue, ... } }
+    { "action": "delete", "id": <number> }
+- Only reference IDs that exist in the provided data above.
+- For "update", include only the fields that need to change in "changes".
+- Match entries by their content (instrument, goal, account, broker, amount, date) based on the user's description.
+- If the user says "update all X" or "delete all Y", return multiple operations covering all matches.
+- For date fields use YYYY-MM-DD. Amounts must be positive numbers.
+- If nothing matches, return an empty array [].
+
+User request:
+${userText}`;
+}
+
+// POST /api/ai/edit — update or delete existing transactions / investments
+router.post('/edit', auth, async (req, res) => {
+  const { prompt, type, persons = [], today } = req.body;
+  if (!prompt?.trim()) return res.status(400).json({ error: 'Prompt is required' });
+  if (!['transactions', 'investments'].includes(type)) {
+    return res.status(400).json({ error: 'type must be transactions or investments' });
+  }
+
+  const key = await getApiKey();
+  if (!key) return res.status(500).json({ error: 'Anthropic API key not set. Add it in Settings → Expense Analyser.' });
+
+  const todayStr = today || new Date().toISOString().slice(0, 10);
+
+  // Fetch existing entries (limit to 500 most recent to stay within token budget)
+  let existingEntries;
+  try {
+    if (type === 'transactions') {
+      const { rows } = await pool.query(
+        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date, type, account, amount, remark
+         FROM transactions WHERE user_id = $1 ORDER BY date DESC LIMIT 500`,
+        [req.user.id]
+      );
+      existingEntries = rows;
+    } else {
+      const { rows } = await pool.query(
+        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date, account, goal, asset_class, instrument, side, amount, broker
+         FROM investments WHERE user_id = $1 ORDER BY date DESC LIMIT 500`,
+        [req.user.id]
+      );
+      existingEntries = rows;
+    }
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to fetch entries: ' + err.message });
+  }
+
+  if (!existingEntries.length) {
+    return res.status(400).json({ error: 'No existing entries found to edit.' });
+  }
+
+  const systemPrompt = type === 'transactions'
+    ? buildTxEditPrompt(prompt.trim(), existingEntries, persons, todayStr)
+    : buildInvEditPrompt(prompt.trim(), existingEntries, persons, todayStr);
+
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: systemPrompt }],
+      }),
+    });
+
+    const data = await r.json();
+    if (!r.ok) return res.status(r.status).json({ error: data?.error?.message || 'Claude API error' });
+
+    const text = (data.content || []).map(c => c.text || '').join('').trim();
+    console.log('[AI edit] raw response (first 400):', text.slice(0, 400));
+
+    const cleaned = text.replace(/```json\s*|```\s*/g, '').trim();
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    if (!match) return res.status(422).json({ error: 'Could not extract operations. Try rephrasing.' });
+
+    let operations;
+    try {
+      operations = JSON.parse(match[0]);
+    } catch {
+      return res.status(422).json({ error: 'AI returned malformed JSON. Try rephrasing.' });
+    }
+
+    if (!Array.isArray(operations) || !operations.length) {
+      return res.status(422).json({ error: 'No matching entries found. Try a more specific description.' });
+    }
+
+    // Enrich each operation with the original entry for frontend preview, filter invalid IDs
+    const entryMap = Object.fromEntries(existingEntries.map(e => [String(e.id), e]));
+    const enriched = operations
+      .filter(op => op.action && op.id && entryMap[String(op.id)])
+      .map(op => ({ ...op, id: Number(op.id), original: entryMap[String(op.id)] }));
+
+    if (!enriched.length) {
+      return res.status(422).json({ error: 'Could not match any entries to your request. Try a more specific description.' });
+    }
+
+    res.json({ operations: enriched });
+  } catch (err) {
+    console.error('[AI edit] upstream error:', err.message);
+    res.status(502).json({ error: 'AI service error: ' + err.message });
+  }
+});
+
 // POST /api/ai/parse — supports type: transactions | investments | cashflow
 router.post('/parse', auth, async (req, res) => {
   const { prompt, type, persons = [], today } = req.body;
