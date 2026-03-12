@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, RefreshCw, ExternalLink } from 'lucide-react';
-import SyncResultModal, { downloadBackupCsv } from '../components/SyncResultModal';
+import { Plus, Search, Trash2, Edit2, X, Save } from 'lucide-react';
 import AiEntryPanel from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
@@ -67,17 +66,6 @@ export default function Transactions() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [filters, setFilters] = useState({ account: '', type: '', search: '' });
-  const [syncResult, setSyncResult] = useState(null);
-  const [syncing, setSyncing] = useState(false);
-  const [sheetUrl, setSheetUrl] = useState('');
-  const [sheetUrlTx, setSheetUrlTx] = useState('');
-
-  useEffect(() => {
-    api.get('/settings').then(r => {
-      if (r.data?.sheetUrl) setSheetUrl(r.data.sheetUrl);
-      if (r.data?.sheetUrlTransactions) setSheetUrlTx(r.data.sheetUrlTransactions);
-    }).catch(() => {});
-  }, []);
 
   const load = () => {
     setLoading(true);
@@ -105,35 +93,6 @@ export default function Transactions() {
     if (!confirm('Delete this transaction?')) return;
     await api.delete(`/transactions/${id}`);
     load();
-  };
-
-  const handleOpenSheet = () => {
-    const url = sheetUrlTx || sheetUrl;
-    if (!url) {
-      alert('No sheet URL configured.\n\nGo to Settings → Linked Google Sheet and add your Transactions Sheet CSV URL first.');
-      return;
-    }
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleSync = async () => {
-    const url = sheetUrlTx || sheetUrl;
-    if (!url) {
-      alert('No sheet URL configured.\n\nGo to Settings → Linked Google Sheet and add your Transactions Sheet CSV URL first.');
-      return;
-    }
-    setSyncing(true);
-    setSyncResult(null);
-    try {
-      await downloadBackupCsv('transactions');
-      const r = await api.post('/settings/sync-from-sheet', { type: 'transactions' });
-      setSyncResult(r.data);
-      load();
-    } catch (e) {
-      alert(e.response?.data?.error || 'Sync failed. Check your sheet URL in Settings.');
-    } finally {
-      setSyncing(false);
-    }
   };
 
   const handleAiAdd = async (entries) => {
@@ -164,29 +123,12 @@ export default function Transactions() {
           <h1 className="font-display text-2xl font-bold text-white">Transactions</h1>
           <p className="text-muted text-sm mt-0.5">All income, major, non-recurring & trip expenses</p>
         </div>
-        <div className="flex items-center gap-4 flex-wrap">
-          <button onClick={handleOpenSheet}
-            className="text-accent hover:text-accent/80 flex items-center gap-2 text-sm font-medium border-b border-accent/40 pb-0.5">
-            <ExternalLink size={14} /> Open sheet
-          </button>
-          <div className="flex gap-2 border-l border-border pl-4">
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="btn-ghost flex items-center gap-2"
-            title="Pull new rows from linked Google Sheet"
-          >
-            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-            {syncing ? 'Syncing…' : 'Sync with sheet'}
-          </button>
+        <div className="flex items-center gap-2">
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
             <Plus size={14} /> Add Transaction
           </button>
-          </div>
         </div>
       </div>
-
-      {syncResult && <SyncResultModal result={syncResult} syncType="transactions" onClose={() => setSyncResult(null)} />}
 
       <AiEntryPanel type="transactions" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
 

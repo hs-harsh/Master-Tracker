@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import api from '../lib/api';
-import { Settings as SettingsIcon, Save, Trash2, UserPlus, X, CalendarDays, CheckCircle2, Loader2 } from 'lucide-react';
+import { Save, Trash2, UserPlus, X, CalendarDays, CheckCircle2, Loader2 } from 'lucide-react';
 import { applyTheme } from '../lib/theme';
 import { useAuth } from '../hooks/useAuth';
 
@@ -40,11 +40,6 @@ export default function Settings() {
   const [applyingDefaults, setApplyingDefaults] = useState(false);
   const [applyMsg,         setApplyMsg]         = useState('');
 
-  // ── Sheet URLs ───────────────────────────────────────────────────────────────
-  const [sheetUrlTransactions, setSheetUrlTransactions] = useState('');
-  const [sheetUrlInvestments,  setSheetUrlInvestments]  = useState('');
-  const [sheetUrl,             setSheetUrl]             = useState('');
-
   // ── Preferences / theme ──────────────────────────────────────────────────────
   const [defaultAccount,           setDefaultAccount]           = useState('');
   const [themeMode,                setThemeMode]                = useState('dark');
@@ -61,9 +56,6 @@ export default function Settings() {
   const load = () => {
     api.get('/settings').then(r => {
       const d = r.data;
-      setSheetUrlTransactions(d.sheetUrlTransactions || '');
-      setSheetUrlInvestments(d.sheetUrlInvestments   || '');
-      setSheetUrl(d.sheetUrl                         || '');
       setDefaultAccount(d.defaultAccount || personName || '');
       setThemeMode(d.themeMode           || 'dark');
       setAccent(d.accent                 || 'gold');
@@ -177,9 +169,6 @@ export default function Settings() {
     setSaving(true);
     try {
       const body = {
-        sheetUrlTransactions: sheetUrlTransactions.trim(),
-        sheetUrlInvestments:  sheetUrlInvestments.trim(),
-        sheetUrl:             sheetUrl.trim(),
         defaultAccount,
         themeMode,
         accent,
@@ -383,35 +372,8 @@ export default function Settings() {
         )}
       </div>
 
-      {/* ── 3. Linked Google Sheet ── */}
-      <div className="card max-w-2xl">
-        <div className="flex items-center gap-2 mb-4">
-          <SettingsIcon size={18} className="text-accent" />
-          <h2 className="font-display font-bold text-white">Linked Google Sheet</h2>
-        </div>
-        <div className="space-y-4">
-          <div>
-            <label className="label">Transactions Sheet CSV URL</label>
-            <input type="url" className="input w-full"
-              placeholder="https://docs.google.com/… (published CSV link)"
-              value={sheetUrlTransactions} onChange={e => setSheetUrlTransactions(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Investment Sheet CSV URL</label>
-            <input type="url" className="input w-full"
-              placeholder="https://docs.google.com/… (published CSV link)"
-              value={sheetUrlInvestments} onChange={e => setSheetUrlInvestments(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Sheet CSV URL (legacy)</label>
-            <input type="url" className="input w-full"
-              placeholder="https://docs.google.com/… (published CSV link)"
-              value={sheetUrl} onChange={e => setSheetUrl(e.target.value)} />
-          </div>
-        </div>
-      </div>
+      {/* ── 3. Preferences ── */}
 
-      {/* ── 4. Preferences ── */}
       <div className="card max-w-2xl">
         <h2 className="font-display font-bold text-white mb-4">Preferences</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -424,7 +386,7 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* ── 5. AI ── */}
+      {/* ── 4. AI ── */}
       <div className="card max-w-2xl">
         <h2 className="font-display font-bold text-white mb-2">Expense Analyser (AI)</h2>
         <p className="text-sm text-soft mb-4">
@@ -451,7 +413,7 @@ export default function Settings() {
         </button>
       </div>
 
-      {/* ── 6. Theme ── */}
+      {/* ── 5. Theme ── */}
       <div className="card max-w-2xl">
         <h2 className="font-display font-bold text-white mb-4">Theme</h2>
         <div className="space-y-4">
@@ -481,7 +443,7 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* ── 7. Clear data ── */}
+      {/* ── 6. Clear data ── */}
       <div className="card max-w-2xl border-rose/30">
         <h2 className="font-display font-bold text-white mb-2">Clear data</h2>
         <p className="text-sm text-muted mb-4">Permanently delete all rows. This cannot be undone.</p>
