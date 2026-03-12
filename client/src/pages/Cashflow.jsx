@@ -217,14 +217,14 @@ function ExpenseChart({ data }) {
 const EMPTY = (def = {}) => ({
   month:                  def.month  || '',
   person:                 def.person || '',
-  income:                 def.income          ?? '',
-  other_income:           def.other_income    ?? 0,
-  major_expense:          def.major_expense   ?? 0,
-  non_recurring_expense:  def.non_recurring_expense ?? 0,
-  regular_expense:        def.regularExpense  ?? def.regular_expense ?? '',
-  emi:                    def.emi             ?? '',
-  trips_expense:          def.trips_expense   ?? 0,
-  ideal_saving:           def.idealSaving     ?? def.ideal_saving ?? '',
+  income:                 '',
+  other_income:           0,
+  major_expense:          0,
+  non_recurring_expense:  0,
+  regular_expense:        '',
+  emi:                    '',
+  trips_expense:          0,
+  ideal_saving:           '',
 });
 
 function Field({ label, name, form, setForm, readOnly = false, hint }) {
@@ -243,7 +243,7 @@ function Field({ label, name, form, setForm, readOnly = false, hint }) {
   );
 }
 
-function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
+function MonthModal({ persons, editRow, onClose, onSaved }) {
   const isEdit = !!editRow?.id;
   const [form, setForm] = useState(() => {
     if (editRow) {
@@ -252,7 +252,7 @@ function MonthModal({ persons, defaults, editRow, onClose, onSaved }) {
         month: editRow.month ? String(editRow.month).slice(0, 10) : '',
       };
     }
-    return EMPTY({ ...defaults, person: persons[0] || '' });
+    return EMPTY({ person: persons[0] || '' });
   });
   const [saving, setSaving] = useState(false);
 
@@ -409,7 +409,6 @@ export default function Cashflow() {
   const [loading, setLoading]   = useState(true);
   const [activeTab, setActiveTab] = useState('charts');
   const [modal, setModal]       = useState(null);
-  const [defaults, setDefaults] = useState(null);
 
   useEffect(() => {
     if (persons.length && !person) setPerson(persons[0]);
@@ -427,21 +426,9 @@ export default function Cashflow() {
 
   useEffect(() => { load(); }, [load]);
 
-  const openAdd = async () => {
-    if (!defaults) {
-      const r = await api.get('/cashflow/defaults');
-      setDefaults(r.data);
-    }
-    setModal('add');
-  };
+  const openAdd = () => setModal('add');
 
-  const openEdit = async (row) => {
-    if (!defaults) {
-      const r = await api.get('/cashflow/defaults');
-      setDefaults(r.data);
-    }
-    setModal(row);
-  };
+  const openEdit = (row) => setModal(row);
 
   const handleAiAdd = async (entries) => {
     for (const e of entries) {
@@ -581,7 +568,6 @@ export default function Cashflow() {
       {modal && (
         <MonthModal
           persons={persons.length ? persons : [activePerson]}
-          defaults={defaults || {}}
           editRow={modal === 'add' ? null : modal}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); setActiveTab('charts'); }}

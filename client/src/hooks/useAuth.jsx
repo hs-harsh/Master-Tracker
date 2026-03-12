@@ -83,17 +83,8 @@ export function AuthProvider({ children }) {
 
   const logout = () => _setToken(null);
 
-  // Called after the onboarding wizard saves defaults
-  const completeOnboarding = async (defaults, year) => {
-    await api.put('/settings', {
-      defaultIncome:          Number(defaults.income)         || 0,
-      defaultIdealSaving:     Number(defaults.idealSaving)    || 0,
-      defaultRegularExpense:  Number(defaults.regularExpense) || 0,
-      defaultEmi:             Number(defaults.emi)            || 0,
-      onboardingCompleted:    true,
-    });
-    // Seed all months for the given year
-    await api.post('/settings/apply-year-defaults', { year });
+  const completeOnboarding = async () => {
+    await api.put('/settings', { onboardingCompleted: true });
     setOnboardingCompleted(true);
   };
 

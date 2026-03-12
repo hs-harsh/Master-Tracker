@@ -2,47 +2,13 @@ const router = require('express').Router();
 const pool   = require('../db');
 const auth   = require('../middleware/auth');
 
-// ── Load all 4 cashflow defaults for a user from user_settings ────────────────
-async function getUserDefaults(userId) {
-  const keys = ['default_income', 'default_ideal_saving', 'default_regular_expense', 'default_emi'];
-  const { rows } = await pool.query(
-    `SELECT key, value FROM user_settings WHERE user_id = $1 AND key = ANY($2)`,
-    [userId, keys]
-  );
-  const map = Object.fromEntries(rows.map(r => [r.key, parseInt(r.value, 10) || 0]));
-  return {
-    income:          map['default_income']           ?? 0,
-    idealSaving:     map['default_ideal_saving']     ?? 0,
-    regularExpense:  map['default_regular_expense']  ?? 0,
-    emi:             map['default_emi']              ?? 0,
-  };
-}
-
-// ── GET /api/cashflow/defaults  ───────────────────────────────────────────────
-// Returns the user's current defaults so the frontend can pre-fill "Add Month".
-router.get('/defaults', auth, async (req, res) => {
-  try {
-    const d = await getUserDefaults(req.user.id);
-    res.json(d);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ── GET /api/cashflow  ────────────────────────────────────────────────────────
-// Rules for each column:
-//   income / ideal_saving / regular / emi
-//     → cashflow row value first (manually set or seeded from defaults)
-//     → then income transactions (legacy)
-//     → then settings default
-//   major / non-recurring / trips
-//     → transactions only (variable, no meaningful default)
-//     → cashflow row as fallback (in case row was manually filled)
+// Income, Regular Expense, and EMI come exclusively from transaction rows.
+// Ideal saving comes from the cashflow row (manually entered).
 router.get('/', auth, async (req, res) => {
   try {
     const { person } = req.query;
-    const def = await getUserDefaults(req.user.id);
-    const params = [req.user.id, def.idealSaving, def.income, def.regularExpense, def.emi];
+    const params = [req.user.id];
     if (person) params.push(person);
 
     const { rows } = await pool.query(`
@@ -67,24 +33,24 @@ router.get('/', auth, async (req, res) => {
           COALESCE(m.month, t.month)   AS month,
           COALESCE(m.person, t.person) AS person,
 
-          -- Income: cashflow row first → income transactions (legacy) → settings default
-          COALESCE(NULLIF(m.income, 0), NULLIF(t.income, 0), $3) AS income,
+          -- Income: transactions first → cashflow row → 0
+          COALESCE(NULLIF(t.income, 0), NULLIF(m.income, 0), 0) AS income,
 
-          -- Other income: cashflow row → transactions → 0
-          COALESCE(NULLIF(m.other_income, 0), NULLIF(t.other_income, 0), 0) AS other_income,
+          -- Other income: transactions first → cashflow row → 0
+          COALESCE(NULLIF(t.other_income, 0), NULLIF(m.other_income, 0), 0) AS other_income,
 
           -- Major/non-recurring/trips: transactions first → cashflow row → 0
           COALESCE(NULLIF(t.major_expense, 0),         NULLIF(m.major_expense, 0),         0) AS major_expense,
           COALESCE(NULLIF(t.non_recurring_expense, 0), NULLIF(m.non_recurring_expense, 0), 0) AS non_recurring_expense,
 
-          -- Regular / EMI: transactions first (actual spend) → cashflow row (seeded) → settings default
-          COALESCE(NULLIF(t.regular_expense, 0), NULLIF(m.regular_expense, 0), $4) AS regular_expense,
-          COALESCE(NULLIF(t.emi, 0),             NULLIF(m.emi, 0),             $5) AS emi,
+          -- Regular / EMI: transactions first → cashflow row → 0
+          COALESCE(NULLIF(t.regular_expense, 0), NULLIF(m.regular_expense, 0), 0) AS regular_expense,
+          COALESCE(NULLIF(t.emi, 0),             NULLIF(m.emi, 0),             0) AS emi,
 
           COALESCE(NULLIF(t.trips_expense, 0), NULLIF(m.trips_expense, 0), 0) AS trips_expense,
 
-          -- Ideal saving: cashflow row → settings default
-          COALESCE(NULLIF(m.ideal_saving, 0), $2) AS ideal_saving,
+          -- Ideal saving: cashflow row only → 0
+          COALESCE(NULLIF(m.ideal_saving, 0), 0) AS ideal_saving,
 
           COALESCE(m.cash, 0)              AS cash,
           COALESCE(m.gold_silver, 0)       AS gold_silver,
@@ -111,7 +77,7 @@ router.get('/', auth, async (req, res) => {
         FULL OUTER JOIN monthly_cashflow m
           ON m.month = t.month AND m.person = t.person AND m.user_id = $1
         WHERE (m.user_id = $1 OR t.month IS NOT NULL)
-        ${person ? `AND COALESCE(m.person, t.person) = $6` : ''}
+        ${person ? `AND COALESCE(m.person, t.person) = $2` : ''}
       ),
       with_net AS (
         SELECT
@@ -121,7 +87,7 @@ router.get('/', auth, async (req, res) => {
           (income + other_income)
           - (major_expense + non_recurring_expense + regular_expense + emi + trips_expense) AS net_expense_inv,
           major_expense + non_recurring_expense + regular_expense + emi + trips_expense AS net_expense,
-          COALESCE(NULLIF(ideal_saving, 0), $2) AS target
+          ideal_saving AS target
         FROM base
       )
       SELECT
@@ -151,18 +117,15 @@ router.get('/:month/:person', auth, async (req, res) => {
 });
 
 // ── POST /api/cashflow  ───────────────────────────────────────────────────────
-// Creates a cashflow row. If income/ideal_saving/regular/emi are omitted, fall
-// back to the user's settings defaults so the row is seeded correctly.
 router.post('/', auth, async (req, res) => {
   try {
     const d   = req.body;
     const uid = req.user.id;
-    const def = await getUserDefaults(uid);
 
-    const income        = Number(d.income)          || def.income;
-    const idealSaving   = Number(d.ideal_saving)    || def.idealSaving;
-    const regularExp    = Number(d.regular_expense) || def.regularExpense;
-    const emi           = Number(d.emi)             || def.emi;
+    const income        = Number(d.income)          || 0;
+    const idealSaving   = Number(d.ideal_saving)    || 0;
+    const regularExp    = Number(d.regular_expense) || 0;
+    const emi           = Number(d.emi)             || 0;
     const netExpense    = (Number(d.major_expense)||0) + (Number(d.non_recurring_expense)||0)
                         + regularExp + emi + (Number(d.trips_expense)||0);
     const actualSaving  = (income + (Number(d.other_income)||0)) - netExpense;

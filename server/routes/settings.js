@@ -10,7 +10,7 @@ const SIDES = ['BUY', 'SELL'];
 // Per-user settings keys (everything except anthropic key which is global/admin)
 const USER_KEYS = [
   'sheet_url_transactions', 'sheet_url_investments', 'sheet_url',
-  'default_ideal_saving', 'default_income', 'default_regular_expense', 'default_emi', 'default_account',
+  'default_account',
   'theme_mode', 'accent', 'currency_display', 'dashboard_default_profile',
   'onboarding_completed',
 ];
@@ -61,7 +61,7 @@ async function buildSettingsResponse(userId) {
   const get = (k) => getUserSetting(userId, k);
   const [
     sheetUrlTransactions, sheetUrlInvestments, sheetUrl,
-    defaultIdealSaving, defaultIncome, defaultRegularExpense, defaultEmi, defaultAccount,
+    defaultAccount,
     themeMode, accent, currencyDisplay, dashboardDefaultProfile,
     onboardingCompleted,
   ] = await Promise.all(USER_KEYS.map(get));
@@ -71,10 +71,6 @@ async function buildSettingsResponse(userId) {
     sheetUrlTransactions,
     sheetUrlInvestments,
     sheetUrl,
-    defaultIdealSaving: defaultIdealSaving ? parseInt(defaultIdealSaving, 10) : 0,
-    defaultIncome: defaultIncome ? parseInt(defaultIncome, 10) : 0,
-    defaultRegularExpense: defaultRegularExpense ? parseInt(defaultRegularExpense, 10) : 0,
-    defaultEmi: defaultEmi ? parseInt(defaultEmi, 10) : 0,
     defaultAccount: defaultAccount || '',
     themeMode: effectiveTheme,
     theme: effectiveTheme,
@@ -113,18 +109,6 @@ router.put('/', auth, async (req, res) => {
       const v = typeof body.sheetUrl === 'string' ? body.sheetUrl.trim() : '';
       if (v && !v.startsWith('https://')) return res.status(400).json({ error: 'Sheet URL must use https' });
       await setUserSetting(uid, 'sheet_url', v);
-    }
-    if (body.defaultIdealSaving !== undefined) {
-      await setUserSetting(uid, 'default_ideal_saving', String(Math.max(0, parseInt(body.defaultIdealSaving, 10) || 0)));
-    }
-    if (body.defaultIncome !== undefined) {
-      await setUserSetting(uid, 'default_income', String(Math.max(0, parseInt(body.defaultIncome, 10) || 0)));
-    }
-    if (body.defaultRegularExpense !== undefined) {
-      await setUserSetting(uid, 'default_regular_expense', String(Math.max(0, parseInt(body.defaultRegularExpense, 10) || 0)));
-    }
-    if (body.defaultEmi !== undefined) {
-      await setUserSetting(uid, 'default_emi', String(Math.max(0, parseInt(body.defaultEmi, 10) || 0)));
     }
     if (body.defaultAccount !== undefined) {
       await setUserSetting(uid, 'default_account', typeof body.defaultAccount === 'string' ? body.defaultAccount.trim() : '');
@@ -244,121 +228,6 @@ router.post('/sync-from-sheet', auth, async (req, res) => {
       }
       return res.json({ investments: result });
     }
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/settings/apply-year-defaults
-// Seeds monthly_cashflow rows for all 12 months of `year` for every person of the current user.
-// Uses the user's saved default_income, default_ideal_saving, default_regular_expense, default_emi.
-// Existing rows are updated only for those 4 columns; other manually-entered data is preserved.
-router.post('/apply-year-defaults', auth, async (req, res) => {
-  try {
-    const uid = req.user.id;
-    const year = parseInt(req.body.year, 10) || new Date().getFullYear();
-
-    // Fetch user defaults
-    const [income, idealSaving, regularExpense, emi] = await Promise.all([
-      getUserSetting(uid, 'default_income'),
-      getUserSetting(uid, 'default_ideal_saving'),
-      getUserSetting(uid, 'default_regular_expense'),
-      getUserSetting(uid, 'default_emi'),
-    ]);
-    const incomeVal   = parseInt(income, 10) || 0;
-    const savingVal   = parseInt(idealSaving, 10) || 0;
-    const regularVal  = parseInt(regularExpense, 10) || 0;
-    const emiVal      = parseInt(emi, 10) || 0;
-
-    // Get persons to seed — optionally limited to one by personName param
-    const specificPerson = typeof req.body.personName === 'string' ? req.body.personName.trim() : null;
-    const personQuery = specificPerson
-      ? { text: 'SELECT person_name FROM user_persons WHERE user_id = $1 AND person_name = $2', values: [uid, specificPerson] }
-      : { text: 'SELECT person_name FROM user_persons WHERE user_id = $1', values: [uid] };
-    const { rows: personRows } = await pool.query(personQuery);
-    if (!personRows.length) return res.status(400).json({ error: 'No persons found. Add a person in Settings first.' });
-
-    let seeded = 0;
-    for (const { person_name } of personRows) {
-      // Try person-specific defaults first, fall back to global
-      const personKey = `person_defaults_${person_name}`;
-      const personDefRaw = await getUserSetting(uid, personKey);
-      let pIncome = incomeVal, pSaving = savingVal, pRegular = regularVal, pEmi = emiVal;
-      if (personDefRaw) {
-        try {
-          const pd = JSON.parse(personDefRaw);
-          pIncome  = pd.income          ?? incomeVal;
-          pSaving  = pd.idealSaving     ?? savingVal;
-          pRegular = pd.regularExpense  ?? regularVal;
-          pEmi     = pd.emi             ?? emiVal;
-        } catch {}
-      }
-      for (let month = 0; month < 12; month++) {
-        const monthDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-        await pool.query(`
-          INSERT INTO monthly_cashflow
-            (month, person, user_id, income, ideal_saving, target, regular_expense, emi)
-          VALUES ($1, $2, $3, $4, $5, $5, $6, $7)
-          ON CONFLICT (user_id, month, person) DO UPDATE SET
-            income          = EXCLUDED.income,
-            ideal_saving    = EXCLUDED.ideal_saving,
-            target          = EXCLUDED.target,
-            regular_expense = EXCLUDED.regular_expense,
-            emi             = EXCLUDED.emi
-        `, [monthDate, person_name, uid, pIncome, pSaving, pRegular, pEmi]);
-        seeded++;
-      }
-    }
-
-    res.json({ success: true, seeded, year, persons: personRows.map(r => r.person_name) });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── GET /api/settings/person-defaults/:personName ─────────────────────────────
-// Returns cashflow defaults for a specific person (falls back to global defaults)
-router.get('/person-defaults/:personName', auth, async (req, res) => {
-  try {
-    const uid = req.user.id;
-    const personName = req.params.personName;
-    const raw = await getUserSetting(uid, `person_defaults_${personName}`);
-    if (raw) {
-      try { return res.json(JSON.parse(raw)); } catch {}
-    }
-    // Fall back to global defaults
-    const [income, idealSaving, regularExpense, emi] = await Promise.all([
-      getUserSetting(uid, 'default_income'),
-      getUserSetting(uid, 'default_ideal_saving'),
-      getUserSetting(uid, 'default_regular_expense'),
-      getUserSetting(uid, 'default_emi'),
-    ]);
-    res.json({
-      income:         parseInt(income, 10)         || 0,
-      idealSaving:    parseInt(idealSaving, 10)    || 0,
-      regularExpense: parseInt(regularExpense, 10) || 0,
-      emi:            parseInt(emi, 10)            || 0,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── PUT /api/settings/person-defaults/:personName ─────────────────────────────
-// Saves cashflow defaults for a specific person
-router.put('/person-defaults/:personName', auth, async (req, res) => {
-  try {
-    const uid = req.user.id;
-    const personName = req.params.personName;
-    const { income, idealSaving, regularExpense, emi } = req.body;
-    const val = JSON.stringify({
-      income:         parseInt(income, 10)         || 0,
-      idealSaving:    parseInt(idealSaving, 10)    || 0,
-      regularExpense: parseInt(regularExpense, 10) || 0,
-      emi:            parseInt(emi, 10)            || 0,
-    });
-    await setUserSetting(uid, `person_defaults_${personName}`, val);
-    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
