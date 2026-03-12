@@ -19,6 +19,7 @@ function createTransporter() {
     port: 587,
     secure: false,          // STARTTLS — upgrades to TLS after connect
     requireTLS: true,
+    family: 4,              // force IPv4 — Railway doesn't support outbound IPv6
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
     connectionTimeout: 10000,   // 10 s to establish TCP connection
