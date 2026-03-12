@@ -13,7 +13,7 @@ function createTransporter() {
   }
 
   // Port 587 + STARTTLS is the standard submission port and most reliable across cloud hosts.
-  // Port 465 (SSL) can be blocked by some providers.
+  // Short timeouts so a blocked port fails fast rather than hanging for minutes.
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 587,
@@ -21,6 +21,9 @@ function createTransporter() {
     requireTLS: true,
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
+    connectionTimeout: 10000,   // 10 s to establish TCP connection
+    greetingTimeout:   8000,    // 8 s to receive SMTP greeting
+    socketTimeout:     15000,   // 15 s idle socket timeout
   });
 }
 

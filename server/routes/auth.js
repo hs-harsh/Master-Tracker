@@ -106,9 +106,16 @@ router.post('/send-otp', async (req, res) => {
       );
     }
 
-    // Try to send email; log actual error to console in all environments
+    // Try to send email with a hard 20-second deadline so the request never hangs
+    const sendWithTimeout = Promise.race([
+      sendLoginOtp(email, otp, isNewUser),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('SMTP timed out after 20 s — check that outbound port 587 is not blocked and SMTP credentials are correct')), 20000)
+      ),
+    ]);
+
     try {
-      await sendLoginOtp(email, otp, isNewUser);
+      await sendWithTimeout;
     } catch (emailErr) {
       console.error(`\n❌ [SMTP ERROR] Failed to send OTP to ${email}:`, emailErr.message, '\n');
       if (IS_DEV) {
