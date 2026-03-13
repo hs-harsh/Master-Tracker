@@ -1,6 +1,11 @@
 import { useState } from 'react';
-import { Sparkles, Loader2, Check, X, Trash2, ChevronDown, ChevronUp, Pencil, Plus } from 'lucide-react';
+import { Sparkles, Loader2, Check, X, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import api from '../lib/api';
+
+// Detect edit/delete intent from the prompt text
+function isEditIntent(text) {
+  return /\b(update|edit|change|set|delete|remove|fix|rename|replace|correct|modify|clear)\b/i.test(text);
+}
 
 const TX_TYPES    = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
 const INV_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
@@ -249,26 +254,20 @@ function OperationsTable({ operations, setOperations, type }) {
 // ── Main AiEntryPanel ─────────────────────────────────────────────────────────
 export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
   const [open, setOpen]         = useState(false);
-  const [mode, setMode]         = useState('add');   // 'add' | 'edit'
   const [prompt, setPrompt]     = useState('');
   const [parsing, setParsing]   = useState(false);
-  const [entries, setEntries]   = useState(null);      // add mode: parsed entries
-  const [operations, setOps]    = useState(null);      // edit mode: operations
+  const [entries, setEntries]   = useState(null);
+  const [operations, setOps]    = useState(null);
   const [applying, setApplying] = useState(false);
   const [error, setError]       = useState('');
   const [done, setDone]         = useState(false);
 
-  const addPlaceholder =
+  const placeholder =
     type === 'transactions'
-      ? 'Describe transactions, or paste a month-wise table (Month | Income | Major | Regular | EMI …)'
+      ? 'Describe or paste transactions — or say "delete all Regular for March" / "change remark of ₹50k income to Bonus"'
       : type === 'cashflow'
       ? 'Paste a monthly cashflow table (Month | Income | Other Income | Major | Non-Recurring | Regular | EMI | Trips)'
-      : 'e.g. "Bought 50 units of Nifty 50 index fund for ₹15,000 via Zerodha on 5th March, goal: retirement"';
-
-  const editPlaceholder =
-    type === 'transactions'
-      ? 'e.g. "Delete all Regular transactions for March 2025" or "Change remark of ₹50000 income on Jan 1 to Bonus"'
-      : 'e.g. "Set goal to Rupsagar Home for all Mummy Groww investments" or "Delete all SELL entries before 2024"';
+      : 'Add: "Bought Nifty 50 for ₹15k via Zerodha" — or edit: "Set goal to Retirement for all Zerodha entries"';
 
   const handleParse = async () => {
     if (!prompt.trim()) return;
@@ -279,12 +278,12 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
     setDone(false);
     try {
       const today = new Date().toISOString().slice(0, 10);
-      if (mode === 'add') {
-        const r = await api.post('/ai/parse', { prompt, type, persons, today });
-        setEntries(r.data.entries);
-      } else {
+      if (type !== 'cashflow' && isEditIntent(prompt)) {
         const r = await api.post('/ai/edit', { prompt, type, persons, today });
         setOps(r.data.operations);
+      } else {
+        const r = await api.post('/ai/parse', { prompt, type, persons, today });
+        setEntries(r.data.entries);
       }
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to parse. Try again.');
@@ -325,70 +324,36 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
     }
   };
 
-  const handleReset = () => {
-    setEntries(null);
-    setOps(null);
-    setError('');
-    setDone(false);
-  };
+  const handleReset = () => { setEntries(null); setOps(null); setError(''); setDone(false); };
 
-  const switchMode = (m) => {
-    setMode(m);
-    handleReset();
-    setPrompt('');
-  };
-
-  const isParsed  = mode === 'add' ? !!entries : !!operations;
-  const itemCount = mode === 'add' ? (entries?.length || 0) : (operations?.length || 0);
-  const delCount  = mode === 'edit' ? (operations?.filter(o => o.action === 'delete').length || 0) : 0;
-  const updCount  = mode === 'edit' ? (operations?.filter(o => o.action === 'update').length || 0) : 0;
+  const isParsed  = !!(entries || operations);
+  const itemCount = entries?.length || operations?.length || 0;
+  const delCount  = operations?.filter(o => o.action === 'delete').length || 0;
+  const updCount  = operations?.filter(o => o.action === 'update').length || 0;
 
   return (
     <div className="card border-accent/30 bg-gradient-to-br from-accent/5 to-transparent">
-      {/* Header toggle */}
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between gap-2 text-left"
       >
         <div className="flex items-center gap-2">
           <Sparkles size={16} className="text-accent" />
-          <span className="font-display font-semibold text-white text-sm">AI Assistant</span>
-          <span className="text-xs text-muted">— add, edit or delete entries with plain text</span>
+          <span className="font-display font-semibold text-white text-sm">Add with AI</span>
+          <span className="text-xs text-muted">— describe in plain text, AI creates the entries</span>
         </div>
         {open ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
       </button>
 
       {open && (
         <div className="mt-4 space-y-3">
-          {/* Mode toggle — only for transactions and investments */}
-          {type !== 'cashflow' && (
-            <div className="flex gap-1 p-0.5 bg-surface rounded-lg w-fit border border-border">
-              <button
-                onClick={() => switchMode('add')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  mode === 'add' ? 'bg-accent text-ink font-bold' : 'text-muted hover:text-white'
-                }`}
-              >
-                <Plus size={12} /> Add entries
-              </button>
-              <button
-                onClick={() => switchMode('edit')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  mode === 'edit' ? 'bg-accent text-ink font-bold' : 'text-muted hover:text-white'
-                }`}
-              >
-                <Pencil size={12} /> Edit / Delete
-              </button>
-            </div>
-          )}
-
           {/* Prompt input */}
           {!isParsed && (
             <>
               <textarea
                 className="input w-full resize-none text-sm leading-relaxed"
                 rows={3}
-                placeholder={mode === 'add' ? addPlaceholder : editPlaceholder}
+                placeholder={placeholder}
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleParse(); }}
@@ -401,7 +366,7 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
                 >
                   {parsing
                     ? <><Loader2 size={14} className="animate-spin" />Parsing…</>
-                    : <><Sparkles size={14} />{mode === 'add' ? 'Parse' : 'Find matches'}</>}
+                    : <><Sparkles size={14} />Parse</>}
                 </button>
                 <span className="text-xs text-muted">Ctrl+Enter to parse</span>
               </div>
@@ -419,12 +384,12 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
           {/* Success */}
           {done && (
             <div className="rounded-lg bg-teal/10 border border-teal/30 px-3 py-2 text-sm text-teal flex items-center gap-2">
-              <Check size={14} /> {mode === 'add' ? 'Entries added successfully!' : 'Changes applied successfully!'}
+              <Check size={14} /> {operations ? 'Changes applied successfully!' : 'Entries added successfully!'}
             </div>
           )}
 
-          {/* ── Add mode: confirmation table ── */}
-          {mode === 'add' && entries && entries.length > 0 && (
+          {/* ── Add: confirmation table ── */}
+          {entries && entries.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-white font-semibold">
@@ -434,8 +399,8 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
                 <button onClick={handleReset} className="text-xs text-muted hover:text-white underline">← Change prompt</button>
               </div>
               {type === 'transactions' && <TxConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
-              {type === 'investments' && <InvConfirmTable entries={entries} setEntries={setEntries} persons={persons} />}
-              {type === 'cashflow'    && <CfConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
+              {type === 'investments'  && <InvConfirmTable entries={entries} setEntries={setEntries} persons={persons} />}
+              {type === 'cashflow'     && <CfConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
               <div className="flex gap-2 items-center">
                 <button
                   onClick={handleConfirmAdd}
@@ -444,16 +409,15 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
                 >
                   {applying
                     ? <><Loader2 size={14} className="animate-spin" />Adding…</>
-                    : <><Check size={14} />Confirm &amp; Add {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}</>
-                  }
+                    : <><Check size={14} />Confirm &amp; Add {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}</>}
                 </button>
                 <button onClick={handleReset} className="btn-ghost text-sm">Cancel</button>
               </div>
             </div>
           )}
 
-          {/* ── Edit mode: operations review table ── */}
-          {mode === 'edit' && operations && operations.length > 0 && (
+          {/* ── Edit/Delete: operations review table ── */}
+          {operations && operations.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-white font-semibold">
@@ -470,15 +434,12 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
                   onClick={handleConfirmEdit}
                   disabled={applying || operations.length === 0}
                   className={`flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 ${
-                    delCount > 0 && updCount === 0
-                      ? 'bg-rose/80 hover:bg-rose text-white'
-                      : 'btn-primary'
+                    delCount > 0 && updCount === 0 ? 'bg-rose/80 hover:bg-rose text-white' : 'btn-primary'
                   }`}
                 >
                   {applying
                     ? <><Loader2 size={14} className="animate-spin" />Applying…</>
-                    : <><Check size={14} />Apply {itemCount} operation{itemCount !== 1 ? 's' : ''}</>
-                  }
+                    : <><Check size={14} />Apply {itemCount} operation{itemCount !== 1 ? 's' : ''}</>}
                 </button>
                 <button onClick={handleReset} className="btn-ghost text-sm">Cancel</button>
               </div>
