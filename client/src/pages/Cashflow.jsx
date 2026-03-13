@@ -11,9 +11,9 @@ import AiEntryPanel from '../components/AiEntryPanel';
 
 // ── Shared chart helpers ───────────────────────────────────────────────────────
 const TT = {
-  contentStyle: { background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' },
-  labelStyle:   { color: '#9ca3af', marginBottom: 4 },
-  formatter:    (v) => [fmt(v), ''],
+  contentStyle: { background: '#0f1117', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, fontSize: 12, color: '#e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' },
+  labelStyle:   { color: '#8b95a5', marginBottom: 6, fontWeight: 600 },
+  formatter:    (v, name) => [fmt(v), name],
 };
 const AX = { tick: { fill: '#6b7280', fontSize: 11 }, tickLine: false, axisLine: false };
 

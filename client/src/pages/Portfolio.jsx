@@ -378,7 +378,7 @@ export default function Portfolio() {
                   wrapperStyle={{ paddingTop: 6 }}
                 />
                 <Tooltip
-                  contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}
+                  contentStyle={{ background: '#0f1117', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, fontSize: 12, color: '#e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }} labelStyle={{ color: '#8b95a5', fontWeight: 600 }}
                   content={({ active, payload }) =>
                     active && payload?.[0] ? (
                       <div style={{ padding: '6px 10px', background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}>

@@ -4,9 +4,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        display: ['"Syne"', 'sans-serif'],
-        body: ['"DM Sans"', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'monospace'],
+        display: ['"Space Grotesk"', 'sans-serif'],
+        body:    ['"Inter"', 'sans-serif'],
+        mono:    ['"JetBrains Mono"', 'monospace'],
       },
       colors: {
         ink:          '#09090e',       // near-void background — deeper than before

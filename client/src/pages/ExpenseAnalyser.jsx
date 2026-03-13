@@ -761,7 +761,7 @@ function ExpenseReportView({ finalData, statementMonth, results, onBack }) {
                 <BarChart data={catChartData} layout="vertical" margin={{ left: 80, right: 20 }}>
                   <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={(v) => `${Number(v) / 1000}K`} />
                   <YAxis type="category" dataKey="name" width={80} tick={{ fill: '#9ca3af', fontSize: 10 }} />
-                  <Tooltip formatter={(v) => [fmtFull(v), 'Amount']} contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8 }} />
+                  <Tooltip formatter={(v, name) => [fmtFull(v), name || 'Amount']} contentStyle={{ background: '#0f1117', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, fontSize: 12, color: '#e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }} labelStyle={{ color: '#8b95a5', fontWeight: 600 }} />
                   <Bar dataKey="value" fill="var(--accent)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -787,7 +787,7 @@ function ExpenseReportView({ finalData, statementMonth, results, onBack }) {
                       <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v) => [fmtFull(v), '']} contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8 }} />
+                  <Tooltip formatter={(v, name) => [fmtFull(v), name]} contentStyle={{ background: '#0f1117', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, fontSize: 12, color: '#e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }} labelStyle={{ color: '#8b95a5', fontWeight: 600 }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>

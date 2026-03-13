@@ -142,7 +142,7 @@ function PersonPanelCompact({ person, cashflowData, investments }) {
               contentStyle={TOOLTIP_STYLE}
               labelStyle={TOOLTIP_LABEL_STYLE}
               itemStyle={TOOLTIP_ITEM_STYLE}
-              formatter={v => [fmt(v), '']}
+              formatter={(v, name) => [fmt(v), name]}
             />
             <Bar dataKey="Income"  fill="#f0c040" radius={[3, 3, 0, 0]} />
             <Bar dataKey="Expense" fill="#fb7185" radius={[3, 3, 0, 0]} />
@@ -280,7 +280,7 @@ function PersonPanel({ person, cashflowData, investments }) {
                 contentStyle={TOOLTIP_STYLE}
                 labelStyle={TOOLTIP_LABEL_STYLE}
                 itemStyle={TOOLTIP_ITEM_STYLE}
-                formatter={v => [fmt(v), '']}
+                formatter={(v, name) => [fmt(v), name]}
               />
               <ReferenceLine y={0} stroke="rgba(255,255,255,0.06)" />
               <Bar dataKey="Income"  fill="#f0c040" radius={[3, 3, 0, 0]} />
@@ -310,7 +310,7 @@ function PersonPanel({ person, cashflowData, investments }) {
                   contentStyle={TOOLTIP_STYLE}
                   labelStyle={TOOLTIP_LABEL_STYLE}
                   itemStyle={TOOLTIP_ITEM_STYLE}
-                  formatter={v => [fmt(v), '']}
+                  formatter={(v, name) => [fmt(v), name]}
                 />
                 <Area
                   type="monotone"
@@ -341,7 +341,7 @@ function PersonPanel({ person, cashflowData, investments }) {
               contentStyle={TOOLTIP_STYLE}
               labelStyle={TOOLTIP_LABEL_STYLE}
               itemStyle={TOOLTIP_ITEM_STYLE}
-              formatter={v => [fmt(v), '']}
+              formatter={(v, name) => [fmt(v), name]}
             />
             <ReferenceLine y={0} stroke="rgba(255,255,255,0.06)" />
             <Bar dataKey="Income"  fill="#f0c040" radius={[3, 3, 0, 0]} />
@@ -374,7 +374,7 @@ function PersonPanel({ person, cashflowData, investments }) {
                     contentStyle={TOOLTIP_STYLE}
                     labelStyle={TOOLTIP_LABEL_STYLE}
                     itemStyle={TOOLTIP_ITEM_STYLE}
-                    formatter={v => [fmt(v), '']}
+                    formatter={(v, name) => [fmt(v), name]}
                   />
                 </PieChart>
               </ResponsiveContainer>
