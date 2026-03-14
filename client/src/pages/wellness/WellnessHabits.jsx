@@ -214,9 +214,10 @@ function CalendarGrid({ entries, onSelectDate }) {
     const isPast = date < today;
     const isSkipped = isPast && !hasEntry;
 
+    if (isToday && hasEntry) return 'ring-2 ring-blue-400 bg-emerald-500/40 text-white border-emerald-500/60';
     if (isToday) return 'ring-2 ring-blue-400 bg-blue-500/20 text-white border-blue-400/50';
-    if (hasEntry) return 'bg-emerald-500/25 text-emerald-300 border-emerald-500/40';
-    if (isSkipped) return 'bg-rose-500/20 text-rose-300/90 border-rose-500/30';
+    if (hasEntry) return 'bg-emerald-500/40 text-emerald-200 border-emerald-500/60';
+    if (isSkipped) return 'bg-rose-500/35 text-rose-200 border-rose-500/50';
     return 'bg-surface/50 text-soft hover:bg-surface hover:text-white border border-transparent';
   };
 
@@ -265,15 +266,20 @@ function CalendarGrid({ entries, onSelectDate }) {
                 className={`w-full aspect-square rounded-lg text-sm font-mono transition-all flex flex-col items-center justify-center gap-0.5 border ${getCellStyle(date)} hover:opacity-90`}
               >
                 <span className="font-bold">{new Date(date + 'T12:00:00').getDate()}</span>
-                {entryMap[date] && (
-                  <>
-                    <Stars value={Math.round(getAvg(entryMap[date]) || 0)} size={10} />
-                    <span className="text-[8px] opacity-80">
-                      {[entryMap[date].clean_food, entryMap[date].walk, entryMap[date].gym, entryMap[date].sports]
-                        .filter(Boolean).length}/4
-                    </span>
-                  </>
-                )}
+                {entryMap[date] && (() => {
+                  const avg = getAvg(entryMap[date]);
+                  const count = [entryMap[date].clean_food, entryMap[date].walk, entryMap[date].gym, entryMap[date].sports].filter(Boolean).length;
+                  return (
+                    <>
+                      {avg != null && (
+                        <span className="text-[11px] font-semibold leading-none">
+                          ★ {avg.toFixed(1)}
+                        </span>
+                      )}
+                      <span className="text-[9px] opacity-75 leading-none">{count}/4</span>
+                    </>
+                  );
+                })()}
               </button>
             ) : (
               <div className="aspect-square" />
