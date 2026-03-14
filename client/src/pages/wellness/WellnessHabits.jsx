@@ -40,15 +40,22 @@ const TOOLTIP_STYLE = {
 
 const HABIT_COLORS = { clean_food: '#f0c040', walk: '#2dd4bf', gym: '#60a5fa', sports: '#a78bfa' };
 
+function parseDate(d) {
+  if (!d) return null;
+  if (d instanceof Date) return d;
+  // Handles full ISO strings (2026-03-14T00:00:00.000Z) and plain YYYY-MM-DD
+  return new Date(String(d).slice(0, 10) + 'T12:00:00');
+}
+
 function fmtDate(d) {
-  if (!d) return '';
-  const x = new Date(d + 'T12:00:00');
+  const x = parseDate(d);
+  if (!x || isNaN(x)) return '';
   return x.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function fmtShort(d) {
-  if (!d) return '';
-  const x = new Date(d + 'T12:00:00');
+  const x = parseDate(d);
+  if (!x || isNaN(x)) return '';
   return x.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
