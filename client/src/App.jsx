@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom
 import { useState, useRef, useEffect } from 'react';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import Layout from './components/Layout';
+import FinanceLayout from './components/FinanceLayout';
 import Dashboard from './pages/Dashboard';
 import Cashflow from './pages/Cashflow';
 import Transactions from './pages/Transactions';
@@ -346,12 +347,14 @@ export default function App() {
             <Route path="trade" element={<Trade />} />
             <Route path="stock-trade" element={<StockTrade />} />
             <Route element={<ProtectedOutlet />}>
-              <Route index element={<Dashboard />} />
-              <Route path="portfolio" element={<Portfolio />} />
-              <Route path="investments" element={<Investments />} />
-              <Route path="cashflow" element={<Cashflow />} />
-              <Route path="transactions" element={<Transactions />} />
-              <Route path="expense-analyser" element={<ExpenseAnalyser />} />
+              <Route path="/" element={<FinanceLayout />}>
+                <Route index element={<Dashboard />} />
+                <Route path="portfolio" element={<Portfolio />} />
+                <Route path="investments" element={<Investments />} />
+                <Route path="cashflow" element={<Cashflow />} />
+                <Route path="transactions" element={<Transactions />} />
+                <Route path="expense-analyser" element={<ExpenseAnalyser />} />
+              </Route>
               <Route path="wellness" element={<Navigate to="/wellness/habits" replace />} />
               <Route path="wellness/habits" element={<WellnessHabits />} />
               <Route path="wellness/meals" element={<WellnessMeals />} />

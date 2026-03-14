@@ -220,64 +220,63 @@ export default function Layout() {
             )}
           </div>
 
-          {/* Wellness (collapsible) */}
-          {isAuth && (
-            <div className="space-y-0.5">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!wellnessOpen) {
-                    setWellnessOpen(true);
-                    navigate('/wellness/habits');
-                  } else {
-                    setWellnessOpen(false);
-                  }
-                }}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] w-full text-left ${
-                  location.pathname.startsWith('/wellness')
-                    ? 'text-accent bg-accent/8'
-                    : 'text-soft hover:text-white hover:bg-white/[0.04]'
-                }`}
-              >
-                <Heart size={16} className="shrink-0" />
-                <span className="flex-1">Wellness</span>
-                {wellnessOpen ? (
-                  <ChevronDown size={14} className="text-muted shrink-0" />
-                ) : (
-                  <ChevronRight size={14} className="text-muted shrink-0" />
-                )}
-              </button>
-              {wellnessOpen && (
-                <div className="pl-4 space-y-0.5">
-                  {WELLNESS_NAV.map(({ to, icon: Icon, label }) => (
-                    <NavLink
-                      key={to}
-                      to={to}
-                      className={({ isActive }) =>
-                        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[38px] relative ${
-                          isActive ? 'text-accent bg-accent/8' : 'text-muted hover:text-soft hover:bg-white/[0.03]'
-                        }`
-                      }
-                      onClick={closeSidebar}
-                    >
-                      {({ isActive }) => (
-                        <>
-                          {isActive && (
-                            <span
-                              className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full"
-                              style={{ background: 'var(--accent, #f0c040)' }}
-                            />
-                          )}
-                          <Icon size={14} className="shrink-0" />
-                          <span>{label}</span>
-                        </>
-                      )}
-                    </NavLink>
-                  ))}
-                </div>
+          {/* Wellness (collapsible) — visible when logged out; sub-items show lock */}
+          <div className="space-y-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (!wellnessOpen) {
+                  setWellnessOpen(true);
+                  navigate('/wellness/habits');
+                } else {
+                  setWellnessOpen(false);
+                }
+              }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] w-full text-left ${
+                location.pathname.startsWith('/wellness')
+                  ? 'text-accent bg-accent/8'
+                  : 'text-soft hover:text-white hover:bg-white/[0.04]'
+              }`}
+            >
+              <Heart size={16} className="shrink-0" />
+              <span className="flex-1">Wellness</span>
+              {wellnessOpen ? (
+                <ChevronDown size={14} className="text-muted shrink-0" />
+              ) : (
+                <ChevronRight size={14} className="text-muted shrink-0" />
               )}
-            </div>
-          )}
+            </button>
+            {wellnessOpen && (
+              <div className="pl-4 space-y-0.5">
+                {WELLNESS_NAV.map(({ to, icon: Icon, label }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[38px] relative ${
+                        isActive ? 'text-accent bg-accent/8' : !isAuth ? 'text-muted/50 hover:text-muted hover:bg-white/[0.03]' : 'text-muted hover:text-soft hover:bg-white/[0.03]'
+                      }`
+                    }
+                    onClick={closeSidebar}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && (
+                          <span
+                            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full"
+                            style={{ background: 'var(--accent, #f0c040)' }}
+                          />
+                        )}
+                        <Icon size={14} className="shrink-0" />
+                        <span>{label}</span>
+                        {!isAuth && <Lock size={11} className="text-muted/40 shrink-0 ml-auto" />}
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Settings */}
           <NavLink

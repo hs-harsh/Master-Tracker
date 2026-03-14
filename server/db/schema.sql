@@ -329,3 +329,19 @@ CREATE INDEX IF NOT EXISTS idx_investments_account ON investments(account);
 CREATE INDEX IF NOT EXISTS idx_investments_user_id ON investments(user_id);
 CREATE INDEX IF NOT EXISTS idx_cashflow_user_id ON monthly_cashflow(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_settings ON user_settings(user_id);
+
+-- Habit entries (daily checklist: ratings 1-5 + water liters)
+CREATE TABLE IF NOT EXISTS habit_entries (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  clean_food SMALLINT CHECK (clean_food IS NULL OR (clean_food >= 1 AND clean_food <= 5)),
+  walk SMALLINT CHECK (walk IS NULL OR (walk >= 1 AND walk <= 5)),
+  gym SMALLINT CHECK (gym IS NULL OR (gym >= 1 AND gym <= 5)),
+  sports SMALLINT CHECK (sports IS NULL OR (sports >= 1 AND sports <= 5)),
+  water_intake NUMERIC(4,2) CHECK (water_intake IS NULL OR water_intake >= 0),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, date)
+);
+CREATE INDEX IF NOT EXISTS idx_habit_entries_user_date ON habit_entries(user_id, date);

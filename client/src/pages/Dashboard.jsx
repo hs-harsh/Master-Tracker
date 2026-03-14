@@ -457,7 +457,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 sm:space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Page header */}
       <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 fade-up">
         <div className="min-w-0">
