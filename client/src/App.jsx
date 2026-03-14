@@ -8,6 +8,9 @@ import Transactions from './pages/Transactions';
 import Portfolio from './pages/Portfolio';
 import Investments from './pages/Investments';
 import ExpenseAnalyser from './pages/ExpenseAnalyser';
+import WellnessHabits from './pages/wellness/WellnessHabits';
+import WellnessMeals from './pages/wellness/WellnessMeals';
+import WellnessWorkouts from './pages/wellness/WellnessWorkouts';
 import Trade from './pages/Trade';
 import StockTrade from './pages/StockTrade';
 import Settings from './pages/Settings';
@@ -349,6 +352,10 @@ export default function App() {
               <Route path="cashflow" element={<Cashflow />} />
               <Route path="transactions" element={<Transactions />} />
               <Route path="expense-analyser" element={<ExpenseAnalyser />} />
+              <Route path="wellness" element={<Navigate to="/wellness/habits" replace />} />
+              <Route path="wellness/habits" element={<WellnessHabits />} />
+              <Route path="wellness/meals" element={<WellnessMeals />} />
+              <Route path="wellness/workouts" element={<WellnessWorkouts />} />
               <Route path="settings" element={<Settings />} />
             </Route>
             <Route element={<AdminOutlet />}>

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import {
   LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase,
   Calculator, LineChart, LogOut, Settings, BarChart3,
-  Menu, X, LogIn, Lock, Shield,
+  Menu, X, LogIn, Lock, Shield, Heart, ChevronDown, ChevronRight,
+  CheckSquare, Utensils, Dumbbell, Wallet,
 } from 'lucide-react';
 import InstallPrompt from './InstallPrompt';
 import api from '../lib/api';
@@ -16,14 +17,19 @@ const PUBLIC_NAV = [
   { to: '/stock-trade', icon: BarChart3,  label: 'Stock Trade' },
 ];
 
-const PRIVATE_NAV = [
+const FINANCE_NAV = [
   { to: '/',                  icon: LayoutDashboard, label: 'Dashboard',        end: true },
   { to: '/portfolio',         icon: PieChart,        label: 'Portfolio' },
   { to: '/investments',       icon: Briefcase,       label: 'Investments' },
   { to: '/cashflow',          icon: TrendingUp,      label: 'Cashflow' },
   { to: '/transactions',      icon: Receipt,         label: 'Transactions' },
   { to: '/expense-analyser',  icon: Calculator,      label: 'Expense Analyser' },
-  { to: '/settings',          icon: Settings,        label: 'Settings' },
+];
+
+const WELLNESS_NAV = [
+  { to: '/wellness/habits',   icon: CheckSquare, label: 'Habits' },
+  { to: '/wellness/meals',    icon: Utensils,    label: 'Meals' },
+  { to: '/wellness/workouts', icon: Dumbbell,    label: 'Workouts' },
 ];
 
 /* ── Nav link class helpers ──────────────────────────────────────────────── */
@@ -37,7 +43,19 @@ function navClass(isActive, locked = false) {
 export default function Layout() {
   const { logout, isAuth, isAdmin } = useAuth();
   const navigate   = useNavigate();
+  const location  = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [financeOpen, setFinanceOpen] = useState(true);
+  const [wellnessOpen, setWellnessOpen] = useState(false);
+
+  const isFinanceRoute = ['/', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser'].includes(location.pathname);
+  useEffect(() => {
+    if (['/', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser'].includes(location.pathname))
+      setFinanceOpen(true);
+  }, [location.pathname]);
+  useEffect(() => {
+    if (location.pathname.startsWith('/wellness')) setWellnessOpen(true);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!isAuth) return;
@@ -143,30 +161,144 @@ export default function Layout() {
             <div style={{ height: 1, background: 'rgba(255,255,255,0.05)' }} />
           </div>
 
-          {/* Private tabs */}
-          {PRIVATE_NAV.map(({ to, icon: Icon, label, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) => navClass(isActive, !isAuth)}
-              onClick={closeSidebar}
+          {/* Finance (collapsible) */}
+          <div className="space-y-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (!financeOpen) {
+                  setFinanceOpen(true);
+                  navigate('/');
+                } else {
+                  setFinanceOpen(false);
+                }
+              }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] w-full text-left ${
+                isFinanceRoute
+                  ? 'text-accent bg-accent/8'
+                  : 'text-soft hover:text-white hover:bg-white/[0.04]'
+              }`}
             >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <span
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
-                      style={{ background: 'var(--accent, #f0c040)' }}
-                    />
-                  )}
-                  <Icon size={16} className="shrink-0" />
-                  <span className="flex-1">{label}</span>
-                  {!isAuth && <Lock size={11} className="text-muted/40 shrink-0" />}
-                </>
+              <Wallet size={16} className="shrink-0" />
+              <span className="flex-1">Finance</span>
+              {financeOpen ? (
+                <ChevronDown size={14} className="text-muted shrink-0" />
+              ) : (
+                <ChevronRight size={14} className="text-muted shrink-0" />
               )}
-            </NavLink>
-          ))}
+            </button>
+            {financeOpen && (
+              <div className="pl-4 space-y-0.5">
+                {FINANCE_NAV.map(({ to, icon: Icon, label, end }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={end}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[38px] relative ${
+                        isActive ? 'text-accent bg-accent/8' : 'text-muted hover:text-soft hover:bg-white/[0.03]'
+                      }`
+                    }
+                    onClick={closeSidebar}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && (
+                          <span
+                            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full"
+                            style={{ background: 'var(--accent, #f0c040)' }}
+                          />
+                        )}
+                        <Icon size={14} className="shrink-0" />
+                        <span>{label}</span>
+                        {!isAuth && <Lock size={11} className="text-muted/40 shrink-0 ml-auto" />}
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Wellness (collapsible) */}
+          {isAuth && (
+            <div className="space-y-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!wellnessOpen) {
+                    setWellnessOpen(true);
+                    navigate('/wellness/habits');
+                  } else {
+                    setWellnessOpen(false);
+                  }
+                }}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] w-full text-left ${
+                  location.pathname.startsWith('/wellness')
+                    ? 'text-accent bg-accent/8'
+                    : 'text-soft hover:text-white hover:bg-white/[0.04]'
+                }`}
+              >
+                <Heart size={16} className="shrink-0" />
+                <span className="flex-1">Wellness</span>
+                {wellnessOpen ? (
+                  <ChevronDown size={14} className="text-muted shrink-0" />
+                ) : (
+                  <ChevronRight size={14} className="text-muted shrink-0" />
+                )}
+              </button>
+              {wellnessOpen && (
+                <div className="pl-4 space-y-0.5">
+                  {WELLNESS_NAV.map(({ to, icon: Icon, label }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[38px] relative ${
+                          isActive ? 'text-accent bg-accent/8' : 'text-muted hover:text-soft hover:bg-white/[0.03]'
+                        }`
+                      }
+                      onClick={closeSidebar}
+                    >
+                      {({ isActive }) => (
+                        <>
+                          {isActive && (
+                            <span
+                              className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full"
+                              style={{ background: 'var(--accent, #f0c040)' }}
+                            />
+                          )}
+                          <Icon size={14} className="shrink-0" />
+                          <span>{label}</span>
+                        </>
+                      )}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Settings */}
+          <NavLink
+            to="/settings"
+            className={({ isActive }) => navClass(isActive, !isAuth)}
+            onClick={closeSidebar}
+          >
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <span
+                    className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
+                    style={{ background: 'var(--accent, #f0c040)' }}
+                  />
+                )}
+                <Settings size={16} className="shrink-0" />
+                <span className="flex-1">Settings</span>
+                {!isAuth && <Lock size={11} className="text-muted/40 shrink-0" />}
+              </>
+            )}
+          </NavLink>
 
           {/* Admin */}
           {isAdmin && (
