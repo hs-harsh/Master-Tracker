@@ -149,4 +149,115 @@ router.get('/calendar', async (req, res) => {
   }
 });
 
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+async function getApiKey() {
+  const { rows } = await pool.query("SELECT value FROM settings WHERE key='anthropic_api_key'");
+  return (rows[0]?.value ?? '').trim() || process.env.ANTHROPIC_API_KEY || '';
+}
+
+function getWeekDays(weekStart) {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart + 'T12:00:00');
+    d.setDate(d.getDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
+// ── POST /api/meals/week/:id/generate ────────────────────────────────────────
+// Uses Claude to generate a full week of meals based on user prompt + past history.
+router.post('/week/:id/generate', async (req, res) => {
+  try {
+    const planId = parseInt(req.params.id, 10);
+    const { prompt: userPrompt = '' } = req.body;
+
+    // Ownership + plan details
+    const { rows: planRows } = await pool.query(
+      `SELECT id, week_start::text AS week_start, status FROM meal_plans WHERE id=$1 AND user_id=$2`,
+      [planId, req.user.id]
+    );
+    if (!planRows[0]) return res.status(404).json({ error: 'Plan not found' });
+    if (planRows[0].status === 'accepted')
+      return res.status(400).json({ error: 'Accepted plans cannot be regenerated' });
+
+    const weekStart = planRows[0].week_start;
+    const days = getWeekDays(weekStart);
+
+    // Fetch last 4 accepted weeks for context
+    const { rows: pastEntries } = await pool.query(
+      `SELECT me.entry_date::text AS entry_date, me.meal_type, me.title, me.notes, me.calories
+       FROM meal_entries me
+       JOIN meal_plans mp ON me.meal_plan_id = mp.id
+       WHERE me.user_id=$1 AND mp.status='accepted' AND mp.id != $2
+       ORDER BY me.entry_date DESC
+       LIMIT 112`,
+      [req.user.id, planId]
+    );
+
+    const pastSummary = pastEntries.length
+      ? pastEntries.slice(0, 56).map(e =>
+          `${e.entry_date} ${e.meal_type}: ${e.title}${e.calories ? ` (${e.calories} kcal)` : ''}`
+        ).join('\n')
+      : 'No past meal history yet.';
+
+    const systemPrompt = `You are a meal planning assistant helping create healthy weekly meal plans.
+Return ONLY a valid JSON array with no explanation, no markdown, no code fences.
+Each object must have exactly these fields:
+{ "entry_date": "YYYY-MM-DD", "meal_type": "breakfast|lunch|dinner|snack", "title": "string", "notes": "string or null", "calories": number_or_null }`;
+
+    const userMessage = `Generate a complete 7-day meal plan for the week of ${weekStart}.
+
+Days to fill (Monday to Sunday): ${days.join(', ')}
+
+User's goal / feedback: ${userPrompt || 'Healthy balanced diet'}
+
+Past meal history for reference (learn from patterns, avoid too much repetition):
+${pastSummary}
+
+Requirements:
+- Fill all 4 meal types (breakfast, lunch, dinner, snack) for all 7 days = 28 entries total
+- entry_date must be one of: ${days.join(', ')}
+- meal_type must be exactly: breakfast, lunch, dinner, or snack
+- title: concise meal name (e.g. "Masoor Dal with Brown Rice")
+- notes: brief ingredients or prep tip (or null)
+- calories: estimated integer (or null)
+- Align meals with the user's goal above`;
+
+    const apiKey = await getApiKey();
+    if (!apiKey) return res.status(500).json({ error: 'Anthropic API key not configured in Settings' });
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
+
+    const aiData = await aiRes.json();
+    if (!aiRes.ok) return res.status(aiRes.status).json({ error: aiData?.error?.message || 'AI error' });
+
+    const raw = aiData.content?.[0]?.text || '[]';
+    let entries;
+    try {
+      entries = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\[[\s\S]*\]/);
+      entries = match ? JSON.parse(match[0]) : [];
+    }
+
+    res.json({ entries });
+  } catch (e) {
+    console.error('POST /meals/week/:id/generate', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

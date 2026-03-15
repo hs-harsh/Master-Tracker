@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   CheckSquare, Utensils, Dumbbell,
   ChevronLeft, ChevronRight,
-  Plus, X, Check, Save,
+  Plus, X, Check, Save, Sparkles,
   Coffee, Sun, Moon, Apple,
 } from 'lucide-react';
 import api from '../../lib/api';
@@ -87,9 +87,12 @@ export default function WellnessMeals() {
   const [weekStart, setWeekStart] = useState(() => getMonday(todayStr()));
   const [plan,      setPlan]      = useState(null);
   const [entries,   setEntries]   = useState({}); // key -> {title,notes,calories}
-  const [loading,   setLoading]   = useState(false);
-  const [saving,    setSaving]    = useState(false);
-  const [accepting, setAccepting] = useState(false);
+  const [loading,    setLoading]   = useState(false);
+  const [saving,     setSaving]    = useState(false);
+  const [accepting,  setAccepting] = useState(false);
+  const [aiPrompt,   setAiPrompt]  = useState('');
+  const [generating, setGenerating]= useState(false);
+  const [aiError,    setAiError]   = useState('');
 
   // cell edit modal
   const [editCell, setEditCell] = useState(null); // {date, mealType}
@@ -186,6 +189,29 @@ export default function WellnessMeals() {
     }
   }
 
+  // ── ai generate ────────────────────────────────────────────────────────────
+  async function generatePlan() {
+    if (!plan) return;
+    setGenerating(true);
+    setAiError('');
+    try {
+      const { data } = await api.post(`/meals/week/${plan.id}/generate`, { prompt: aiPrompt });
+      const map = {};
+      (data.entries || []).forEach(e => {
+        map[eKey(e.entry_date, e.meal_type)] = {
+          title:    e.title    || '',
+          notes:    e.notes    || '',
+          calories: e.calories != null ? String(e.calories) : '',
+        };
+      });
+      setEntries(map);
+    } catch (err) {
+      setAiError(err.response?.data?.error || 'Generation failed. Check your API key in Settings.');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   // ── week nav ───────────────────────────────────────────────────────────────
   function shiftWeek(dir) {
     const d = new Date(weekStart + 'T12:00:00');
@@ -270,6 +296,35 @@ export default function WellnessMeals() {
             )}
           </div>
         </div>
+
+        {/* AI prompt bar */}
+        {!isAccepted && (
+          <div className="p-3 border-b border-white/5 bg-white/[0.02]">
+            <div className="flex gap-2 items-center">
+              <div className="flex items-center gap-1.5 text-xs text-purple-400 font-semibold shrink-0">
+                <Sparkles size={13} />
+                AI
+              </div>
+              <input
+                className="input flex-1 text-xs py-1.5"
+                placeholder="e.g. High protein Indian diet, low carb, vegetarian…"
+                value={aiPrompt}
+                onChange={e => setAiPrompt(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()}
+              />
+              <button
+                onClick={generatePlan}
+                disabled={generating}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                  bg-purple-500/20 text-purple-300 border border-purple-500/30
+                  hover:bg-purple-500/30 transition-colors disabled:opacity-50">
+                <Sparkles size={12} />
+                {generating ? 'Generating…' : 'Generate'}
+              </button>
+            </div>
+            {aiError && <p className="text-xs text-red-400 mt-1.5">{aiError}</p>}
+          </div>
+        )}
 
         {/* grid — horizontally scrollable on mobile */}
         <div className="overflow-x-auto">
