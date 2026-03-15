@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
-Claude Telegram Bot
--------------------
-Message your Telegram bot → Claude reads/edits files in your investment-tracker repo,
-commits, pushes to GitHub, runs commands, and searches the web.
-
-Setup: see README.md
+Claude Telegram Bot — lives inside the project repo.
+Railway deploys this alongside your project files. No cloning needed.
 """
 
 import os
@@ -26,57 +22,39 @@ TELEGRAM_TOKEN    = os.environ["TELEGRAM_TOKEN"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 MODEL             = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 GITHUB_TOKEN      = os.environ.get("GITHUB_TOKEN", "")
-GITHUB_REPO       = os.environ.get("GITHUB_REPO", "https://github.com/hs-harsh/Portfolio-Tracker.git")
-REPO_DIR          = "/app/investment-tracker"
+PROJECT_FOLDER    = "/app"  # Railway deploys repo here
 
 _allowed = os.environ.get("ALLOWED_USER_IDS", "")
 ALLOWED_USER_IDS: set[int] = set(int(x) for x in _allowed.split(",") if x.strip())
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-# ── Clone repo on startup ──────────────────────────────────────────────────────
+# ── Setup git for pushing ──────────────────────────────────────────────────────
 
-def setup_repo():
-    """Clone the target repo if not already present, configure git identity."""
-    repo_path = Path(REPO_DIR)
-
-    # Configure git identity
+def setup_git():
+    """Configure git identity and authenticated remote for pushing."""
     subprocess.run(["git", "config", "--global", "user.email", "bot@claude.ai"], check=False)
     subprocess.run(["git", "config", "--global", "user.name", "Claude Bot"], check=False)
-
-    if repo_path.exists():
-        print(f"📁 Repo already exists at {REPO_DIR}, pulling latest...")
+    if GITHUB_TOKEN:
+        # Get current remote URL and add token for push access
         result = subprocess.run(
-            ["git", "pull"], cwd=REPO_DIR, capture_output=True, text=True
+            ["git", "remote", "get-url", "origin"],
+            cwd=PROJECT_FOLDER, capture_output=True, text=True
         )
-        print(result.stdout or result.stderr)
-    else:
-        print(f"📥 Cloning {GITHUB_REPO} → {REPO_DIR}...")
-        # Embed token in URL for private repos
-        if GITHUB_TOKEN:
-            clone_url = GITHUB_REPO.replace("https://", f"https://{GITHUB_TOKEN}@")
-        else:
-            clone_url = GITHUB_REPO
-        result = subprocess.run(
-            ["git", "clone", clone_url, REPO_DIR],
-            capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            print(f"❌ Clone failed: {result.stderr}")
-        else:
-            print(f"✅ Cloned successfully")
-            # Store authenticated remote so future pushes work
-            if GITHUB_TOKEN:
-                auth_url = GITHUB_REPO.replace("https://", f"https://{GITHUB_TOKEN}@")
+        if result.returncode == 0:
+            url = result.stdout.strip()
+            if "https://" in url and "@" not in url:
+                auth_url = url.replace("https://", f"https://{GITHUB_TOKEN}@")
                 subprocess.run(
                     ["git", "remote", "set-url", "origin", auth_url],
-                    cwd=REPO_DIR, check=False
+                    cwd=PROJECT_FOLDER, check=False
                 )
+                print("✅ Git push configured with token")
 
 # ── Tool implementations ───────────────────────────────────────────────────────
 
 def _safe_path(relative: str) -> Optional[Path]:
-    base = Path(REPO_DIR).resolve()
+    base = Path(PROJECT_FOLDER).resolve()
     target = (base / relative).resolve()
     if not str(target).startswith(str(base)):
         return None
@@ -137,31 +115,25 @@ def run_command(command: str, working_dir: str = ".") -> str:
 
 
 def git_commit_and_push(message: str) -> str:
-    """Stage all changes, commit with a message, and push to GitHub."""
     try:
-        # Stage all changes
-        subprocess.run(["git", "add", "-A"], cwd=REPO_DIR, check=True)
-
-        # Check if there's anything to commit
+        subprocess.run(["git", "add", "-A"], cwd=PROJECT_FOLDER, check=True)
         status = subprocess.run(
             ["git", "status", "--porcelain"],
-            cwd=REPO_DIR, capture_output=True, text=True
+            cwd=PROJECT_FOLDER, capture_output=True, text=True
         )
         if not status.stdout.strip():
             return "ℹ️ Nothing to commit — no changes detected."
 
-        # Commit
         commit = subprocess.run(
             ["git", "commit", "-m", message],
-            cwd=REPO_DIR, capture_output=True, text=True
+            cwd=PROJECT_FOLDER, capture_output=True, text=True
         )
         if commit.returncode != 0:
             return f"❌ Commit failed: {commit.stderr}"
 
-        # Push
         push = subprocess.run(
             ["git", "push"],
-            cwd=REPO_DIR, capture_output=True, text=True
+            cwd=PROJECT_FOLDER, capture_output=True, text=True
         )
         if push.returncode != 0:
             return f"❌ Push failed: {push.stderr}"
@@ -190,7 +162,7 @@ def web_search(query: str) -> str:
 TOOLS = [
     {
         "name": "read_file",
-        "description": "Read the contents of a file in the investment-tracker repo.",
+        "description": "Read a file in the Portfolio-Tracker repo.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -201,7 +173,7 @@ TOOLS = [
     },
     {
         "name": "write_file",
-        "description": "Create or overwrite a file in the investment-tracker repo.",
+        "description": "Create or overwrite a file in the repo.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -213,17 +185,17 @@ TOOLS = [
     },
     {
         "name": "list_files",
-        "description": "List files and folders in the repo or a subfolder.",
+        "description": "List files and folders in the repo.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "subpath": {"type": "string", "description": "Subdirectory to list (default: repo root)"}
+                "subpath": {"type": "string", "description": "Subdirectory (default: repo root)"}
             }
         }
     },
     {
         "name": "run_command",
-        "description": "Run a shell command inside the repo folder.",
+        "description": "Run a shell command in the repo folder.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -235,11 +207,11 @@ TOOLS = [
     },
     {
         "name": "git_commit_and_push",
-        "description": "Stage all changes, commit with a message, and push to GitHub. Use after making file edits.",
+        "description": "Stage all changes, commit, and push to GitHub. Use after editing files.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "message": {"type": "string", "description": "Commit message describing the changes"}
+                "message": {"type": "string", "description": "Commit message"}
             },
             "required": ["message"]
         }
@@ -259,21 +231,21 @@ TOOLS = [
 
 
 def dispatch_tool(name: str, inputs: dict) -> str:
-    if name == "read_file":         return read_file(inputs["path"])
-    if name == "write_file":        return write_file(inputs["path"], inputs["content"])
-    if name == "list_files":        return list_files(inputs.get("subpath", "."))
-    if name == "run_command":       return run_command(inputs["command"], inputs.get("working_dir", "."))
-    if name == "git_commit_and_push": return git_commit_and_push(inputs["message"])
-    if name == "web_search":        return web_search(inputs["query"])
+    if name == "read_file":              return read_file(inputs["path"])
+    if name == "write_file":             return write_file(inputs["path"], inputs["content"])
+    if name == "list_files":             return list_files(inputs.get("subpath", "."))
+    if name == "run_command":            return run_command(inputs["command"], inputs.get("working_dir", "."))
+    if name == "git_commit_and_push":    return git_commit_and_push(inputs["message"])
+    if name == "web_search":             return web_search(inputs["query"])
     return f"Unknown tool: {name}"
 
 
-# ── Per-user conversation history ─────────────────────────────────────────────
+# ── Conversation history & Claude ─────────────────────────────────────────────
 
 histories: dict[int, list] = {}
 
 SYSTEM_PROMPT = """You are Claude, an AI assistant made by Anthropic, accessible via Telegram.
-You have full access to the user's investment-tracker GitHub repository.
+You have full access to the user's Portfolio-Tracker GitHub repository.
 
 You can read/write files, run shell commands, search the web, and commit & push changes to GitHub.
 After making file edits, always use git_commit_and_push to save changes to GitHub.
@@ -288,16 +260,18 @@ async def ask_claude(user_id: int, user_message: str) -> str:
     while True:
         response = client.messages.create(
             model=MODEL,
-            max_tokens=4096,
+            max_tokens=8096,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
             messages=history
         )
 
+        # Extract any text blocks regardless of stop reason
+        text = "".join(
+            block.text for block in response.content if hasattr(block, "text")
+        )
+
         if response.stop_reason == "end_turn":
-            text = "".join(
-                block.text for block in response.content if hasattr(block, "text")
-            )
             history.append({"role": "assistant", "content": response.content})
             return text or "(done)"
 
@@ -315,7 +289,13 @@ async def ask_claude(user_id: int, user_message: str) -> str:
             history.append({"role": "user", "content": tool_results})
             continue
 
-        return "Unexpected response from Claude."
+        if response.stop_reason == "max_tokens":
+            history.append({"role": "assistant", "content": response.content})
+            return (text or "(response cut off)") + "\n\n⚠️ Response was cut off. Say 'continue' to go on."
+
+        # Fallback — return whatever text we got plus the stop reason for debugging
+        history.append({"role": "assistant", "content": response.content})
+        return text or f"⚠️ Stopped unexpectedly (reason: {response.stop_reason}). Try again."
 
 
 # ── Telegram handlers ──────────────────────────────────────────────────────────
@@ -329,10 +309,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Unauthorized.")
         return
     await update.message.reply_text(
-        f"👋 *Claude Bot is ready!*\n\n"
-        f"📂 Repo: `investment-tracker`\n\n"
+        "👋 *Claude Bot is ready!*\n\n"
+        "📂 Repo: `Portfolio-Tracker`\n\n"
         "I can read/edit files, commit & push to GitHub, run commands, and search the web.\n\n"
-        "Commands:\n"
         "/start — this message\n"
         "/clear — reset conversation memory",
         parse_mode="Markdown"
@@ -367,12 +346,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def main():
-    setup_repo()  # Clone / pull investment-tracker on startup
+    setup_git()
 
-    print(f"🤖 Claude Telegram Bot starting")
-    print(f"   Model:          {MODEL}")
-    print(f"   Repo:           {GITHUB_REPO}")
-    print(f"   Allowed users:  {ALLOWED_USER_IDS or 'everyone'}")
+    print("🤖 Claude Telegram Bot starting")
+    print(f"   Model:         {MODEL}")
+    print(f"   Project:       Portfolio-Tracker")
+    print(f"   Allowed users: {ALLOWED_USER_IDS or 'everyone'}")
 
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
