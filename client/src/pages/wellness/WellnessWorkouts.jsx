@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   CheckSquare, Utensils, Dumbbell,
@@ -90,13 +90,14 @@ export default function WellnessWorkouts() {
   const [loading,    setLoading]   = useState(false);
   const [saving,     setSaving]    = useState(false);
   const [accepting,  setAccepting] = useState(false);
-  const [aiPrompt,   setAiPrompt]  = useState('');
   const [generating, setGenerating]= useState(false);
   const [aiError,    setAiError]   = useState('');
+  const aiInputRef = useRef(null); // uncontrolled — avoids re-mounting Planner on every keystroke
 
   // cell edit modal
   const [editCell, setEditCell] = useState(null); // {date, workoutType}
   const [editData, setEditData] = useState({ title: '', notes: '', duration: '' });
+  const [editMode, setEditMode] = useState(false); // false = detail view, true = edit form
 
   // calendar state
   const [calMonth,   setCalMonth]  = useState(new Date());
@@ -195,7 +196,7 @@ export default function WellnessWorkouts() {
     setGenerating(true);
     setAiError('');
     try {
-      const { data } = await api.post(`/workouts/week/${plan.id}/generate`, { prompt: aiPrompt });
+      const { data } = await api.post(`/workouts/week/${plan.id}/generate`, { prompt: aiInputRef.current?.value || '' });
       const map = {};
       (data.entries || []).forEach(e => {
         map[eKey(e.entry_date, e.workout_type)] = {
@@ -222,8 +223,10 @@ export default function WellnessWorkouts() {
   // ── cell modal ─────────────────────────────────────────────────────────────
   function openCell(date, workoutType) {
     if (plan?.status === 'accepted') return;
+    const existing = entries[eKey(date, workoutType)];
     setEditCell({ date, workoutType });
-    setEditData(entries[eKey(date, workoutType)] || { title: '', notes: '', duration: '' });
+    setEditData(existing || { title: '', notes: '', duration: '' });
+    setEditMode(!existing?.title);
   }
 
   function saveCell() {
@@ -306,10 +309,10 @@ export default function WellnessWorkouts() {
                 AI
               </div>
               <input
+                ref={aiInputRef}
                 className="input flex-1 text-xs py-1.5"
                 placeholder="e.g. Push Pull Legs, 5-day PPL, home workout, weight loss…"
-                value={aiPrompt}
-                onChange={e => setAiPrompt(e.target.value)}
+                defaultValue=""
                 onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()}
               />
               <button
@@ -368,12 +371,12 @@ export default function WellnessWorkouts() {
                       {entry?.title ? (
                         <div>
                           <p className="text-white text-xs font-medium leading-snug line-clamp-2">{entry.title}</p>
-                          {entry.notes &&
-                            <p className="text-muted text-xs mt-0.5 line-clamp-1">{entry.notes}</p>}
                           {entry.duration &&
-                            <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-xs font-mono ${wt.ring} ${wt.color}`}>
+                            <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono ${wt.ring} ${wt.color}`}>
                               {entry.duration} min
                             </span>}
+                          {entry.notes &&
+                            <p className="text-muted text-[10px] mt-1 line-clamp-3 leading-snug">{entry.notes}</p>}
                         </div>
                       ) : (
                         !isAccepted &&
@@ -517,60 +520,100 @@ export default function WellnessWorkouts() {
     if (!editCell) return null;
     const wt = WORKOUT_MAP[editCell.workoutType];
     const d  = parseD(editCell.date);
+
+    const ModalHeader = () => (
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className={`flex items-center gap-2 ${wt.color}`}>
+            <wt.icon size={16} />
+            <span className="font-semibold text-sm">{wt.label}</span>
+          </div>
+          <p className="text-muted text-xs mt-0.5">
+            {d?.toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'short' })}
+          </p>
+        </div>
+        <button onClick={() => setEditCell(null)} className="text-muted hover:text-white transition-colors">
+          <X size={16} />
+        </button>
+      </div>
+    );
+
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
         style={{ background: 'rgba(9,9,14,0.75)', backdropFilter: 'blur(6px)' }}>
         <div className="card w-full max-w-sm p-5">
-          {/* header */}
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className={`flex items-center gap-2 ${wt.color}`}>
-                <wt.icon size={16} />
-                <span className="font-semibold text-sm">{wt.label}</span>
+          <ModalHeader />
+
+          {!editMode && editData.title ? (
+            /* ── detail view ── */
+            <>
+              <p className="text-white text-base font-bold leading-snug mb-3">{editData.title}</p>
+
+              {/* duration */}
+              {editData.duration && (
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-sm font-mono font-semibold ${wt.ring} ${wt.color} mb-3`}>
+                  {editData.duration} min
+                </span>
+              )}
+
+              {/* exercises / notes */}
+              {editData.notes && (
+                <div className="mb-3">
+                  <p className="text-[10px] text-muted uppercase tracking-wider mb-1.5">Exercises / Notes</p>
+                  <div className="space-y-1">
+                    {editData.notes.split('\n').filter(Boolean).map((line, i) => (
+                      <p key={i} className="text-soft text-xs leading-relaxed">{line}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2 mt-2">
+                <button onClick={clearCell}
+                  className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">
+                  Clear
+                </button>
+                <button onClick={() => setEditMode(true)} className="btn-primary flex-1 text-sm py-2">
+                  Edit
+                </button>
               </div>
-              <p className="text-muted text-xs mt-0.5">
-                {d?.toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'short' })}
-              </p>
-            </div>
-            <button onClick={() => setEditCell(null)} className="text-muted hover:text-white transition-colors">
-              <X size={16} />
-            </button>
-          </div>
-
-          {/* fields */}
-          <div className="space-y-3">
-            <div>
-              <label className="label">Workout</label>
-              <input className="input w-full mt-1" placeholder="e.g. Morning run"
-                value={editData.title} autoFocus
-                onChange={e => setEditData(p => ({ ...p, title: e.target.value }))}
-                onKeyDown={e => e.key === 'Enter' && saveCell()} />
-            </div>
-            <div>
-              <label className="label">Notes <span className="text-muted/50">(optional)</span></label>
-              <textarea className="input w-full mt-1 resize-none h-16 text-xs"
-                placeholder="Sets, reps, distance, intensity…"
-                value={editData.notes}
-                onChange={e => setEditData(p => ({ ...p, notes: e.target.value }))} />
-            </div>
-            <div>
-              <label className="label">Duration (min) <span className="text-muted/50">(optional)</span></label>
-              <input className="input w-full mt-1" type="number" placeholder="e.g. 45"
-                value={editData.duration}
-                onChange={e => setEditData(p => ({ ...p, duration: e.target.value }))} />
-            </div>
-          </div>
-
-          {/* actions */}
-          <div className="flex gap-2 mt-4">
-            <button onClick={clearCell}
-              className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">
-              Clear
-            </button>
-            <button onClick={saveCell} className="btn-primary flex-1 text-sm py-2">
-              Save
-            </button>
-          </div>
+            </>
+          ) : (
+            /* ── edit form ── */
+            <>
+              <div className="space-y-3">
+                <div>
+                  <label className="label">Workout</label>
+                  <input className="input w-full mt-1" placeholder="e.g. Push Day — Chest & Triceps"
+                    value={editData.title} autoFocus
+                    onChange={e => setEditData(p => ({ ...p, title: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && saveCell()} />
+                </div>
+                <div>
+                  <label className="label">Exercises / Notes <span className="text-muted/50">(optional)</span></label>
+                  <textarea className="input w-full mt-1 resize-none h-24 text-xs"
+                    placeholder={'Bench Press: 4x8 @ 80kg\nIncline DB Press: 3x10\nTricep Pushdowns: 3x12'}
+                    value={editData.notes}
+                    onChange={e => setEditData(p => ({ ...p, notes: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="label">Duration (min) <span className="text-muted/50">(optional)</span></label>
+                  <input className="input w-full mt-1" type="number" placeholder="e.g. 60"
+                    value={editData.duration}
+                    onChange={e => setEditData(p => ({ ...p, duration: e.target.value }))} />
+                </div>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={clearCell}
+                  className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">
+                  Clear
+                </button>
+                <button onClick={saveCell} className="btn-primary flex-1 text-sm py-2">
+                  Save
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );

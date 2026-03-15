@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   CheckSquare, Utensils, Dumbbell,
@@ -90,13 +90,14 @@ export default function WellnessMeals() {
   const [loading,    setLoading]   = useState(false);
   const [saving,     setSaving]    = useState(false);
   const [accepting,  setAccepting] = useState(false);
-  const [aiPrompt,   setAiPrompt]  = useState('');
   const [generating, setGenerating]= useState(false);
   const [aiError,    setAiError]   = useState('');
+  const aiInputRef = useRef(null); // uncontrolled — avoids re-mounting Planner on every keystroke
 
   // cell edit modal
   const [editCell, setEditCell] = useState(null); // {date, mealType}
   const [editData, setEditData] = useState({ title: '', notes: '', calories: '' });
+  const [editMode, setEditMode] = useState(false); // false = detail view, true = edit form
 
   // calendar state
   const [calMonth,  setCalMonth]  = useState(new Date());
@@ -195,7 +196,7 @@ export default function WellnessMeals() {
     setGenerating(true);
     setAiError('');
     try {
-      const { data } = await api.post(`/meals/week/${plan.id}/generate`, { prompt: aiPrompt });
+      const { data } = await api.post(`/meals/week/${plan.id}/generate`, { prompt: aiInputRef.current?.value || '' });
       const map = {};
       (data.entries || []).forEach(e => {
         map[eKey(e.entry_date, e.meal_type)] = {
@@ -222,8 +223,10 @@ export default function WellnessMeals() {
   // ── cell modal ─────────────────────────────────────────────────────────────
   function openCell(date, mealType) {
     if (plan?.status === 'accepted') return;
+    const existing = entries[eKey(date, mealType)];
     setEditCell({ date, mealType });
-    setEditData(entries[eKey(date, mealType)] || { title: '', notes: '', calories: '' });
+    setEditData(existing || { title: '', notes: '', calories: '' });
+    setEditMode(!existing?.title); // detail view if has data, edit form if empty
   }
 
   function saveCell() {
@@ -306,10 +309,10 @@ export default function WellnessMeals() {
                 AI
               </div>
               <input
+                ref={aiInputRef}
                 className="input flex-1 text-xs py-1.5"
                 placeholder="e.g. High protein Indian diet, low carb, vegetarian…"
-                value={aiPrompt}
-                onChange={e => setAiPrompt(e.target.value)}
+                defaultValue=""
                 onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()}
               />
               <button
@@ -517,60 +520,114 @@ export default function WellnessMeals() {
     if (!editCell) return null;
     const mt = MEAL_MAP[editCell.mealType];
     const d  = parseD(editCell.date);
+
+    // Parse macros from first line of notes (e.g. "Protein: 30g | Carbs: 45g | Fat: 12g")
+    const notesLines   = (editData.notes || '').split('\n');
+    const firstLine    = notesLines[0] || '';
+    const hasMacros    = /protein|carbs|fat/i.test(firstLine);
+    const macroChips   = hasMacros ? firstLine.split('|').map(s => s.trim()).filter(Boolean) : [];
+    const ingredients  = hasMacros ? notesLines.slice(1).join('\n').trim() : editData.notes;
+
+    const ModalHeader = () => (
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className={`flex items-center gap-2 ${mt.color}`}>
+            <mt.icon size={16} />
+            <span className="font-semibold text-sm">{mt.label}</span>
+          </div>
+          <p className="text-muted text-xs mt-0.5">
+            {d?.toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'short' })}
+          </p>
+        </div>
+        <button onClick={() => setEditCell(null)} className="text-muted hover:text-white transition-colors">
+          <X size={16} />
+        </button>
+      </div>
+    );
+
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
         style={{ background: 'rgba(9,9,14,0.75)', backdropFilter: 'blur(6px)' }}>
         <div className="card w-full max-w-sm p-5">
-          {/* header */}
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className={`flex items-center gap-2 ${mt.color}`}>
-                <mt.icon size={16} />
-                <span className="font-semibold text-sm">{mt.label}</span>
+          <ModalHeader />
+
+          {!editMode && editData.title ? (
+            /* ── detail view ── */
+            <>
+              <p className="text-white text-base font-bold leading-snug mb-3">{editData.title}</p>
+
+              {/* calories */}
+              {editData.calories && (
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-sm font-mono font-semibold ${mt.ring} ${mt.color} mb-3`}>
+                  {editData.calories} kcal
+                </span>
+              )}
+
+              {/* macro chips */}
+              {macroChips.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {macroChips.map((chip, i) => (
+                    <span key={i} className={`px-2 py-0.5 rounded-md text-xs font-mono border ${mt.ring} ${mt.color}`}>
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* ingredients / notes */}
+              {ingredients && (
+                <div className="mb-3">
+                  <p className="text-[10px] text-muted uppercase tracking-wider mb-1">Ingredients / Notes</p>
+                  <p className="text-soft text-xs leading-relaxed whitespace-pre-line">{ingredients}</p>
+                </div>
+              )}
+
+              <div className="flex gap-2 mt-2">
+                <button onClick={clearCell}
+                  className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">
+                  Clear
+                </button>
+                <button onClick={() => setEditMode(true)} className="btn-primary flex-1 text-sm py-2">
+                  Edit
+                </button>
               </div>
-              <p className="text-muted text-xs mt-0.5">
-                {d?.toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'short' })}
-              </p>
-            </div>
-            <button onClick={() => setEditCell(null)} className="text-muted hover:text-white transition-colors">
-              <X size={16} />
-            </button>
-          </div>
-
-          {/* fields */}
-          <div className="space-y-3">
-            <div>
-              <label className="label">Meal</label>
-              <input className="input w-full mt-1" placeholder="e.g. Oatmeal with berries"
-                value={editData.title} autoFocus
-                onChange={e => setEditData(p => ({ ...p, title: e.target.value }))}
-                onKeyDown={e => e.key === 'Enter' && saveCell()} />
-            </div>
-            <div>
-              <label className="label">Notes <span className="text-muted/50">(optional)</span></label>
-              <textarea className="input w-full mt-1 resize-none h-16 text-xs"
-                placeholder="Ingredients, prep notes…"
-                value={editData.notes}
-                onChange={e => setEditData(p => ({ ...p, notes: e.target.value }))} />
-            </div>
-            <div>
-              <label className="label">Calories <span className="text-muted/50">(optional)</span></label>
-              <input className="input w-full mt-1" type="number" placeholder="e.g. 350"
-                value={editData.calories}
-                onChange={e => setEditData(p => ({ ...p, calories: e.target.value }))} />
-            </div>
-          </div>
-
-          {/* actions */}
-          <div className="flex gap-2 mt-4">
-            <button onClick={clearCell}
-              className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">
-              Clear
-            </button>
-            <button onClick={saveCell} className="btn-primary flex-1 text-sm py-2">
-              Save
-            </button>
-          </div>
+            </>
+          ) : (
+            /* ── edit form ── */
+            <>
+              <div className="space-y-3">
+                <div>
+                  <label className="label">Meal</label>
+                  <input className="input w-full mt-1" placeholder="e.g. Oatmeal with berries"
+                    value={editData.title} autoFocus
+                    onChange={e => setEditData(p => ({ ...p, title: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && saveCell()} />
+                </div>
+                <div>
+                  <label className="label">Notes / Ingredients <span className="text-muted/50">(optional)</span></label>
+                  <textarea className="input w-full mt-1 resize-none h-20 text-xs"
+                    placeholder={'Protein: 30g | Carbs: 45g | Fat: 12g\nIngredients, prep notes…'}
+                    value={editData.notes}
+                    onChange={e => setEditData(p => ({ ...p, notes: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="label">Calories <span className="text-muted/50">(optional)</span></label>
+                  <input className="input w-full mt-1" type="number" placeholder="e.g. 350"
+                    value={editData.calories}
+                    onChange={e => setEditData(p => ({ ...p, calories: e.target.value }))} />
+                </div>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={clearCell}
+                  className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">
+                  Clear
+                </button>
+                <button onClick={saveCell} className="btn-primary flex-1 text-sm py-2">
+                  Save
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
