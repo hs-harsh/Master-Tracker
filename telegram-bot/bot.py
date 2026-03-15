@@ -5,6 +5,7 @@ Railway deploys this alongside your project files. No cloning needed.
 """
 
 import os
+import asyncio
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -303,6 +304,9 @@ async def ask_claude(user_id: int, user_message: str) -> str:
 def is_authorized(user_id: int) -> bool:
     return not ALLOWED_USER_IDS or user_id in ALLOWED_USER_IDS
 
+# Track running tasks per user so /cancel can stop them
+active_tasks: dict[int, asyncio.Task] = {}
+
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update.effective_user.id):
@@ -313,7 +317,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📂 Repo: `Portfolio-Tracker`\n\n"
         "I can read/edit files, commit & push to GitHub, run commands, and search the web.\n\n"
         "/start — this message\n"
-        "/clear — reset conversation memory",
+        "/clear — reset conversation memory\n"
+        "/cancel — stop current task immediately",
         parse_mode="Markdown"
     )
 
@@ -326,21 +331,47 @@ async def cmd_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🧹 Conversation history cleared.")
 
 
+async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Unauthorized.")
+        return
+    task = active_tasks.get(user_id)
+    if task and not task.done():
+        task.cancel()
+        active_tasks.pop(user_id, None)
+        await update.message.reply_text("🛑 Task cancelled.")
+    else:
+        await update.message.reply_text("Nothing is running right now.")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import asyncio
     user_id = update.effective_user.id
     if not is_authorized(user_id):
         await update.message.reply_text("⛔ Unauthorized.")
         return
 
+    # Cancel any existing task for this user
+    existing = active_tasks.get(user_id)
+    if existing and not existing.done():
+        existing.cancel()
+
     await update.message.reply_chat_action("typing")
 
-    try:
-        reply = await ask_claude(user_id, update.message.text)
-    except Exception as e:
-        reply = f"❌ Error: {e}"
+    async def run():
+        try:
+            reply = await ask_claude(user_id, update.message.text)
+        except asyncio.CancelledError:
+            await update.message.reply_text("🛑 Task cancelled.")
+            return
+        except Exception as e:
+            reply = f"❌ Error: {e}"
+        for chunk in [reply[i:i+4096] for i in range(0, len(reply), 4096)]:
+            await update.message.reply_text(chunk)
 
-    for chunk in [reply[i:i+4096] for i in range(0, len(reply), 4096)]:
-        await update.message.reply_text(chunk)
+    task = asyncio.create_task(run())
+    active_tasks[user_id] = task
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
@@ -356,6 +387,7 @@ def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("clear", cmd_clear))
+    app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.run_polling(drop_pending_updates=True)
 
