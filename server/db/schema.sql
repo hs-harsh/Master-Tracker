@@ -381,3 +381,32 @@ CREATE TABLE IF NOT EXISTS meal_entries (
   updated_at   TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_meal_entries_user_date ON meal_entries(user_id, entry_date);
+
+-- ─── Workout Planner ─────────────────────────────────────────────────────────
+
+-- One workout plan per user per week (week_start = Monday)
+CREATE TABLE IF NOT EXISTS workout_plans (
+  id         SERIAL PRIMARY KEY,
+  user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  week_start DATE NOT NULL,
+  status     VARCHAR(20) NOT NULL DEFAULT 'draft', -- draft | accepted
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, week_start)
+);
+CREATE INDEX IF NOT EXISTS idx_workout_plans_user ON workout_plans(user_id, week_start);
+
+-- Individual workout slots within a plan
+CREATE TABLE IF NOT EXISTS workout_entries (
+  id              SERIAL PRIMARY KEY,
+  workout_plan_id INT NOT NULL REFERENCES workout_plans(id) ON DELETE CASCADE,
+  user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  entry_date      DATE NOT NULL,
+  workout_type    VARCHAR(20) NOT NULL, -- cardio | strength | flexibility | rest
+  title           VARCHAR(255),
+  notes           TEXT,
+  duration        INT, -- minutes
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_workout_entries_user_date ON workout_entries(user_id, entry_date);
