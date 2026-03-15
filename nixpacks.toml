@@ -8,6 +8,7 @@ cmds = [
 ]
 
 [phases.build]
+dependsOn = ["install"]
 cmds = ["cd client && npm run build"]
 
 [start]

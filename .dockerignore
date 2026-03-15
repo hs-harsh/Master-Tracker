@@ -1,0 +1,12 @@
+# Exclude Telegram bot — it's a separate Railway service with its own config
+telegram-bot/
+
+# Node modules
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Dev / local files
+.env
+*.local
+client/dist
