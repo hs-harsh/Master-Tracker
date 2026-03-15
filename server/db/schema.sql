@@ -352,3 +352,32 @@ BEGIN
     ALTER TABLE habit_entries DROP COLUMN water_intake;
   END IF;
 END $$;
+
+-- ─── Meal Planner ──────────────────────────────────────────────────────────────
+
+-- One meal plan per user per week (week_start = Monday)
+CREATE TABLE IF NOT EXISTS meal_plans (
+  id         SERIAL PRIMARY KEY,
+  user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  week_start DATE NOT NULL,
+  status     VARCHAR(20) NOT NULL DEFAULT 'draft', -- draft | accepted
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, week_start)
+);
+CREATE INDEX IF NOT EXISTS idx_meal_plans_user ON meal_plans(user_id, week_start);
+
+-- Individual meal slots within a plan
+CREATE TABLE IF NOT EXISTS meal_entries (
+  id           SERIAL PRIMARY KEY,
+  meal_plan_id INT NOT NULL REFERENCES meal_plans(id) ON DELETE CASCADE,
+  user_id      INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  entry_date   DATE NOT NULL,
+  meal_type    VARCHAR(20) NOT NULL, -- breakfast | lunch | dinner | snack
+  title        VARCHAR(255),
+  notes        TEXT,
+  calories     INT,
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_meal_entries_user_date ON meal_entries(user_id, entry_date);

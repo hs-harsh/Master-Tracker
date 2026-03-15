@@ -28,6 +28,7 @@ app.use('/api/prices', require('./routes/prices'));
 app.use('/api/stocks', require('./routes/stocks'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/habits', require('./routes/habits'));
+app.use('/api/meals',  require('./routes/meals'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
