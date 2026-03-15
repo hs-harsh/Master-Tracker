@@ -240,14 +240,14 @@ export default function WellnessHabits() {
                   const isSav = saving[ds];
                   return (
                     <div key={ds}
-                      className={`p-2 border-l border-white/5 min-h-[72px] flex flex-col justify-center
+                      className={`px-1 py-2 border-l border-white/5 min-h-[72px] flex flex-col justify-center
                         ${isT ? 'bg-accent/5' : ''}`}>
-                      <div className="flex gap-0.5">
+                      <div className="flex gap-px flex-wrap">
                         {[1,2,3,4,5].map(n => (
                           <button key={n}
                             onClick={() => setHabit(ds, ht.key, n)}
-                            className="p-0.5 transition-transform hover:scale-110 active:scale-95">
-                            <Star size={13}
+                            className="p-px transition-transform hover:scale-110 active:scale-95">
+                            <Star size={11}
                               className={n <= val
                                 ? `fill-current ${ht.color} ${isSav ? 'opacity-60' : ''}`
                                 : 'text-white/15 hover:text-white/30 transition-colors'} />
@@ -255,7 +255,7 @@ export default function WellnessHabits() {
                         ))}
                       </div>
                       {val > 0 && (
-                        <p className={`text-[10px] font-mono mt-1 ${ht.color} opacity-70`}>{val}/5</p>
+                        <p className={`text-[9px] font-mono mt-0.5 ${ht.color} opacity-70`}>{val}/5</p>
                       )}
                     </div>
                   );

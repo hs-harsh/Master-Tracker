@@ -219,7 +219,7 @@ Requirements:
 - entry_date must be one of: ${days.join(', ')}
 - meal_type must be exactly: breakfast, lunch, dinner, or snack
 - title: concise meal name (e.g. "Masoor Dal with Brown Rice")
-- notes: brief ingredients or prep tip (or null)
+- notes: FIRST LINE must be macro summary in format "Protein: Xg | Carbs: Xg | Fat: Xg", then a newline, then brief ingredients (e.g. "Protein: 35g | Carbs: 42g | Fat: 12g\nChicken breast, brown rice, salad")
 - calories: estimated integer (or null)
 - Align meals with the user's goal above`;
 
