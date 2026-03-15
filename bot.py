@@ -284,13 +284,23 @@ async def ask_claude(user_id: int, user_message: str) -> str:
     history.append({"role": "user", "content": user_message})
 
     while True:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=8096,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
-            messages=history
-        )
+        # Retry on rate limit with exponential backoff
+        for attempt in range(5):
+            try:
+                response = client.messages.create(
+                    model=MODEL,
+                    max_tokens=8096,
+                    system=SYSTEM_PROMPT,
+                    tools=TOOLS,
+                    messages=history
+                )
+                break  # success
+            except anthropic.RateLimitError as e:
+                wait = 2 ** attempt  # 1, 2, 4, 8, 16 seconds
+                print(f"Rate limited, retrying in {wait}s... (attempt {attempt+1}/5)")
+                await asyncio.sleep(wait)
+                if attempt == 4:
+                    raise e
 
         # Extract any text blocks regardless of stop reason
         text = "".join(
