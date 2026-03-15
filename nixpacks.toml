@@ -8,10 +8,7 @@ cmds = [
 ]
 
 [phases.build]
-cmds = [
-  "cd client && npm run build",
-  "cp -r client/dist server/dist"
-]
+cmds = ["cd client && npm run build"]
 
 [start]
-cmd = "cd server && node index.js"
+cmd = "npm run start"
