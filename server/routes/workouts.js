@@ -149,4 +149,116 @@ router.get('/calendar', async (req, res) => {
   }
 });
 
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+async function getApiKey() {
+  const { rows } = await pool.query("SELECT value FROM settings WHERE key='anthropic_api_key'");
+  return (rows[0]?.value ?? '').trim() || process.env.ANTHROPIC_API_KEY || '';
+}
+
+function getWeekDays(weekStart) {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart + 'T12:00:00');
+    d.setDate(d.getDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
+// ── POST /api/workouts/week/:id/generate ──────────────────────────────────────
+// Uses Claude to generate a full week of workouts based on user prompt + past history.
+router.post('/week/:id/generate', async (req, res) => {
+  try {
+    const planId = parseInt(req.params.id, 10);
+    const { prompt: userPrompt = '' } = req.body;
+
+    // Ownership + plan details
+    const { rows: planRows } = await pool.query(
+      `SELECT id, week_start::text AS week_start, status FROM workout_plans WHERE id=$1 AND user_id=$2`,
+      [planId, req.user.id]
+    );
+    if (!planRows[0]) return res.status(404).json({ error: 'Plan not found' });
+    if (planRows[0].status === 'accepted')
+      return res.status(400).json({ error: 'Accepted plans cannot be regenerated' });
+
+    const weekStart = planRows[0].week_start;
+    const days = getWeekDays(weekStart);
+
+    // Fetch last 4 accepted weeks for context
+    const { rows: pastEntries } = await pool.query(
+      `SELECT we.entry_date::text AS entry_date, we.workout_type, we.title, we.notes, we.duration
+       FROM workout_entries we
+       JOIN workout_plans wp ON we.workout_plan_id = wp.id
+       WHERE we.user_id=$1 AND wp.status='accepted' AND wp.id != $2
+       ORDER BY we.entry_date DESC
+       LIMIT 56`,
+      [req.user.id, planId]
+    );
+
+    const pastSummary = pastEntries.length
+      ? pastEntries.map(e =>
+          `${e.entry_date} ${e.workout_type}: ${e.title}${e.duration ? ` (${e.duration} min)` : ''}`
+        ).join('\n')
+      : 'No past workout history yet.';
+
+    const systemPrompt = `You are a fitness planning assistant helping create effective weekly workout plans.
+Return ONLY a valid JSON array with no explanation, no markdown, no code fences.
+Each object must have exactly these fields:
+{ "entry_date": "YYYY-MM-DD", "workout_type": "cardio|strength|flexibility|rest", "title": "string", "notes": "string or null", "duration": number_or_null }`;
+
+    const userMessage = `Generate a complete 7-day workout plan for the week of ${weekStart}.
+
+Days to fill (Monday to Sunday): ${days.join(', ')}
+
+User's goal / feedback: ${userPrompt || 'Balanced fitness routine'}
+
+Past workout history for reference (learn from patterns, ensure progressive overload, avoid overtraining):
+${pastSummary}
+
+Requirements:
+- One entry per day = 7 entries total
+- entry_date must be one of: ${days.join(', ')}
+- workout_type must be exactly: cardio, strength, flexibility, or rest
+- title: workout name (e.g. "Push Day — Chest & Triceps", "Rest Day")
+- notes: sets/reps/distance/exercises (or null for rest)
+- duration: minutes (or null for rest)
+- Include appropriate rest days (typically 1-2 per week)
+- Align the split with the user's goal above`;
+
+    const apiKey = await getApiKey();
+    if (!apiKey) return res.status(500).json({ error: 'Anthropic API key not configured in Settings' });
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
+
+    const aiData = await aiRes.json();
+    if (!aiRes.ok) return res.status(aiRes.status).json({ error: aiData?.error?.message || 'AI error' });
+
+    const raw = aiData.content?.[0]?.text || '[]';
+    let entries;
+    try {
+      entries = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\[[\s\S]*\]/);
+      entries = match ? JSON.parse(match[0]) : [];
+    }
+
+    res.json({ entries });
+  } catch (e) {
+    console.error('POST /workouts/week/:id/generate', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;
