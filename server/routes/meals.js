@@ -1,7 +1,8 @@
-const express = require('express');
-const router  = express.Router();
-const pool    = require('../db');
-const auth    = require('../middleware/auth');
+const express            = require('express');
+const router             = express.Router();
+const pool               = require('../db');
+const auth               = require('../middleware/auth');
+const { sendMealPlanEmail } = require('../utils/email');
 
 router.use(auth);
 
@@ -115,7 +116,32 @@ router.post('/week/:id/accept', async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Plan not found' });
 
-    res.json({ plan: rows[0] });
+    const plan = rows[0];
+
+    // Send email in background — don't block the response
+    (async () => {
+      try {
+        const [userRes, entriesRes] = await Promise.all([
+          pool.query(`SELECT username FROM users WHERE id=$1`, [req.user.id]),
+          pool.query(
+            `SELECT entry_date::text AS entry_date, meal_type, title, notes, calories
+             FROM meal_entries WHERE meal_plan_id=$1 ORDER BY entry_date, meal_type`,
+            [planId]
+          ),
+        ]);
+        const toEmail = userRes.rows[0]?.username;
+        if (toEmail) {
+          await sendMealPlanEmail(toEmail, {
+            weekStart: plan.week_start,
+            entries:   entriesRes.rows,
+          });
+        }
+      } catch (emailErr) {
+        console.error('Meal plan email failed (non-fatal):', emailErr.message);
+      }
+    })();
+
+    res.json({ plan });
   } catch (e) {
     console.error('POST /meals/week/:id/accept', e);
     res.status(500).json({ error: 'Server error' });

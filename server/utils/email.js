@@ -157,4 +157,136 @@ async function sendLoginOtp(toEmail, otp, isNewUser = false) {
   });
 }
 
-module.exports = { sendAdminOtp, sendLoginOtp };
+module.exports = { sendAdminOtp, sendLoginOtp, sendMealPlanEmail };
+
+// ── Meal plan accepted email ──────────────────────────────────────────────────
+async function sendMealPlanEmail(toEmail, { weekStart, entries }) {
+  // Build day -> mealType -> entry map
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart + 'T12:00:00');
+    d.setDate(d.getDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+
+  const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'];
+  const MEAL_LABELS = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' };
+  const MEAL_ICONS  = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍎' };
+
+  function fmtDay(ds) {
+    const d = new Date(ds + 'T12:00:00');
+    return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  function fmtWeekRange(ws) {
+    const s = new Date(ws + 'T12:00:00');
+    const e = new Date(ws + 'T12:00:00'); e.setDate(e.getDate() + 6);
+    const o = { day: 'numeric', month: 'short' };
+    return `${s.toLocaleDateString('en-IN', o)} – ${e.toLocaleDateString('en-IN', { ...o, year: 'numeric' })}`;
+  }
+
+  // Build a lookup: entry_date_mealtype -> entry
+  const lookup = {};
+  for (const e of entries) {
+    lookup[`${String(e.entry_date).slice(0,10)}_${e.meal_type}`] = e;
+  }
+
+  // Calculate total calories
+  const totalCal = entries.reduce((s, e) => s + (e.calories || 0), 0);
+
+  // Build day rows HTML
+  const dayRows = days.map(ds => {
+    const mealsHtml = MEAL_TYPES.map(mt => {
+      const e = lookup[`${ds}_${mt}`];
+      if (!e?.title) return '';
+
+      // Parse macros from first line of notes
+      const notesLines = (e.notes || '').split('\n');
+      const firstLine  = notesLines[0] || '';
+      const hasMacros  = /protein|carbs|fat/i.test(firstLine);
+      const macroChips = hasMacros
+        ? firstLine.split('|').map(s => s.trim()).filter(Boolean)
+        : [];
+      const ingredients = hasMacros
+        ? notesLines.slice(1).join('\n').trim()
+        : e.notes;
+
+      return `
+        <div style="margin-bottom:12px; padding:12px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:10px;">
+          <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#888; margin-bottom:4px;">
+            ${MEAL_ICONS[mt]} ${MEAL_LABELS[mt]}
+          </div>
+          <div style="font-size:14px; font-weight:600; color:#ffffff; margin-bottom:4px;">${e.title}</div>
+          ${e.calories ? `<div style="display:inline-block; font-size:11px; font-family:'Courier New',monospace; color:#f0c040; background:#1a1500; border:1px solid #3a3000; border-radius:6px; padding:2px 8px; margin-bottom:4px;">${e.calories} kcal</div>` : ''}
+          ${macroChips.length ? `<div style="margin-top:4px;">${macroChips.map(c => `<span style="display:inline-block; font-size:10px; font-family:'Courier New',monospace; color:#7dd3b0; background:#0a1e16; border:1px solid #1a4030; border-radius:5px; padding:1px 6px; margin:2px 2px 0 0;">${c}</span>`).join('')}</div>` : ''}
+          ${ingredients ? `<div style="font-size:12px; color:#777; margin-top:5px; line-height:1.5;">${ingredients.replace(/\n/g, '<br>')}</div>` : ''}
+        </div>`;
+    }).filter(Boolean).join('');
+
+    if (!mealsHtml) return '';
+
+    return `
+      <div style="margin-bottom:20px;">
+        <div style="font-size:13px; font-weight:700; color:#f0c040; border-bottom:1px solid #2a2a2a; padding-bottom:8px; margin-bottom:12px;">${fmtDay(ds)}</div>
+        ${mealsHtml}
+      </div>`;
+  }).filter(Boolean).join('');
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#0a0a0a; margin:0; padding:32px 16px;">
+  <div style="max-width:540px; margin:0 auto; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:16px; overflow:hidden;">
+
+    <!-- header -->
+    <div style="padding:28px 28px 20px; border-bottom:1px solid #2a2a2a;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+        <div style="width:34px;height:34px;background:#f0c040;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;color:#0f0f0f;">IT</div>
+        <span style="font-size:15px;font-weight:700;color:#fff;">InvestTrack</span>
+      </div>
+      <h1 style="margin:0;font-size:20px;font-weight:700;color:#fff;">🥗 Meal Plan Accepted</h1>
+      <p style="margin:6px 0 0;font-size:13px;color:#888;">Week of ${fmtWeekRange(weekStart)}</p>
+    </div>
+
+    <!-- total calories strip -->
+    ${totalCal > 0 ? `
+    <div style="padding:14px 28px; background:#0f0f0f; border-bottom:1px solid #2a2a2a;">
+      <span style="font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:#888;">Total week calories: </span>
+      <span style="font-size:14px; font-weight:700; color:#f0c040; font-family:'Courier New',monospace;">${totalCal.toLocaleString()} kcal</span>
+    </div>` : ''}
+
+    <!-- meal plan body -->
+    <div style="padding:24px 28px;">
+      ${dayRows || '<p style="color:#666;font-size:14px;">No meals planned for this week.</p>'}
+    </div>
+
+    <!-- footer -->
+    <div style="padding:16px 28px; border-top:1px solid #2a2a2a; font-size:11px; color:#555;">
+      Sent to ${toEmail} · InvestTrack Wellness
+    </div>
+  </div>
+</body>
+</html>`.trim();
+
+  const textLines = [`Meal Plan — Week of ${fmtWeekRange(weekStart)}`, ''];
+  for (const ds of days) {
+    const dayMeals = MEAL_TYPES.map(mt => {
+      const e = lookup[`${ds}_${mt}`];
+      if (!e?.title) return null;
+      return `  ${MEAL_LABELS[mt]}: ${e.title}${e.calories ? ` (${e.calories} kcal)` : ''}`;
+    }).filter(Boolean);
+    if (dayMeals.length) {
+      textLines.push(fmtDay(ds));
+      textLines.push(...dayMeals);
+      textLines.push('');
+    }
+  }
+  if (totalCal > 0) textLines.push(`Total week: ${totalCal.toLocaleString()} kcal`);
+
+  await sendViaResend({
+    to: toEmail,
+    subject: `Your meal plan for ${fmtWeekRange(weekStart)} is set ✓`,
+    html,
+    text: textLines.join('\n'),
+  });
+}
