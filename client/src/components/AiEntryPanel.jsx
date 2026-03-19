@@ -7,6 +7,10 @@ function isEditIntent(text) {
   return /\b(update|edit|change|set|delete|remove|fix|rename|replace|correct|modify|clear)\b/i.test(text);
 }
 
+function isDeleteIntent(text) {
+  return /\b(delete|remove|clear)\b/i.test(text);
+}
+
 const TX_TYPES    = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
 const INV_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const INV_SIDES   = ['BUY', 'SELL'];
@@ -432,6 +436,11 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
 
   const handleParse = async () => {
     if (!prompt.trim()) return;
+    // Redirect delete-only prompts to the Delete with AI panel
+    if (type === 'transactions' && isDeleteIntent(prompt) && !isEditIntent(prompt.replace(/\b(delete|remove|clear)\b/gi, ''))) {
+      setError('Looks like you want to delete transactions. Use the "Delete with AI" panel below instead.');
+      return;
+    }
     setParsing(true);
     setError('');
     setEntries(null);
@@ -447,7 +456,13 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
         setEntries(r.data.entries);
       }
     } catch (e) {
-      setError(e.response?.data?.error || 'Failed to parse. Try again.');
+      const msg = e.response?.data?.error || 'Failed to parse. Try again.';
+      // If parse failed and prompt looks like a delete, guide the user
+      if (isDeleteIntent(prompt)) {
+        setError('Use the "Delete with AI" panel below to delete transactions.');
+      } else {
+        setError(msg);
+      }
     } finally {
       setParsing(false);
     }
