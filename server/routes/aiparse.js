@@ -192,8 +192,8 @@ router.post('/edit', auth, async (req, res) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
+        model: 'claude-haiku-4-20250514',
+        max_tokens: 2048,
         messages: [{ role: 'user', content: systemPrompt }],
       }),
     });
@@ -262,8 +262,8 @@ router.post('/parse', auth, async (req, res) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,   // large enough for 200+ row tables
+        model: 'claude-haiku-4-20250514',
+        max_tokens: 4096,   // enough for 200+ row tables
         messages: [{ role: 'user', content: systemPrompt }],
       }),
     });
