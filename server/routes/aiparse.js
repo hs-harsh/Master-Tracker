@@ -99,8 +99,9 @@ RULES:
     { "action": "delete", "id": <number> }
 - Only reference IDs that exist in the provided data above.
 - For "update", include only the fields that need to change in "changes".
-- Match entries by their content (remark, amount, account, date, type) based on the user's description.
-- If the user says "update all X" or "delete all Y", return multiple operations covering all matches.
+- Match entries by their content (remark, amount, account, date, type) based on the user's description. Account name matching is case-insensitive.
+- If the user says "update all X" or "delete all Y", return multiple operations covering ALL matching entries.
+- If the user says "for <name>" or "of <name>", match entries where account matches that name (case-insensitive).
 - For date fields use YYYY-MM-DD. Amounts must be positive numbers.
 - If nothing matches, return an empty array [].
 
