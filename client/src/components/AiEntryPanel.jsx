@@ -248,27 +248,56 @@ function OperationsTable({ operations, setOperations, type }) {
   );
 }
 
+// ── Stage indicator (shared) ──────────────────────────────────────────────────
+const PARSE_STAGES = [
+  { key: 'sending',  label: 'Sending to AI…',       after: 0    },
+  { key: 'thinking', label: 'AI is thinking…',       after: 1200 },
+  { key: 'reading',  label: 'Reading response…',     after: 0    }, // set manually on response
+];
+const EDIT_STAGES = [
+  { key: 'fetching', label: 'Fetching entries…',     after: 0    },
+  { key: 'sending',  label: 'Sending to AI…',        after: 0    },
+  { key: 'thinking', label: 'AI is thinking…',       after: 1200 },
+  { key: 'reading',  label: 'Reading response…',     after: 0    },
+];
+
+function StageLabel({ stage, stages }) {
+  const s = stages.find(x => x.key === stage);
+  if (!s) return null;
+  return (
+    <span className="text-xs text-muted animate-pulse">{s.label}</span>
+  );
+}
+
 // ── AiEditPanel ───────────────────────────────────────────────────────────────
 // Handles both edits (UPDATE) and deletions (DELETE) via a single prompt.
 // Shows the full OperationsTable for review before applying.
 export function AiEditPanel({ type, persons, onEdit }) {
   const [open, setOpen]         = useState(false);
   const [prompt, setPrompt]     = useState('');
-  const [parsing, setParsing]   = useState(false);
+  const [stage, setStage]       = useState(null);   // null | 'fetching'|'sending'|'thinking'|'reading'
   const [operations, setOps]    = useState(null);
   const [applying, setApplying] = useState(false);
   const [error, setError]       = useState('');
   const [done, setDone]         = useState(false);
 
+  const parsing = !!stage;
+
   const handleParse = async () => {
     if (!prompt.trim()) return;
-    setParsing(true);
     setError('');
     setOps(null);
     setDone(false);
+
+    setStage('fetching');
+    let thinkTimer;
     try {
       const today = new Date().toISOString().slice(0, 10);
+      setStage('sending');
+      thinkTimer = setTimeout(() => setStage('thinking'), 1200);
       const r = await api.post('/ai/edit', { prompt, type, persons, today });
+      clearTimeout(thinkTimer);
+      setStage('reading');
       const ops = r.data.operations || [];
       if (!ops.length) {
         setError('No matching entries found. Try a more specific description.');
@@ -276,9 +305,10 @@ export function AiEditPanel({ type, persons, onEdit }) {
         setOps(ops);
       }
     } catch (e) {
+      clearTimeout(thinkTimer);
       setError(e.response?.data?.error || 'Failed to find matching entries. Try again.');
     } finally {
-      setParsing(false);
+      setStage(null);
     }
   };
 
@@ -343,7 +373,9 @@ export function AiEditPanel({ type, persons, onEdit }) {
                     ? <><Loader2 size={14} className="animate-spin" />Finding…</>
                     : <><Edit2 size={14} />Find & Preview</>}
                 </button>
-                <span className="text-xs text-muted">Ctrl+Enter to search</span>
+                {parsing
+                  ? <StageLabel stage={stage} stages={EDIT_STAGES} />
+                  : <span className="text-xs text-muted">Ctrl+Enter to search</span>}
               </div>
             </>
           )}
@@ -398,11 +430,13 @@ export function AiEditPanel({ type, persons, onEdit }) {
 export default function AiEntryPanel({ type, persons, onAdd }) {
   const [open, setOpen]         = useState(false);
   const [prompt, setPrompt]     = useState('');
-  const [parsing, setParsing]   = useState(false);
+  const [stage, setStage]       = useState(null);   // null | 'sending'|'thinking'|'reading'
   const [entries, setEntries]   = useState(null);
   const [applying, setApplying] = useState(false);
   const [error, setError]       = useState('');
   const [done, setDone]         = useState(false);
+
+  const parsing = !!stage;
 
   const placeholder =
     type === 'transactions'
@@ -413,19 +447,24 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
 
   const handleParse = async () => {
     if (!prompt.trim()) return;
-    setParsing(true);
     setError('');
     setEntries(null);
-    setOps(null);
     setDone(false);
+
+    let thinkTimer;
     try {
       const today = new Date().toISOString().slice(0, 10);
+      setStage('sending');
+      thinkTimer = setTimeout(() => setStage('thinking'), 1200);
       const r = await api.post('/ai/parse', { prompt, type, persons, today });
+      clearTimeout(thinkTimer);
+      setStage('reading');
       setEntries(r.data.entries);
     } catch (e) {
+      clearTimeout(thinkTimer);
       setError(e.response?.data?.error || 'Failed to parse. Try again.');
     } finally {
-      setParsing(false);
+      setStage(null);
     }
   };
 
@@ -484,7 +523,9 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
                     ? <><Loader2 size={14} className="animate-spin" />Parsing…</>
                     : <><Sparkles size={14} />Parse</>}
                 </button>
-                <span className="text-xs text-muted">Ctrl+Enter to parse</span>
+                {parsing
+                  ? <StageLabel stage={stage} stages={PARSE_STAGES} />
+                  : <span className="text-xs text-muted">Ctrl+Enter to parse</span>}
               </div>
             </>
           )}
