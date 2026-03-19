@@ -218,6 +218,29 @@ router.put('/:id', auth, async (req, res) => {
   }
 });
 
+// ── PATCH /api/cashflow/target-saving  ───────────────────────────────────────
+// Upserts ONLY ideal_saving for a given month+person — safe to call from
+// Transactions page without touching any other cashflow fields.
+router.patch('/target-saving', auth, async (req, res) => {
+  try {
+    const { month, person, ideal_saving } = req.body;
+    if (!month || !person) return res.status(400).json({ error: 'month and person are required' });
+    const amount = Number(ideal_saving) || 0;
+    const { rows } = await pool.query(`
+      INSERT INTO monthly_cashflow (month, person, user_id, ideal_saving, target)
+      VALUES ($1, $2, $3, $4, $4)
+      ON CONFLICT (user_id, month, person) DO UPDATE SET
+        ideal_saving = EXCLUDED.ideal_saving,
+        target       = EXCLUDED.target,
+        updated_at   = NOW()
+      RETURNING id, month, person, ideal_saving
+    `, [month, person, req.user.id, amount]);
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── DELETE /api/cashflow/:id  ─────────────────────────────────────────────────
 router.delete('/:id', auth, async (req, res) => {
   try {

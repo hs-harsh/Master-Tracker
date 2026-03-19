@@ -7,7 +7,6 @@ import { Plus, Pencil, Trash2, X, Save } from 'lucide-react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
-import AiEntryPanel from '../components/AiEntryPanel';
 
 // ── Shared chart helpers ───────────────────────────────────────────────────────
 const TT = {
@@ -546,9 +545,7 @@ export default function Cashflow() {
         </div>
       </div>
 
-      <AiEntryPanel type="cashflow" persons={persons.length ? persons : [currentPerson]} onAdd={handleAiAdd} />
-
-      {loading && <div className="py-16 text-center text-muted text-sm">Loading…</div>}
+      {loading &&<div className="py-16 text-center text-muted text-sm">Loading…</div>}
 
       {!loading && data.length === 0 && (
         <div className="card py-12 text-center space-y-2">
