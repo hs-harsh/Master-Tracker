@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save } from 'lucide-react';
-import AiEntryPanel from '../components/AiEntryPanel';
+import AiEntryPanel, { AiImagePanel } from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
@@ -274,6 +274,7 @@ export default function Investments() {
       </div>
 
       <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
+      <AiImagePanel persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
 
       {(showForm || editing) && (
         <InvestmentForm

@@ -344,4 +344,102 @@ router.post('/parse', auth, async (req, res) => {
   }
 });
 
+// POST /api/ai/parse-image — extract investment entries from a screenshot
+// Body: { imageBase64: <string>, mediaType: 'image/png'|'image/jpeg'|..., persons: [], today: 'YYYY-MM-DD' }
+router.post('/parse-image', auth, async (req, res) => {
+  const t0  = Date.now();
+  const tag = '[AI parse-image]';
+  const { imageBase64, mediaType = 'image/png', persons = [], today } = req.body;
+
+  if (!imageBase64) return res.status(400).json({ error: 'imageBase64 is required' });
+
+  const key = await getApiKey();
+  console.log(`${tag} API key fetched — ${Date.now()-t0}ms — key present=${!!key}`);
+  if (!key) return res.status(500).json({ error: 'Anthropic API key not set. Add it in Settings → Expense Analyser.' });
+
+  const todayStr = today || new Date().toISOString().slice(0, 10);
+
+  const systemPrompt = `You are a financial data parser. Extract investment entries from the screenshot.
+
+Today's date: ${todayStr}
+Available accounts (persons): ${persons.join(', ')}
+Asset classes: ${INV_CLASSES.join(', ')}
+Sides: ${INV_SIDES.join(', ')}
+
+RULES:
+- Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
+- Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "...", "asset_class": "...", "instrument": "...", "side": "BUY" or "SELL", "amount": <number>, "broker": "..." }
+- Infer asset class: stocks/shares/equity/mutual fund → Equity; bonds/fd/ppf/debt → Debt; gold/silver → Gold; crypto/bitcoin → Crypto; property/real estate → Real Estate
+- Use today's date if no date visible
+- If goal is not mentioned, leave it as ""
+- If broker is not mentioned, try to infer from the screenshot logo/name, else leave ""
+- Strip ₹ symbols and commas from amounts
+- Amount must be a positive number (the total rupee value)
+- If nothing can be extracted, return []`;
+
+  console.log(`${tag} Calling Anthropic vision API — model=claude-sonnet-4-20250514 — ${Date.now()-t0}ms`);
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      console.error(`${tag} TIMEOUT — AbortController fired after 30s`);
+      controller.abort();
+    }, 30000);
+    let r;
+    try {
+      r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2048,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: { type: 'base64', media_type: mediaType, data: imageBase64 },
+              },
+              { type: 'text', text: systemPrompt },
+            ],
+          }],
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    console.log(`${tag} Anthropic responded — status=${r.status} — ${Date.now()-t0}ms`);
+
+    const data = await r.json();
+    if (!r.ok) {
+      console.error(`${tag} API error: ${JSON.stringify(data?.error)}`);
+      return res.status(r.status).json({ error: data?.error?.message || 'Claude API error' });
+    }
+
+    const text = (data.content || []).map(c => c.text || '').join('').trim();
+    console.log(`${tag} Response — ${Date.now()-t0}ms — first 200: ${text.slice(0, 200)}`);
+
+    const cleaned = text.replace(/```json\s*|```\s*/g, '').trim();
+    const match   = cleaned.match(/\[[\s\S]*\]/);
+    if (!match) return res.status(422).json({ error: 'Could not extract entries from image. Try a clearer screenshot.' });
+
+    let entries;
+    try { entries = JSON.parse(match[0]); }
+    catch { return res.status(422).json({ error: 'AI returned malformed JSON. Try again.' }); }
+
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return res.status(422).json({ error: 'No investment entries found in the image.' });
+    }
+
+    res.json({ entries });
+  } catch (err) {
+    console.error(`${tag} upstream error:`, err.message);
+    res.status(502).json({ error: 'AI service error: ' + err.message });
+  }
+});
+
 module.exports = router;

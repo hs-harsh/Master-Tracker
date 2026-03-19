@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Sparkles, Loader2, Check, X, Trash2, Edit2, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useRef, useCallback } from 'react';
+import { Sparkles, Loader2, Check, X, Trash2, Edit2, ChevronDown, ChevronUp, ImagePlus, UploadCloud } from 'lucide-react';
 import api from '../lib/api';
 
 
@@ -573,6 +573,180 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
             </div>
           )}
 
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── AiImagePanel ──────────────────────────────────────────────────────────────
+// Drag-and-drop screenshot → Claude vision → InvConfirmTable
+export function AiImagePanel({ persons, onAdd }) {
+  const [open, setOpen]         = useState(false);
+  const [stage, setStage]       = useState(null); // null | 'reading'|'sending'|'thinking'
+  const [entries, setEntries]   = useState(null);
+  const [applying, setApplying] = useState(false);
+  const [error, setError]       = useState('');
+  const [done, setDone]         = useState(false);
+  const [preview, setPreview]   = useState(null); // data URL for display
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef(null);
+
+  const parsing = !!stage;
+
+  const processFile = useCallback(async (file) => {
+    if (!file || !file.type.startsWith('image/')) {
+      setError('Please upload an image file (PNG, JPG, WEBP).');
+      return;
+    }
+    setError('');
+    setEntries(null);
+    setDone(false);
+    setStage('reading');
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target.result;
+      setPreview(dataUrl);
+      const base64    = dataUrl.split(',')[1];
+      const mediaType = file.type;
+
+      let thinkTimer;
+      try {
+        setStage('sending');
+        thinkTimer = setTimeout(() => setStage('thinking'), 1200);
+        const today = new Date().toISOString().slice(0, 10);
+        const r = await api.post('/ai/parse-image', { imageBase64: base64, mediaType, persons, today });
+        clearTimeout(thinkTimer);
+        setEntries(r.data.entries);
+      } catch (err) {
+        clearTimeout(thinkTimer);
+        setError(err.response?.data?.error || 'Failed to extract entries from image. Try again.');
+      } finally {
+        setStage(null);
+      }
+    };
+    reader.readAsDataURL(file);
+  }, [persons]);
+
+  const onDrop = useCallback((e) => {
+    e.preventDefault();
+    setDragging(false);
+    processFile(e.dataTransfer.files?.[0]);
+  }, [processFile]);
+
+  const onDragOver  = (e) => { e.preventDefault(); setDragging(true); };
+  const onDragLeave = ()  => setDragging(false);
+  const onFileInput = (e) => { processFile(e.target.files?.[0]); e.target.value = ''; };
+
+  const handleConfirmAdd = async () => {
+    if (!entries?.length) return;
+    setApplying(true);
+    try {
+      await onAdd(entries);
+      setDone(true);
+      setEntries(null);
+      setPreview(null);
+      setTimeout(() => { setDone(false); setOpen(false); }, 2000);
+    } catch (e) {
+      setError(e.response?.data?.error || 'Failed to add entries.');
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const handleReset = () => { setEntries(null); setError(''); setPreview(null); setDone(false); };
+
+  const IMAGE_STAGES = [
+    { key: 'reading',  label: 'Reading image…'  },
+    { key: 'sending',  label: 'Sending to AI…'  },
+    { key: 'thinking', label: 'AI is thinking…' },
+  ];
+
+  return (
+    <div className="card border-orange-500/30 bg-gradient-to-br from-orange-500/5 to-transparent">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-2 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <ImagePlus size={16} className="text-orange-400" />
+          <span className="font-display font-semibold text-white text-sm">Add from Screenshot</span>
+          <span className="text-xs text-muted">— drag &amp; drop a broker screenshot, AI extracts the entries</span>
+        </div>
+        {open ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
+      </button>
+
+      {open && (
+        <div className="mt-4 space-y-3">
+          {!entries && (
+            <div
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onClick={() => !parsing && inputRef.current?.click()}
+              className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 cursor-pointer transition-colors ${
+                dragging
+                  ? 'border-orange-400 bg-orange-500/10'
+                  : 'border-border hover:border-orange-400/50 hover:bg-orange-500/5'
+              } ${parsing ? 'pointer-events-none opacity-60' : ''}`}
+            >
+              <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onFileInput} />
+              {preview
+                ? <img src={preview} alt="preview" className="max-h-48 rounded-lg object-contain" />
+                : <UploadCloud size={36} className="text-muted" />
+              }
+              {parsing ? (
+                <div className="flex items-center gap-2 text-sm text-muted">
+                  <Loader2 size={14} className="animate-spin" />
+                  <StageLabel stage={stage} stages={IMAGE_STAGES} />
+                </div>
+              ) : (
+                <div className="text-center">
+                  <p className="text-sm text-soft">Drop a screenshot here or click to browse</p>
+                  <p className="text-xs text-muted mt-1">Broker app · portfolio export · trade confirmation · PNG, JPG, WEBP</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg bg-rose/10 border border-rose/30 px-3 py-2 text-sm text-rose flex items-center gap-2">
+              <X size={14} /> {error}
+              <button onClick={handleReset} className="ml-auto text-xs underline hover:no-underline">Try again</button>
+            </div>
+          )}
+          {done && (
+            <div className="rounded-lg bg-teal/10 border border-teal/30 px-3 py-2 text-sm text-teal flex items-center gap-2">
+              <Check size={14} /> Entries added successfully!
+            </div>
+          )}
+
+          {entries && entries.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-white font-semibold">
+                  {entries.length} entr{entries.length === 1 ? 'y' : 'ies'} found —
+                  <span className="text-muted font-normal"> review and edit, then confirm</span>
+                </p>
+                <button onClick={handleReset} className="text-xs text-muted hover:text-white underline">← Try another image</button>
+              </div>
+              {preview && <img src={preview} alt="source" className="max-h-28 rounded-lg object-contain opacity-50" />}
+              <InvConfirmTable entries={entries} setEntries={setEntries} persons={persons} />
+              <div className="flex gap-2 items-center">
+                <button
+                  onClick={handleConfirmAdd}
+                  disabled={applying || entries.length === 0}
+                  className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50"
+                >
+                  {applying
+                    ? <><Loader2 size={14} className="animate-spin" />Adding…</>
+                    : <><Check size={14} />Confirm &amp; Add {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}</>}
+                </button>
+                <button onClick={handleReset} className="btn-ghost text-sm">Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
