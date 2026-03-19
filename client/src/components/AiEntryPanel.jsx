@@ -261,11 +261,11 @@ const EDIT_STAGES = [
   { key: 'reading',  label: 'Reading response…',     after: 0    },
 ];
 
-function StageLabel({ stage, stages }) {
+function StageLabel({ stage, stages, bright = false }) {
   const s = stages.find(x => x.key === stage);
   if (!s) return null;
   return (
-    <span className="text-xs text-muted animate-pulse">{s.label}</span>
+    <span className={`text-xs animate-pulse ${bright ? 'text-accent font-medium' : 'text-muted'}`}>{s.label}</span>
   );
 }
 
@@ -445,9 +445,9 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
   const canImage   = type === 'investments';
 
   const IMAGE_STAGES = [
-    { key: 'reading',  label: 'Reading image…'  },
-    { key: 'sending',  label: 'Sending to AI…'  },
-    { key: 'thinking', label: 'AI is thinking…' },
+    { key: 'preparing', label: 'Preparing images…' },
+    { key: 'sending',   label: 'Sending to AI…'    },
+    { key: 'thinking',  label: 'AI is thinking…'   },
   ];
 
   const placeholder =
@@ -501,18 +501,21 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
     setError('');
     setEntries(null);
     setDone(false);
+    setStage('preparing');
 
     let thinkTimer;
     try {
-      setStage('sending');
-      thinkTimer = setTimeout(() => setStage('thinking'), 1200);
       const today = new Date().toISOString().slice(0, 10);
-      const r = await api.post('/ai/parse-image', {
+      // Build payload (base64 split happens here — show 'preparing' while this runs)
+      const payload = {
         images: images.map(img => ({ imageBase64: img.dataUrl.split(',')[1], mediaType: img.mediaType })),
         note:   imageNote.trim(),
         persons,
         today,
-      });
+      };
+      setStage('sending');
+      thinkTimer = setTimeout(() => setStage('thinking'), 1500);
+      const r = await api.post('/ai/parse-image', payload);
       clearTimeout(thinkTimer);
       setEntries(r.data.entries);
     } catch (err) {
@@ -671,17 +674,26 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
 
               {/* Parse button */}
               {images.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleParseImages}
-                    disabled={parsing}
-                    className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50"
-                  >
-                    {parsing
-                      ? <><Loader2 size={14} className="animate-spin" />Parsing…</>
-                      : <><Sparkles size={14} />Parse {images.length} image{images.length > 1 ? 's' : ''}</>}
-                  </button>
-                  {parsing && <StageLabel stage={stage} stages={IMAGE_STAGES} />}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleParseImages}
+                      disabled={parsing}
+                      className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50"
+                    >
+                      {parsing
+                        ? <><Loader2 size={14} className="animate-spin" />Parsing…</>
+                        : <><Sparkles size={14} />Parse {images.length} image{images.length > 1 ? 's' : ''}</>}
+                    </button>
+                    {!parsing && <span className="text-xs text-muted">{images.length} image{images.length > 1 ? 's' : ''} queued</span>}
+                  </div>
+                  {parsing && (
+                    <div className="flex items-center gap-2 rounded-lg bg-accent/10 border border-accent/20 px-3 py-2">
+                      <Loader2 size={13} className="animate-spin text-accent shrink-0" />
+                      <StageLabel stage={stage} stages={IMAGE_STAGES} bright />
+                      <span className="ml-auto text-xs text-muted">This may take ~30s for multiple images</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

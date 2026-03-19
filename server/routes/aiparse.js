@@ -397,9 +397,9 @@ OTHER RULES:
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => {
-      console.error(`${tag} TIMEOUT — AbortController fired after 30s`);
+      console.error(`${tag} TIMEOUT — AbortController fired after 90s`);
       controller.abort();
-    }, 30000);
+    }, 90000);
     let r;
     try {
       r = await fetch('https://api.anthropic.com/v1/messages', {
