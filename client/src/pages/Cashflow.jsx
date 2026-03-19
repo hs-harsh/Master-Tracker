@@ -117,7 +117,6 @@ function CorpusChart({ data }) {
 // The gap between Actual Saving and Ideal Saving = drag from special expenses
 function SavingChart({ data }) {
   const [range, setRange] = useState('ALL');
-  const [capScale, setCapScale] = useState(true);
 
   const cd = sliceByRange(data, range).map(r => {
     const income  = (Number(r.income) || 0) + (Number(r.other_income) || 0);
@@ -135,15 +134,6 @@ function SavingChart({ data }) {
     };
   });
 
-  // Detect outlier months and compute a smart Y cap (90th percentile * 1.4)
-  const totals = cd.map(r => r._total);
-  const sorted = [...totals].sort((a, b) => a - b);
-  const p90    = sorted[Math.max(0, Math.floor(sorted.length * 0.9) - 1)] || 0;
-  const hasOutlier = totals.some(v => v > p90 * 1.8);
-  const yDomain = hasOutlier && capScale
-    ? [0, Math.ceil(p90 * 1.4)]
-    : [0, 'auto'];
-
   // Custom tooltip to also show total income
   const CustomTT = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
@@ -157,9 +147,6 @@ function SavingChart({ data }) {
             {p.dataKey}: <span className="font-mono">{fmt(p.value)}</span>
           </p>
         ))}
-        {hasOutlier && capScale && total > yDomain[1] && (
-          <p className="text-yellow-400 mt-1">⚠ Bar clipped — actual: {fmt(total)}</p>
-        )}
       </div>
     );
   };
@@ -173,28 +160,13 @@ function SavingChart({ data }) {
             Stacked bar = where your income goes. <span className="text-orange-400">Special expenses</span> are the gap between actual and ideal saving.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          {hasOutlier && (
-            <button
-              onClick={() => setCapScale(c => !c)}
-              className={`text-xs px-2 py-1 rounded border transition-colors ${
-                capScale
-                  ? 'border-accent/50 text-accent bg-accent/10'
-                  : 'border-border text-muted hover:text-text'
-              }`}
-              title={capScale ? 'Showing capped scale — click to see full' : 'Showing full scale — click to cap outliers'}
-            >
-              {capScale ? 'Scale: Capped' : 'Scale: Full'}
-            </button>
-          )}
-          <RangeBar range={range} setRange={setRange} />
-        </div>
+        <RangeBar range={range} setRange={setRange} />
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={cd} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
           <XAxis dataKey="month" {...AX} />
-          <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} domain={yDomain} />
+          <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
           <Tooltip content={<CustomTT />} />
           <Bar dataKey="Fixed Costs"   stackId="s" fill="#a78bfa" radius={[0,0,0,0]} />
           <Bar dataKey="Special Exp"   stackId="s" fill="#fb923c" radius={[0,0,0,0]} />
@@ -210,7 +182,6 @@ function SavingChart({ data }) {
 // ── Chart 3: Expense Breakdown ────────────────────────────────────────────────
 function ExpenseChart({ data }) {
   const [range, setRange] = useState('ALL');
-  const [capScale, setCapScale] = useState(true);
   const EXP = [['Major','#fb7185'],['Non-Recurring','#f97316'],['Regular','#facc15'],['EMI','#a78bfa'],['Trips','#60a5fa']];
   const cd = sliceByRange(data, range).map(r => ({
     month:           fmtDate(r.month),
@@ -219,15 +190,7 @@ function ExpenseChart({ data }) {
     Regular:         Number(r.regular_expense) || 0,
     EMI:             Number(r.emi) || 0,
     Trips:           Number(r.trips_expense) || 0,
-    _total:          (Number(r.major_expense)||0) + (Number(r.non_recurring_expense)||0) +
-                     (Number(r.regular_expense)||0) + (Number(r.emi)||0) + (Number(r.trips_expense)||0),
   }));
-
-  const totals     = cd.map(r => r._total);
-  const sorted     = [...totals].sort((a, b) => a - b);
-  const p90        = sorted[Math.max(0, Math.floor(sorted.length * 0.9) - 1)] || 0;
-  const hasOutlier = totals.some(v => v > p90 * 1.8);
-  const yDomain    = hasOutlier && capScale ? [0, Math.ceil(p90 * 1.4)] : [0, 'auto'];
 
   return (
     <div className="card">
@@ -236,27 +199,13 @@ function ExpenseChart({ data }) {
           <p className="stat-label mb-0.5">Expense Breakdown</p>
           <p className="text-xs text-muted">Monthly spend stacked by category</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          {hasOutlier && (
-            <button
-              onClick={() => setCapScale(c => !c)}
-              className={`text-xs px-2 py-1 rounded border transition-colors ${
-                capScale
-                  ? 'border-accent/50 text-accent bg-accent/10'
-                  : 'border-border text-muted hover:text-text'
-              }`}
-            >
-              {capScale ? 'Scale: Capped' : 'Scale: Full'}
-            </button>
-          )}
-          <RangeBar range={range} setRange={setRange} />
-        </div>
+        <RangeBar range={range} setRange={setRange} />
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={cd} barSize={18} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
           <XAxis dataKey="month" {...AX} />
-          <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} domain={yDomain} />
+          <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
           <Tooltip {...TT} />
           {EXP.map(([k, c], i) => (
             <Bar key={k} dataKey={k} stackId="e" fill={c}
