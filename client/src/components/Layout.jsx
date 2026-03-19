@@ -41,7 +41,7 @@ function navClass(isActive, locked = false) {
 }
 
 export default function Layout() {
-  const { logout, isAuth, isAdmin } = useAuth();
+  const { logout, isAuth, isAdmin, persons, activePerson, setActivePerson } = useAuth();
   const navigate   = useNavigate();
   const location  = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -130,6 +130,29 @@ export default function Layout() {
             <X size={18} />
           </button>
         </div>
+
+        {/* Person switcher — shown when multi-person account */}
+        {isAuth && persons.length > 1 && (
+          <div
+            className="px-3 py-3"
+            style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+          >
+            <p className="text-[10px] text-muted/50 uppercase tracking-widest font-mono mb-2 px-1">Profile</p>
+            <div className="flex gap-1.5 p-1 rounded-full"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              {persons.map(p => (
+                <button
+                  key={p}
+                  onClick={() => setActivePerson(p)}
+                  className={`flex-1 px-2 py-1.5 rounded-full text-xs font-display font-bold transition-all
+                    ${activePerson === p ? 'bg-accent text-ink shadow-glow-gold' : 'text-soft hover:text-white'}`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {/* Public tabs */}
@@ -389,6 +412,18 @@ export default function Layout() {
               InvestTrack
             </span>
           </div>
+          {isAuth && persons.length > 1 && (
+            <div className="flex gap-1 p-0.5 rounded-full"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              {persons.map(p => (
+                <button key={p} onClick={() => setActivePerson(p)}
+                  className={`px-3 py-1 rounded-full text-[11px] font-display font-bold transition-all
+                    ${activePerson === p ? 'bg-accent text-ink shadow-glow-gold' : 'text-muted hover:text-white'}`}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          )}
           {!isAuth && (
             <button
               onClick={() => navigate('/')}

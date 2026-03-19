@@ -537,15 +537,12 @@ function PersonPanelCompact({ person, cashflowData, investments }) {
 
 /* ── Dashboard page ──────────────────────────────────────────────────────── */
 export default function Dashboard() {
-  const { personName, persons } = useAuth();
-  const [selectedPerson, setSelectedPerson] = useState('');
-  const [cashflowMap, setCashflowMap]       = useState({});
+  const { personName, persons, activePerson, setActivePerson } = useAuth();
+  const [cashflowMap, setCashflowMap]   = useState({});
   const [investmentsMap, setInvestmentsMap] = useState({});
-  const [loading, setLoading]               = useState(true);
+  const [loading, setLoading]           = useState(true);
 
-  useEffect(() => {
-    if (persons.length && !selectedPerson) setSelectedPerson(persons[0]);
-  }, [persons]);
+  const currentPerson = activePerson || personName;
 
   useEffect(() => {
     if (!persons.length) return;
@@ -567,8 +564,6 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, [persons]);
 
-  const activePerson = selectedPerson || personName;
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -580,29 +575,15 @@ export default function Dashboard() {
   return (
     <div className="space-y-5 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 fade-up">
-        <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight">Dashboard</h1>
-          <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Financial health overview</p>
-        </div>
-        {persons.length > 1 && (
-          <div className="flex gap-1.5 p-1 rounded-full"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            {persons.map(p => (
-              <button key={p} onClick={() => setSelectedPerson(p)}
-                className={`px-4 py-1.5 rounded-full text-xs font-display font-bold transition-all
-                  ${activePerson === p ? 'bg-accent text-ink shadow-glow-gold' : 'text-soft hover:text-white'}`}>
-                {p}
-              </button>
-            ))}
-          </div>
-        )}
+      <div className="fade-up">
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight">Dashboard</h1>
+        <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Financial health overview</p>
       </div>
 
       <PersonPanel
-        person={activePerson}
-        cashflowData={cashflowMap[activePerson] || []}
-        investments={investmentsMap[activePerson] || []}
+        person={currentPerson}
+        cashflowData={cashflowMap[currentPerson] || []}
+        investments={investmentsMap[currentPerson] || []}
       />
     </div>
   );
