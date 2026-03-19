@@ -184,19 +184,27 @@ router.post('/edit', auth, async (req, res) => {
     : buildInvEditPrompt(prompt.trim(), existingEntries, persons, todayStr);
 
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-20250514',
-        max_tokens: 2048,
-        messages: [{ role: 'user', content: systemPrompt }],
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let r;
+    try {
+      r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 2048,
+          messages: [{ role: 'user', content: systemPrompt }],
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const data = await r.json();
     if (!r.ok) return res.status(r.status).json({ error: data?.error?.message || 'Claude API error' });
@@ -254,19 +262,27 @@ router.post('/parse', auth, async (req, res) => {
                               buildInvPrompt(prompt.trim(), persons, todayStr);
 
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-20250514',
-        max_tokens: 4096,   // enough for 200+ row tables
-        messages: [{ role: 'user', content: systemPrompt }],
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let r;
+    try {
+      r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 4096,   // enough for 200+ row tables
+          messages: [{ role: 'user', content: systemPrompt }],
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const data = await r.json();
     if (!r.ok) return res.status(r.status).json({ error: data?.error?.message || 'Claude API error' });
