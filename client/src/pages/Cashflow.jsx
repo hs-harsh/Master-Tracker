@@ -30,7 +30,7 @@ function Leg({ items }) {
 }
 
 // ── Time-range selector ────────────────────────────────────────────────────────
-const RANGES = ['1Y', '2Y', '3Y', '5Y', 'ALL'];
+const RANGES = ['3M', '6M', '1Y', '2Y', '3Y', '5Y', 'ALL'];
 
 function RangeBar({ range, setRange }) {
   return (
@@ -47,7 +47,7 @@ function RangeBar({ range, setRange }) {
 
 function sliceByRange(data, range) {
   if (range === 'ALL') return data;
-  const months = { '1Y': 12, '2Y': 24, '3Y': 36, '5Y': 60 }[range] || 12;
+  const months = { '3M': 3, '6M': 6, '1Y': 12, '2Y': 24, '3Y': 36, '5Y': 60 }[range] || 12;
   return data.slice(-months);
 }
 
