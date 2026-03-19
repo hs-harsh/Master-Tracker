@@ -269,7 +269,8 @@ export function AiDeletePanel({ persons, onDelete }) {
     setDone(false);
     try {
       const today = new Date().toISOString().slice(0, 10);
-      const r = await api.post('/ai/edit', { prompt, type: 'transactions', persons, today });
+      const deletePrompt = `Delete (action: "delete") all matching transactions. ${prompt}`;
+      const r = await api.post('/ai/edit', { prompt: deletePrompt, type: 'transactions', persons, today });
       const delOps = (r.data.operations || []).filter(op => op.action === 'delete');
       if (!delOps.length) {
         setError('No matching transactions found to delete. Try a more specific description.');
