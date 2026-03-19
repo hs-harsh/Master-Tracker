@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, Target, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save } from 'lucide-react';
 import AiEntryPanel, { AiEditPanel } from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
@@ -55,108 +55,6 @@ function TransactionForm({ initial, defaultAccount, persons, onSave, onCancel })
         </button>
         <button onClick={onCancel} className="btn-ghost">Cancel</button>
       </div>
-    </div>
-  );
-}
-
-// ── Set Target Saving panel ───────────────────────────────────────────────────
-function SetTargetSavingPanel({ persons, currentPerson }) {
-  const [open, setOpen]     = useState(false);
-  const [month, setMonth]   = useState(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
-  const [person, setPerson] = useState(currentPerson || persons[0] || '');
-  const [amount, setAmount] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [done, setDone]     = useState(false);
-  const [error, setError]   = useState('');
-
-  // keep person in sync with global active person
-  useEffect(() => { setPerson(currentPerson || persons[0] || ''); }, [currentPerson]);
-
-  const handleSave = async () => {
-    if (!month || !person || amount === '') return;
-    setSaving(true);
-    setError('');
-    setDone(false);
-    try {
-      await api.patch('/cashflow/target-saving', {
-        month:        `${month}-01`,
-        person,
-        ideal_saving: Number(amount),
-      });
-      setDone(true);
-      setTimeout(() => setDone(false), 2500);
-    } catch (e) {
-      setError(e.response?.data?.error || 'Failed to save. Try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="card border-indigo-500/30 bg-gradient-to-br from-indigo-500/5 to-transparent">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between gap-2 text-left"
-      >
-        <div className="flex items-center gap-2">
-          <Target size={16} className="text-indigo-400" />
-          <span className="font-display font-semibold text-white text-sm">Set Target Saving</span>
-          <span className="text-xs text-muted">— set monthly savings goal for any person</span>
-        </div>
-        {open ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
-      </button>
-
-      {open && (
-        <div className="mt-4 space-y-3">
-          <div className="flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="label">Month</label>
-              <input
-                type="month"
-                className="input"
-                value={month}
-                onChange={e => setMonth(e.target.value)}
-              />
-            </div>
-            {persons.length > 1 && (
-              <div>
-                <label className="label">Person</label>
-                <select className="input" value={person} onChange={e => setPerson(e.target.value)}>
-                  {persons.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-            )}
-            <div>
-              <label className="label">Target Saving (₹)</label>
-              <input
-                type="number"
-                className="input w-40"
-                placeholder="e.g. 50000"
-                value={amount}
-                onChange={e => setAmount(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
-              />
-            </div>
-            <button
-              onClick={handleSave}
-              disabled={saving || amount === ''}
-              className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : <><Save size={14} />Save</>}
-            </button>
-          </div>
-          {done && (
-            <div className="rounded-lg bg-teal/10 border border-teal/30 px-3 py-2 text-sm text-teal flex items-center gap-2">
-              <Check size={14} /> Target saving set for {person} — {month}
-            </div>
-          )}
-          {error && (
-            <div className="rounded-lg bg-rose/10 border border-rose/30 px-3 py-2 text-sm text-rose flex items-center gap-2">
-              <X size={14} /> {error}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -265,7 +163,6 @@ export default function Transactions() {
 
       <AiEntryPanel type="transactions" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
       <AiEditPanel type="transactions" persons={persons.length ? persons : [personName]} onEdit={handleAiEdit} />
-      <SetTargetSavingPanel persons={persons.length ? persons : [personName]} currentPerson={currentPerson} />
 
       {(showForm || editing) && (
         <TransactionForm

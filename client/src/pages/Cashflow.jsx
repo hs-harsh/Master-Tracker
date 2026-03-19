@@ -3,7 +3,7 @@ import {
   AreaChart, Area, ComposedChart, BarChart, Bar, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { Plus, Pencil, Trash2, X, Save } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Target } from 'lucide-react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
@@ -269,6 +269,16 @@ function ExpenseChart({ data }) {
   );
 }
 
+// ── Default target savings (per-person, stored in localStorage) ────────────────
+const LS_KEY = 'cashflow_default_target_saving';
+function getDefaultTargets() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch { return {}; }
+}
+function saveDefaultTarget(person, amount) {
+  const cur = getDefaultTargets();
+  localStorage.setItem(LS_KEY, JSON.stringify({ ...cur, [person]: amount }));
+}
+
 // ── Add / Edit modal ──────────────────────────────────────────────────────────
 const EMPTY = (def = {}) => ({
   month:                  def.month  || '',
@@ -280,7 +290,7 @@ const EMPTY = (def = {}) => ({
   regular_expense:        '',
   emi:                    '',
   trips_expense:          0,
-  ideal_saving:           '',
+  ideal_saving:           def.ideal_saving ?? '',
 });
 
 function Field({ label, name, form, setForm, readOnly = false, hint }) {
@@ -308,8 +318,11 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
         month: editRow.month ? String(editRow.month).slice(0, 10) : '',
       };
     }
-    return EMPTY({ person: persons[0] || '' });
+    const defaults = getDefaultTargets();
+    const person = persons[0] || '';
+    return EMPTY({ person, ideal_saving: defaults[person] ?? '' });
   });
+
   const [saving, setSaving] = useState(false);
 
   const income       = Number(form.income) || 0;
@@ -373,7 +386,11 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
                 <input className="input w-full opacity-60" readOnly value={form.person} />
               ) : (
                 <select className="input w-full" value={form.person}
-                  onChange={e => setForm(f => ({ ...f, person: e.target.value }))}>
+                  onChange={e => {
+                    const p = e.target.value;
+                    const defaults = getDefaultTargets();
+                    setForm(f => ({ ...f, person: p, ...(defaults[p] !== undefined ? { ideal_saving: defaults[p] } : {}) }));
+                  }}>
                   {persons.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               )}
@@ -453,6 +470,65 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
           <button onClick={onClose} className="btn-ghost">Cancel</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Default Target Saving widget ───────────────────────────────────────────────
+function DefaultTargetWidget({ persons }) {
+  const [defaults, setDefaults] = useState(getDefaultTargets);
+  const [editing, setEditing]   = useState(false);
+  const [draft, setDraft]       = useState({});
+
+  const startEdit = () => {
+    setDraft({ ...defaults });
+    setEditing(true);
+  };
+  const save = () => {
+    persons.forEach(p => {
+      if (draft[p] !== undefined) saveDefaultTarget(p, draft[p] === '' ? undefined : Number(draft[p]));
+    });
+    setDefaults(getDefaultTargets());
+    setEditing(false);
+  };
+
+  const hasAny = persons.some(p => defaults[p] !== undefined && defaults[p] !== '');
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted">
+        <Target size={13} className="text-indigo-400 shrink-0" />
+        <span className="text-soft">Default target saving:</span>
+        {hasAny
+          ? persons.map(p => defaults[p] ? (
+              <span key={p} className="font-mono text-white">{p}: {fmt(defaults[p])}</span>
+            ) : null)
+          : <span className="italic">not set</span>}
+        <button onClick={startEdit} className="ml-1 underline hover:text-white transition-colors">edit</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 flex-wrap text-xs">
+      <Target size={13} className="text-indigo-400 shrink-0" />
+      <span className="text-soft">Default target saving:</span>
+      {persons.map(p => (
+        <label key={p} className="flex items-center gap-1.5">
+          <span className="text-muted">{p}</span>
+          <input
+            type="number"
+            className="input py-1 w-28 text-xs"
+            placeholder="e.g. 50000"
+            value={draft[p] ?? ''}
+            onChange={e => setDraft(d => ({ ...d, [p]: e.target.value }))}
+          />
+        </label>
+      ))}
+      <button onClick={save} className="flex items-center gap-1 px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors">
+        <Save size={12} /> Save
+      </button>
+      <button onClick={() => setEditing(false)} className="text-muted hover:text-white underline">cancel</button>
     </div>
   );
 }
@@ -544,6 +620,8 @@ export default function Cashflow() {
           </div>
         </div>
       </div>
+
+      {persons.length > 0 && <DefaultTargetWidget persons={persons.length ? persons : [currentPerson]} />}
 
       {loading &&<div className="py-16 text-center text-muted text-sm">Loading…</div>}
 
