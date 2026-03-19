@@ -257,7 +257,13 @@ export default function Investments() {
             Raw investment entries powering your goal-based portfolio
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          {persons.length > 1 && persons.map(p => (
+            <button key={p} onClick={() => setActivePerson(p)}
+              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${currentPerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
+              {p}
+            </button>
+          ))}
           <button
             onClick={() => { setEditing(null); setShowForm(true); }}
             className="btn-primary flex items-center gap-2"
@@ -277,18 +283,6 @@ export default function Investments() {
           onSave={handleSave}
           onCancel={() => { setShowForm(false); setEditing(null); }}
         />
-      )}
-
-      {/* Person tabs */}
-      {persons.length > 1 && (
-        <div className="flex items-center gap-2">
-          {persons.map(p => (
-            <button key={p} onClick={() => setActivePerson(p)}
-              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${currentPerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
-              {p}
-            </button>
-          ))}
-        </div>
       )}
 
       {/* Filters */}

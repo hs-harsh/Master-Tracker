@@ -148,7 +148,13 @@ export default function Transactions() {
           <h1 className="font-display text-2xl font-bold text-white">Transactions</h1>
           <p className="text-muted text-sm mt-0.5">All income, major, non-recurring & trip expenses</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          {persons.length > 1 && persons.map(p => (
+            <button key={p} onClick={() => setActivePerson(p)}
+              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${currentPerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
+              {p}
+            </button>
+          ))}
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
             <Plus size={14} /> Add Transaction
           </button>
@@ -166,18 +172,6 @@ export default function Transactions() {
           onSave={handleSave}
           onCancel={() => { setShowForm(false); setEditing(null); }}
         />
-      )}
-
-      {/* Person tabs */}
-      {persons.length > 1 && (
-        <div className="flex items-center gap-2">
-          {persons.map(p => (
-            <button key={p} onClick={() => setActivePerson(p)}
-              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${currentPerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
-              {p}
-            </button>
-          ))}
-        </div>
       )}
 
       {/* Filters */}

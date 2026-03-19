@@ -57,8 +57,11 @@ function CorpusChart({ data }) {
   const [range, setRange] = useState('ALL');
   const sliced = sliceByRange(data, range);
 
-  // Normalize all cumulative series to start from 0 in the chosen window
-  const baseCorpus = Number(sliced[0]?.corpus) || 0;
+  // Normalize so the chart starts from 0 at the beginning of the chosen window.
+  // corpus at month N = cumulative sum up-to-and-including N, so we subtract
+  // the corpus *before* the first visible month (= corpus[0] − actual_saving[0]).
+  const first = sliced[0];
+  const baseCorpus = (Number(first?.corpus) || 0) - (Number(first?.actual_saving) || 0);
   let cumPlan = 0, cumIncome = 0;
   const cd = sliced.map(r => {
     cumPlan   += Number(r.ideal_saving) || 0;
