@@ -3,7 +3,7 @@ import {
   AreaChart, Area, ComposedChart, BarChart, Bar, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { Plus, Pencil, Trash2, X, Save, Target } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Target, Check } from 'lucide-react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
@@ -540,6 +540,7 @@ export default function Cashflow() {
   const [loading, setLoading]     = useState(true);
   const [activeTab, setActiveTab] = useState('charts');
   const [modal, setModal]         = useState(null);
+  const [inlineEdit, setInlineEdit] = useState({ rowKey: null, value: '' });
 
   const currentPerson = activePerson || personName;
 
@@ -555,7 +556,26 @@ export default function Cashflow() {
 
   const openAdd = () => setModal('add');
 
-  const openEdit = (row) => setModal(row);
+  const startInlineEdit = (row) => {
+    const rowKey = row.id || `${row.person}-${row.month}`;
+    setInlineEdit({ rowKey, value: String(row.target_saving || row.target || '') });
+  };
+
+  const cancelInlineEdit = () => setInlineEdit({ rowKey: null, value: '' });
+
+  const handleInlineSave = async (row) => {
+    try {
+      await api.patch('/cashflow/target-saving', {
+        month:         row.month,
+        person:        row.person,
+        target_saving: Number(inlineEdit.value) || 0,
+      });
+      setInlineEdit({ rowKey: null, value: '' });
+      load();
+    } catch (e) {
+      alert(e.response?.data?.error || 'Failed to save');
+    }
+  };
 
   const handleAiAdd = async (entries) => {
     for (const e of entries) {
@@ -657,9 +677,11 @@ export default function Cashflow() {
               </thead>
               <tbody>
                 {[...data].reverse().map(row => {
+                  const rowKey = row.id || `${row.person}-${row.month}`;
+                  const isEditingRow = inlineEdit.rowKey === rowKey;
                   const ok = Number(row.actual_saving) >= Number(row.target_saving || row.target);
                   return (
-                    <tr key={row.id || `${row.person}-${row.month}`}
+                    <tr key={rowKey}
                       className="border-b border-border/50 hover:bg-surface/50 transition-colors group">
                       <td className="py-3 px-3 font-mono text-xs text-soft whitespace-nowrap">{fmtDate(row.month)}</td>
                       <td className="py-3 px-3 font-mono text-accent">{fmt(row.income)}</td>
@@ -670,12 +692,36 @@ export default function Cashflow() {
                       <td className="py-3 px-3 font-mono text-rose">{fmt(row.emi)}</td>
                       <td className="py-3 px-3 font-mono text-rose">{fmt(row.trips_expense)}</td>
                       <td className="py-3 px-3 font-mono text-rose">{fmt(row.net_expense)}</td>
-                      <td className="py-3 px-3 font-mono text-muted">{fmt(row.target_saving || row.target)}</td>
+                      <td className="py-2 px-3">
+                        {isEditingRow ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              className="input py-1 px-2 w-24 text-xs font-mono"
+                              value={inlineEdit.value}
+                              autoFocus
+                              onChange={e => setInlineEdit(s => ({ ...s, value: e.target.value }))}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleInlineSave(row);
+                                if (e.key === 'Escape') cancelInlineEdit();
+                              }}
+                            />
+                            <button onClick={() => handleInlineSave(row)} className="p-1 rounded hover:bg-teal/10 text-teal" title="Save">
+                              <Check size={13} />
+                            </button>
+                            <button onClick={cancelInlineEdit} className="p-1 rounded hover:bg-surface text-muted hover:text-white" title="Cancel">
+                              <X size={13} />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="font-mono text-muted">{fmt(row.target_saving || row.target)}</span>
+                        )}
+                      </td>
                       <td className={`py-3 px-3 font-mono ${ok ? 'text-teal' : 'text-rose'}`}>{fmt(row.actual_saving)}</td>
                       <td className="py-3 px-3 font-mono text-white">{fmt(row.corpus)}</td>
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => openEdit(row)} className="p-1.5 rounded hover:bg-surface text-muted hover:text-white" title="Edit">
+                          <button onClick={() => startInlineEdit(row)} className="p-1.5 rounded hover:bg-surface text-muted hover:text-white" title="Edit target saving">
                             <Pencil size={13} />
                           </button>
                           <button onClick={() => handleDelete(row)} className="p-1.5 rounded hover:bg-rose/10 text-muted hover:text-rose" title="Delete">
@@ -697,7 +743,7 @@ export default function Cashflow() {
           persons={persons.length ? persons : [currentPerson]}
           editRow={modal === 'add' ? null : modal}
           onClose={() => setModal(null)}
-          onSaved={() => { setModal(null); load(); setActiveTab('charts'); }}
+          onSaved={() => { setModal(null); load(); }}
         />
       )}
     </div>
