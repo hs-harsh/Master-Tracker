@@ -175,10 +175,10 @@ function OperationsTable({ operations, setOperations, type }) {
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-border bg-surface/60">
-            <th className="text-left py-2.5 px-3 text-muted font-display uppercase tracking-wider whitespace-nowrap">Action</th>
-            <th className="text-left py-2.5 px-3 text-muted font-display uppercase tracking-wider whitespace-nowrap">Entry</th>
-            <th className="text-left py-2.5 px-3 text-muted font-display uppercase tracking-wider whitespace-nowrap">Changes</th>
-            <th className="w-8" />
+            <th className="text-left py-2 px-3 text-muted font-display uppercase tracking-wider whitespace-nowrap w-16">Op</th>
+            <th className="text-left py-2 px-3 text-muted font-display uppercase tracking-wider">Entry</th>
+            <th className="text-left py-2 px-3 text-muted font-display uppercase tracking-wider w-72">Changes</th>
+            <th className="w-7" />
           </tr>
         </thead>
         <tbody>
@@ -186,36 +186,37 @@ function OperationsTable({ operations, setOperations, type }) {
             const orig = op.original;
             return (
               <tr key={i} className="border-b border-border/50 hover:bg-surface/40 align-top">
-                {/* Action badge */}
+                {/* Action badge — compact dot + label */}
                 <td className="py-2.5 px-3 whitespace-nowrap">
                   {op.action === 'delete'
-                    ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-rose/15 text-rose">DELETE</span>
-                    : <span className="px-2 py-0.5 rounded text-xs font-bold bg-accent/15 text-accent">UPDATE</span>
+                    ? <span className="inline-flex items-center gap-1 text-rose/80 text-xs font-medium"><span className="w-1.5 h-1.5 rounded-full bg-rose/70 shrink-0" />del</span>
+                    : <span className="inline-flex items-center gap-1 text-accent/80 text-xs font-medium"><span className="w-1.5 h-1.5 rounded-full bg-accent/70 shrink-0" />upd</span>
                   }
                 </td>
 
-                {/* Original entry summary */}
+                {/* Original entry summary — gets the extra width */}
                 <td className="py-2.5 px-3">
-                  <p className="font-mono text-white">{fmt(orig?.amount) !== '—' ? `₹${Number(orig.amount).toLocaleString('en-IN')}` : '—'}</p>
-                  <p className="text-muted mt-0.5">
+                  <span className="font-mono text-white text-xs">{fmt(orig?.amount) !== '—' ? `₹${Number(orig.amount).toLocaleString('en-IN')}` : '—'}</span>
+                  <span className="text-muted mx-1.5">·</span>
+                  <span className="text-muted text-xs">
                     {type === 'transactions'
                       ? `${orig?.type} · ${orig?.account} · ${orig?.date}`
                       : `${orig?.instrument || orig?.asset_class} · ${orig?.account} · ${orig?.date}`
                     }
-                  </p>
-                  {orig?.remark && <p className="text-muted/70 mt-0.5 truncate max-w-[180px]">{orig.remark}</p>}
-                  {orig?.goal && <p className="text-muted/70 mt-0.5">Goal: {orig.goal}</p>}
+                  </span>
+                  {orig?.remark && <p className="text-muted/60 mt-0.5 truncate max-w-xs">{orig.remark}</p>}
+                  {orig?.goal  && <p className="text-muted/60 mt-0.5">Goal: {orig.goal}</p>}
                 </td>
 
-                {/* Changes (editable for updates) */}
-                <td className="py-2 px-3 min-w-[200px]">
+                {/* Changes — compact, fixed width */}
+                <td className="py-2 px-3 w-72">
                   {op.action === 'delete' ? (
-                    <span className="text-muted italic">Entry will be deleted</span>
+                    <span className="text-muted/60 italic text-xs">will be deleted</span>
                   ) : (
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                       {Object.entries(op.changes || {}).map(([field, val]) => (
-                        <div key={field} className="flex items-center gap-2">
-                          <span className="text-muted w-20 shrink-0 capitalize">{field.replace(/_/g, ' ')}:</span>
+                        <div key={field} className="flex items-center gap-1.5">
+                          <span className="text-muted/70 w-14 shrink-0 capitalize text-xs">{field.replace(/_/g, ' ')}:</span>
                           {field === 'type' ? (
                             <EditCell value={val} onChange={v => updateChange(i, field, v)} options={TX_TYPES} />
                           ) : field === 'asset_class' ? (
@@ -229,7 +230,7 @@ function OperationsTable({ operations, setOperations, type }) {
                           ) : (
                             <EditCell value={val ?? ''} onChange={v => updateChange(i, field, v)} />
                           )}
-                          <span className="text-muted/50 text-xs shrink-0">(was: {fmt(orig?.[field])})</span>
+                          <span className="text-muted/40 text-xs shrink-0">{fmt(orig?.[field])}</span>
                         </div>
                       ))}
                     </div>
@@ -237,9 +238,9 @@ function OperationsTable({ operations, setOperations, type }) {
                 </td>
 
                 {/* Remove from list */}
-                <td className="py-2.5 px-3">
-                  <button onClick={() => remove(i)} className="p-1 rounded hover:bg-rose/10 text-muted hover:text-rose transition-colors" title="Remove this operation">
-                    <X size={12} />
+                <td className="py-2.5 px-2">
+                  <button onClick={() => remove(i)} className="p-1 rounded hover:bg-rose/10 text-muted/40 hover:text-rose transition-colors" title="Remove">
+                    <X size={11} />
                   </button>
                 </td>
               </tr>
