@@ -142,13 +142,18 @@ ${userText}`;
 
 // POST /api/ai/edit — update or delete existing transactions / investments
 router.post('/edit', auth, async (req, res) => {
+  const t0 = Date.now();
+  const tag = '[AI edit]';
   const { prompt, type, persons = [], today } = req.body;
+  console.log(`${tag} REQUEST received — type=${type} prompt="${prompt?.slice(0,60)}"`);
+
   if (!prompt?.trim()) return res.status(400).json({ error: 'Prompt is required' });
   if (!['transactions', 'investments'].includes(type)) {
     return res.status(400).json({ error: 'type must be transactions or investments' });
   }
 
   const key = await getApiKey();
+  console.log(`${tag} API key fetched — ${Date.now()-t0}ms — key present=${!!key}`);
   if (!key) return res.status(500).json({ error: 'Anthropic API key not set. Add it in Settings → Expense Analyser.' });
 
   const todayStr = today || new Date().toISOString().slice(0, 10);
@@ -171,6 +176,7 @@ router.post('/edit', auth, async (req, res) => {
       );
       existingEntries = rows;
     }
+    console.log(`${tag} DB query done — ${Date.now()-t0}ms — ${existingEntries.length} rows`);
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch entries: ' + err.message });
   }
@@ -183,9 +189,13 @@ router.post('/edit', auth, async (req, res) => {
     ? buildTxEditPrompt(prompt.trim(), existingEntries, persons, todayStr)
     : buildInvEditPrompt(prompt.trim(), existingEntries, persons, todayStr);
 
+  console.log(`${tag} Calling Anthropic API — model=claude-sonnet-4-20250514 — ${Date.now()-t0}ms`);
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => {
+      console.error(`${tag} TIMEOUT — AbortController fired after 30s`);
+      controller.abort();
+    }, 30000);
     let r;
     try {
       r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -196,7 +206,7 @@ router.post('/edit', auth, async (req, res) => {
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-5',
+          model: 'claude-sonnet-4-20250514',
           max_tokens: 2048,
           messages: [{ role: 'user', content: systemPrompt }],
         }),
@@ -205,12 +215,16 @@ router.post('/edit', auth, async (req, res) => {
     } finally {
       clearTimeout(timeout);
     }
+    console.log(`${tag} Anthropic responded — status=${r.status} — ${Date.now()-t0}ms`);
 
     const data = await r.json();
-    if (!r.ok) return res.status(r.status).json({ error: data?.error?.message || 'Claude API error' });
+    if (!r.ok) {
+      console.error(`${tag} API error: ${JSON.stringify(data?.error)}`);
+      return res.status(r.status).json({ error: data?.error?.message || 'Claude API error' });
+    }
 
     const text = (data.content || []).map(c => c.text || '').join('').trim();
-    console.log('[AI edit] raw response (first 400):', text.slice(0, 400));
+    console.log(`${tag} Response parsed — ${Date.now()-t0}ms — first 200: ${text.slice(0, 200)}`);
 
     const cleaned = text.replace(/```json\s*|```\s*/g, '').trim();
     const match = cleaned.match(/\[[\s\S]*\]/);
@@ -246,13 +260,18 @@ router.post('/edit', auth, async (req, res) => {
 
 // POST /api/ai/parse — supports type: transactions | investments | cashflow
 router.post('/parse', auth, async (req, res) => {
+  const t0 = Date.now();
+  const tag = '[AI parse]';
   const { prompt, type, persons = [], today } = req.body;
+  console.log(`${tag} REQUEST received — type=${type} prompt="${prompt?.slice(0,60)}"`);
+
   if (!prompt?.trim()) return res.status(400).json({ error: 'Prompt is required' });
   if (!['transactions', 'investments', 'cashflow'].includes(type)) {
     return res.status(400).json({ error: 'type must be transactions, investments, or cashflow' });
   }
 
   const key = await getApiKey();
+  console.log(`${tag} API key fetched — ${Date.now()-t0}ms — key present=${!!key}`);
   if (!key) return res.status(500).json({ error: 'Anthropic API key not set. Add it in Settings → Expense Analyser.' });
 
   const todayStr = today || new Date().toISOString().slice(0, 10);
@@ -261,9 +280,13 @@ router.post('/parse', auth, async (req, res) => {
     type === 'cashflow'     ? buildCashflowPrompt(prompt.trim(), persons, todayStr) :
                               buildInvPrompt(prompt.trim(), persons, todayStr);
 
+  console.log(`${tag} Calling Anthropic API — model=claude-sonnet-4-20250514 — ${Date.now()-t0}ms`);
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => {
+      console.error(`${tag} TIMEOUT — AbortController fired after 30s`);
+      controller.abort();
+    }, 30000);
     let r;
     try {
       r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -274,7 +297,7 @@ router.post('/parse', auth, async (req, res) => {
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-5',
+          model: 'claude-sonnet-4-20250514',
           max_tokens: 4096,   // enough for 200+ row tables
           messages: [{ role: 'user', content: systemPrompt }],
         }),
@@ -283,12 +306,16 @@ router.post('/parse', auth, async (req, res) => {
     } finally {
       clearTimeout(timeout);
     }
+    console.log(`${tag} Anthropic responded — status=${r.status} — ${Date.now()-t0}ms`);
 
     const data = await r.json();
-    if (!r.ok) return res.status(r.status).json({ error: data?.error?.message || 'Claude API error' });
+    if (!r.ok) {
+      console.error(`${tag} API error: ${JSON.stringify(data?.error)}`);
+      return res.status(r.status).json({ error: data?.error?.message || 'Claude API error' });
+    }
 
     const text = (data.content || []).map(c => c.text || '').join('').trim();
-    console.log('[AI parse] raw response (first 400):', text.slice(0, 400));
+    console.log(`${tag} Response parsed — ${Date.now()-t0}ms — first 200: ${text.slice(0, 200)}`);
 
     // Strip markdown fences, grab first [...] block
     const cleaned = text.replace(/```json\s*|```\s*/g, '').trim();
