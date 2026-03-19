@@ -218,7 +218,7 @@ export default function Investments() {
       if (op.action === 'delete') {
         await api.delete(`/investments/${op.id}`);
       } else if (op.action === 'update' && op.changes) {
-        await api.put(`/investments/${op.id}`, op.changes);
+        await api.put(`/investments/${op.id}`, { ...op.original, ...op.changes });
       }
     }
     load();

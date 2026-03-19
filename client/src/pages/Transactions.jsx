@@ -118,7 +118,7 @@ export default function Transactions() {
       if (op.action === 'delete') {
         await api.delete(`/transactions/${op.id}`);
       } else if (op.action === 'update' && op.changes) {
-        await api.put(`/transactions/${op.id}`, op.changes);
+        await api.put(`/transactions/${op.id}`, { ...op.original, ...op.changes });
       }
     }
     load();
