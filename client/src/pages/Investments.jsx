@@ -147,17 +147,19 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
 }
 
 export default function Investments() {
-  const { personName, persons } = useAuth();
+  const { personName, persons, activePerson, setActivePerson, bumpDataVersion } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [filters, setFilters] = useState({ account: '', goal: '', asset_class: '', search: '' });
+  const [filters, setFilters] = useState({ goal: '', asset_class: '', search: '' });
+
+  const currentPerson = activePerson || personName;
 
   const load = () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (filters.account) params.append('account', filters.account);
+    if (currentPerson) params.append('account', currentPerson);
     if (filters.goal) params.append('goal', filters.goal);
     if (filters.asset_class) params.append('asset_class', filters.asset_class);
     api
@@ -169,7 +171,7 @@ export default function Investments() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.account, filters.goal, filters.asset_class]);
+  }, [currentPerson, filters.goal, filters.asset_class]);
 
   const handleSave = async form => {
     try {
@@ -181,6 +183,7 @@ export default function Investments() {
       setShowForm(false);
       setEditing(null);
       load();
+      bumpDataVersion();
     } catch (err) {
       alert(err.response?.data?.error || 'Save failed');
     }
@@ -190,6 +193,7 @@ export default function Investments() {
     if (!confirm('Delete this investment?')) return;
     await api.delete(`/investments/${id}`);
     load();
+    bumpDataVersion();
   };
 
   const handleAiAdd = async (entries) => {
@@ -206,6 +210,7 @@ export default function Investments() {
       });
     }
     load();
+    bumpDataVersion();
   };
 
   const handleAiEdit = async (operations) => {
@@ -217,6 +222,7 @@ export default function Investments() {
       }
     }
     load();
+    bumpDataVersion();
   };
 
   const filtered = data.filter(inv => {
@@ -273,6 +279,18 @@ export default function Investments() {
         />
       )}
 
+      {/* Person tabs */}
+      {persons.length > 1 && (
+        <div className="flex items-center gap-2">
+          {persons.map(p => (
+            <button key={p} onClick={() => setActivePerson(p)}
+              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${currentPerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-48 max-w-xs">
@@ -287,14 +305,6 @@ export default function Investments() {
             onChange={e => setFilters(p => ({ ...p, search: e.target.value }))}
           />
         </div>
-        <select
-          className="input w-32"
-          value={filters.account}
-          onChange={e => setFilters(p => ({ ...p, account: e.target.value }))}
-        >
-          <option value="">All</option>
-          {persons.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
         <select
           className="input w-40"
           value={filters.goal}
@@ -315,9 +325,9 @@ export default function Investments() {
             <option key={a}>{a}</option>
           ))}
         </select>
-        {(filters.account || filters.goal || filters.asset_class || filters.search) && (
+        {(filters.goal || filters.asset_class || filters.search) && (
           <button
-            onClick={() => setFilters({ account: '', goal: '', asset_class: '', search: '' })}
+            onClick={() => setFilters({ goal: '', asset_class: '', search: '' })}
             className="text-muted hover:text-white text-xs flex items-center gap-1"
           >
             <X size={12} /> Clear

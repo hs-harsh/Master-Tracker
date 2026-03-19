@@ -60,22 +60,24 @@ function TransactionForm({ initial, defaultAccount, persons, onSave, onCancel })
 }
 
 export default function Transactions() {
-  const { personName, persons } = useAuth();
+  const { personName, persons, activePerson, setActivePerson, bumpDataVersion } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [filters, setFilters] = useState({ account: '', type: '', search: '' });
+  const [filters, setFilters] = useState({ type: '', search: '' });
+
+  const currentPerson = activePerson || personName;
 
   const load = () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (filters.account) params.append('account', filters.account);
+    if (currentPerson) params.append('account', currentPerson);
     if (filters.type) params.append('type', filters.type);
     api.get(`/transactions?${params}`).then(r => setData(r.data)).finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [filters.account, filters.type]);
+  useEffect(() => { load(); }, [currentPerson, filters.type]);
 
   const handleSave = async (form) => {
     try {
@@ -84,6 +86,7 @@ export default function Transactions() {
       setShowForm(false);
       setEditing(null);
       load();
+      bumpDataVersion();
     } catch (err) {
       alert(err.response?.data?.error || 'Save failed');
     }
@@ -93,6 +96,7 @@ export default function Transactions() {
     if (!confirm('Delete this transaction?')) return;
     await api.delete(`/transactions/${id}`);
     load();
+    bumpDataVersion();
   };
 
   const handleAiAdd = async (entries) => {
@@ -106,6 +110,7 @@ export default function Transactions() {
       });
     }
     load();
+    bumpDataVersion();
   };
 
   const handleAiEdit = async (operations) => {
@@ -117,6 +122,7 @@ export default function Transactions() {
       }
     }
     load();
+    bumpDataVersion();
   };
 
   const handleAiDelete = async (operations) => {
@@ -124,6 +130,7 @@ export default function Transactions() {
       await api.delete(`/transactions/${op.id}`);
     }
     load();
+    bumpDataVersion();
   };
 
   const filtered = data.filter(t =>
@@ -161,6 +168,18 @@ export default function Transactions() {
         />
       )}
 
+      {/* Person tabs */}
+      {persons.length > 1 && (
+        <div className="flex items-center gap-2">
+          {persons.map(p => (
+            <button key={p} onClick={() => setActivePerson(p)}
+              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${currentPerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-48 max-w-xs">
@@ -172,16 +191,12 @@ export default function Transactions() {
             onChange={e => setFilters(p => ({...p, search: e.target.value}))}
           />
         </div>
-        <select className="input w-32" value={filters.account} onChange={e => setFilters(p => ({...p, account: e.target.value}))}>
-          <option value="">All</option>
-          {persons.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
         <select className="input w-36" value={filters.type} onChange={e => setFilters(p => ({...p, type: e.target.value}))}>
           <option value="">All Types</option>
           {TYPES.map(t => <option key={t}>{t}</option>)}
         </select>
-        {(filters.account || filters.type || filters.search) && (
-          <button onClick={() => setFilters({ account: '', type: '', search: '' })} className="text-muted hover:text-white text-xs flex items-center gap-1">
+        {(filters.type || filters.search) && (
+          <button onClick={() => setFilters({ type: '', search: '' })} className="text-muted hover:text-white text-xs flex items-center gap-1">
             <X size={12} /> Clear
           </button>
         )}

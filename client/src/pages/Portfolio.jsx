@@ -25,23 +25,18 @@ const riskForAsset = asset => {
 };
 
 export default function Portfolio() {
-  const { personName, persons } = useAuth();
-  const [selectedPerson, setSelectedPerson] = useState('');
+  const { personName, persons, activePerson, setActivePerson, dataVersion } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [goalFilter, setGoalFilter] = useState('');
   const [brokerFilter, setBrokerFilter] = useState('');
 
-  useEffect(() => {
-    if (persons.length && !selectedPerson) setSelectedPerson(persons[0]);
-  }, [persons]);
-
-  const activePerson = selectedPerson || personName;
+  const currentPerson = activePerson || personName;
 
   const load = () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (activePerson) params.set('account', activePerson);
+    if (currentPerson) params.set('account', currentPerson);
     api
       .get(`/investments?${params}`)
       .then(r => setData(r.data))
@@ -50,7 +45,7 @@ export default function Portfolio() {
 
   useEffect(() => {
     load();
-  }, [activePerson]);
+  }, [currentPerson, dataVersion]);
 
   const goals = useMemo(
     () => Array.from(new Set(data.map(d => d.goal))).sort(),
@@ -151,9 +146,9 @@ export default function Portfolio() {
               {persons.map(p => (
                 <button
                   key={p}
-                  onClick={() => setSelectedPerson(p)}
+                  onClick={() => setActivePerson(p)}
                   className={`px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
-                    activePerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'
+                    currentPerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'
                   }`}
                 >
                   {p}

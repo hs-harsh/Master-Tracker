@@ -65,7 +65,7 @@ function CorpusChart({ data }) {
     cumIncome += (Number(r.income) || 0) + (Number(r.other_income) || 0);
     return {
       month:            fmtDate(r.month),
-      'Planned Corpus': cumPlan,
+      'Target Corpus': cumPlan,
       'Actual Corpus':  Math.max(0, (Number(r.corpus) || 0) - baseCorpus),
       'Cumul. Income':  cumIncome,
     };
@@ -76,7 +76,7 @@ function CorpusChart({ data }) {
       <div className="flex items-start justify-between flex-wrap gap-2 mb-4">
         <div>
           <p className="stat-label mb-0.5">Corpus &amp; Cumulative Income</p>
-          <p className="text-xs text-muted">Planned corpus target vs actual savings vs total income earned</p>
+          <p className="text-xs text-muted">Target corpus vs actual savings vs total income earned</p>
         </div>
         <RangeBar range={range} setRange={setRange} />
       </div>
@@ -101,11 +101,11 @@ function CorpusChart({ data }) {
           <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
           <Tooltip {...TT} />
           <Area type="monotone" dataKey="Cumul. Income"  stroke="#f0c040" strokeWidth={1.5} fill="url(#gInc)" dot={false} strokeDasharray="4 2" />
-          <Area type="monotone" dataKey="Planned Corpus" stroke="#6366f1" strokeWidth={1.8} fill="url(#gPlan)" dot={false} strokeDasharray="5 3" />
+          <Area type="monotone" dataKey="Target Corpus" stroke="#6366f1" strokeWidth={1.8} fill="url(#gPlan)" dot={false} strokeDasharray="5 3" />
           <Area type="monotone" dataKey="Actual Corpus"  stroke="#2dd4bf" strokeWidth={2.5} fill="url(#gAct)"  dot={false} />
         </AreaChart>
       </ResponsiveContainer>
-      <Leg items={[['Cumul. Income', '#f0c040', true], ['Planned Corpus', '#6366f1', true], ['Actual Corpus', '#2dd4bf']]} />
+      <Leg items={[['Cumul. Income', '#f0c040', true], ['Target Corpus', '#6366f1', true], ['Actual Corpus', '#2dd4bf']]} />
     </div>
   );
 }
@@ -128,7 +128,7 @@ function SavingChart({ data }) {
       'Fixed Costs':   fixed,
       'Special Exp':   special,
       'Actual Saving': actual,
-      'Ideal Saving':  ideal,
+      'Target Saving': ideal,
       _total:          fixed + special + actual,
     };
   });
@@ -145,7 +145,7 @@ function SavingChart({ data }) {
   // Custom tooltip to also show total income
   const CustomTT = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
-    const total = payload.reduce((s, p) => p.dataKey !== 'Ideal Saving' ? s + (p.value || 0) : s, 0);
+    const total = payload.reduce((s, p) => p.dataKey !== 'Target Saving' ? s + (p.value || 0) : s, 0);
     return (
       <div style={TT.contentStyle} className="text-xs space-y-1 p-2">
         <p style={TT.labelStyle}>{label}</p>
@@ -197,10 +197,10 @@ function SavingChart({ data }) {
           <Bar dataKey="Fixed Costs"   stackId="s" fill="#a78bfa" radius={[0,0,0,0]} />
           <Bar dataKey="Special Exp"   stackId="s" fill="#fb923c" radius={[0,0,0,0]} />
           <Bar dataKey="Actual Saving" stackId="s" fill="#2dd4bf" radius={[3,3,0,0]} />
-          <Line type="monotone" dataKey="Ideal Saving" stroke="#6366f1" strokeWidth={2} dot={false} strokeDasharray="5 3" />
+          <Line type="monotone" dataKey="Target Saving" stroke="#6366f1" strokeWidth={2} dot={false} strokeDasharray="5 3" />
         </ComposedChart>
       </ResponsiveContainer>
-      <Leg items={[['Fixed (Regular+EMI)', '#a78bfa'], ['Special Expenses', '#fb923c'], ['Actual Saving', '#2dd4bf'], ['Ideal Saving', '#6366f1', true]]} />
+      <Leg items={[['Fixed (Regular+EMI)', '#a78bfa'], ['Special Expenses', '#fb923c'], ['Actual Saving', '#2dd4bf'], ['Target Saving', '#6366f1', true]]} />
     </div>
   );
 }
@@ -391,7 +391,7 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
           <div>
             <p className="text-xs text-muted uppercase tracking-wider mb-2 font-display">Saving Target</p>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Ideal Saving" name="ideal_saving" form={form} setForm={setForm}
+              <Field label="Target Saving" name="ideal_saving" form={form} setForm={setForm}
                 hint={suggestedIdeal > 0 ? `Income − Regular − EMI = ${fmt(suggestedIdeal)}` : undefined} />
               <div className="flex flex-col justify-end">
                 <label className="label">Actual Saving (auto)</label>
@@ -407,7 +407,7 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
             <p className="text-xs text-muted uppercase tracking-wider mb-2 font-display">Fixed Expenses</p>
             <p className="text-xs text-muted mb-2">
               Without special expenses (Major / Non-Recurring / Trips), Actual Saving = Income − Regular − EMI.
-              Set Ideal Saving equal to this for a balanced budget.
+              Set Target Saving equal to this for a balanced budget.
             </p>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Regular Expense" name="regular_expense" form={form} setForm={setForm} />
@@ -457,26 +457,21 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function Cashflow() {
-  const { personName, persons } = useAuth();
-  const [person, setPerson]     = useState('');
-  const [data, setData]         = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const { personName, persons, activePerson, setActivePerson, dataVersion } = useAuth();
+  const [data, setData]           = useState([]);
+  const [loading, setLoading]     = useState(true);
   const [activeTab, setActiveTab] = useState('charts');
-  const [modal, setModal]       = useState(null);
+  const [modal, setModal]         = useState(null);
 
-  useEffect(() => {
-    if (persons.length && !person) setPerson(persons[0]);
-  }, [persons]);
-
-  const activePerson = person || personName;
+  const currentPerson = activePerson || personName;
 
   const load = useCallback(() => {
-    if (!activePerson) return;
+    if (!currentPerson) return;
     setLoading(true);
-    api.get(`/cashflow?person=${activePerson}`)
+    api.get(`/cashflow?person=${currentPerson}`)
       .then(r => setData(r.data))
       .finally(() => setLoading(false));
-  }, [activePerson]);
+  }, [currentPerson, dataVersion]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -491,7 +486,7 @@ export default function Cashflow() {
       const actual = (Number(e.income)||0) + (Number(e.other_income)||0) - net;
       await api.post('/cashflow', {
         month:                 e.month,
-        person:                e.person || activePerson,
+        person:                e.person || currentPerson,
         income:                Number(e.income)               || 0,
         other_income:          Number(e.other_income)         || 0,
         major_expense:         Number(e.major_expense)        || 0,
@@ -529,8 +524,8 @@ export default function Cashflow() {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {persons.length > 1 && persons.map(p => (
-            <button key={p} onClick={() => setPerson(p)}
-              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${activePerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
+            <button key={p} onClick={() => setActivePerson(p)}
+              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${currentPerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
               {p}
             </button>
           ))}
@@ -548,7 +543,7 @@ export default function Cashflow() {
         </div>
       </div>
 
-      <AiEntryPanel type="cashflow" persons={persons.length ? persons : [activePerson]} onAdd={handleAiAdd} />
+      <AiEntryPanel type="cashflow" persons={persons.length ? persons : [currentPerson]} onAdd={handleAiAdd} />
 
       {loading && <div className="py-16 text-center text-muted text-sm">Loading…</div>}
 
@@ -577,7 +572,7 @@ export default function Cashflow() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  {['Month','Income','Other Inc','Major','Non-Rec','Regular','EMI','Trips','Net Exp','Ideal Save','Actual Save','Corpus',''].map(h => (
+                  {['Month','Income','Other Inc','Major','Non-Rec','Regular','EMI','Trips','Net Exp','Target Save','Actual Save','Corpus',''].map(h => (
                     <th key={h} className="text-left py-3 px-3 text-muted font-display text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -621,7 +616,7 @@ export default function Cashflow() {
 
       {modal && (
         <MonthModal
-          persons={persons.length ? persons : [activePerson]}
+          persons={persons.length ? persons : [currentPerson]}
           editRow={modal === 'add' ? null : modal}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); load(); setActiveTab('charts'); }}

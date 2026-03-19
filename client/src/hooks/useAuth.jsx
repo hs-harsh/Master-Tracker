@@ -13,6 +13,11 @@ export function AuthProvider({ children }) {
   const [persons, setPersons]                   = useState([]);
   // null = not yet checked; true/false = known
   const [onboardingCompleted, setOnboardingCompleted] = useState(null);
+  // Global person selection shared across all tabs
+  const [activePerson, setActivePerson]         = useState('');
+  // Incremented whenever transactions/investments are mutated — triggers Cashflow/Portfolio refresh
+  const [dataVersion, setDataVersion]           = useState(0);
+  const bumpDataVersion                         = () => setDataVersion(v => v + 1);
 
   const decoded    = token ? parseJwt(token) : {};
   const personName = decoded.personName || '';
@@ -44,9 +49,15 @@ export function AuthProvider({ children }) {
       checkOnboarding();
     } else {
       setPersons([]);
+      setActivePerson('');
       setOnboardingCompleted(null);
     }
   }, [token, fetchPersons, checkOnboarding]);
+
+  // Auto-select first person when persons list loads
+  useEffect(() => {
+    if (persons.length && !activePerson) setActivePerson(persons[0]);
+  }, [persons]);
 
   const _setToken = (t) => {
     if (t) localStorage.setItem('token', t);
@@ -93,6 +104,8 @@ export function AuthProvider({ children }) {
       token, login, register, sendOtp, verifyOtp, logout,
       isAuth: !!token, personName, isAdmin,
       persons, fetchPersons,
+      activePerson, setActivePerson,
+      dataVersion, bumpDataVersion,
       onboardingCompleted, completeOnboarding,
     }}>
       {children}
