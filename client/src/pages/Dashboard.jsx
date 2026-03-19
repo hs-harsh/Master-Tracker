@@ -95,8 +95,17 @@ function Leg({ items }) {
   );
 }
 
+// ── Range helpers ─────────────────────────────────────────────────────────────
+const RANGES = ['3M', '6M', '1Y', 'All'];
+function sliceByRange(data, range) {
+  if (range === '3M')  return data.slice(-3);
+  if (range === '6M')  return data.slice(-6);
+  if (range === '1Y')  return data.slice(-12);
+  return data;
+}
+
 // ── Build alerts ──────────────────────────────────────────────────────────────
-function buildAlerts(cashflowData, investments) {
+function buildAlerts(cashflowData, investments, corpusGap) {
   const alerts = [];
   const now = new Date();
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -121,12 +130,12 @@ function buildAlerts(cashflowData, investments) {
       const gap = target - actual;
       alerts.push({
         level:   'warning',
-        message: `${fmtDate(latest.month)}: saving ₹${fmt(actual)} is ₹${fmt(gap)} short of target ₹${fmt(target)}.`,
+        message: `${fmtDate(latest.month)}: saving ${fmt(actual)} is ${fmt(gap)} short of target ${fmt(target)}.`,
       });
     } else if (target > 0 && actual >= target) {
       alerts.push({
         level:   'info',
-        message: `${fmtDate(latest.month)}: on track — saved ₹${fmt(actual)}, target ₹${fmt(target)}. 🎯`,
+        message: `${fmtDate(latest.month)}: on track — saved ${fmt(actual)}, target ${fmt(target)}. 🎯`,
       });
     }
   }
@@ -151,12 +160,27 @@ function buildAlerts(cashflowData, investments) {
     }
   }
 
+  // 4. Undeployed cash (corpus > total invested by a meaningful amount)
+  if (corpusGap != null && corpusGap > 50000) {
+    const latestInc = latest
+      ? Number(latest.income || 0) + Number(latest.other_income || 0)
+      : 0;
+    const months = latestInc > 0 ? (corpusGap / latestInc).toFixed(1) : null;
+    alerts.push({
+      level:   'warning',
+      message: `${fmt(corpusGap)} of corpus is sitting uninvested${months ? ` (~${months} months of income)` : ''}. Consider deploying it.`,
+      cta:     'Portfolio',
+      href:    '/portfolio',
+    });
+  }
+
   return alerts;
 }
 
 // ── Corpus vs Invested chart ──────────────────────────────────────────────────
-function CorpusVsInvestedChart({ cashflowData, investments }) {
-  // Build cumulative investments by month
+function CorpusVsInvestedChart({ cashflowData, investments, allCashflowData }) {
+  // Build cumulative investments by month — needs to be keyed against ALL history,
+  // but we only display the sliced window.
   const invByMonth = {};
   (investments || []).forEach(inv => {
     const mk = inv.date.slice(0, 7);
@@ -164,14 +188,22 @@ function CorpusVsInvestedChart({ cashflowData, investments }) {
     invByMonth[mk] = (invByMonth[mk] || 0) + a;
   });
 
+  // Walk the full dataset to build accurate cumulative values, then keep the slice.
+  const fullBase = allCashflowData || cashflowData;
   let cumInv = 0;
-  const data = cashflowData.map(r => {
+  const cumByMonth = {};
+  fullBase.forEach(r => {
     const mk = r.month?.slice(0, 7) || '';
     cumInv += invByMonth[mk] || 0;
+    cumByMonth[mk] = cumInv;
+  });
+
+  const data = cashflowData.map(r => {
+    const mk = r.month?.slice(0, 7) || '';
     return {
       month:    fmtDate(r.month),
       Corpus:   Math.max(0, Number(r.corpus || 0)),
-      Invested: Math.max(0, cumInv),
+      Invested: Math.max(0, cumByMonth[mk] || 0),
     };
   });
 
@@ -214,7 +246,7 @@ function CorpusVsInvestedChart({ cashflowData, investments }) {
 
 // ── Savings Rate chart ────────────────────────────────────────────────────────
 function SavingsRateChart({ cashflowData }) {
-  const data = cashflowData.slice(-12).map(r => {
+  const data = cashflowData.map(r => {
     const inc  = Number(r.income || 0) + Number(r.other_income || 0);
     const rate = inc > 0 ? Math.max(0, (Number(r.actual_saving || 0) / inc) * 100) : 0;
     const tgt  = inc > 0 && Number(r.target_saving || 0) > 0
@@ -256,8 +288,25 @@ function SavingsRateChart({ cashflowData }) {
   );
 }
 
+// ── Range pill selector ───────────────────────────────────────────────────────
+function RangePills({ range, setRange }) {
+  return (
+    <div className="flex gap-1 p-0.5 rounded-lg"
+      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      {RANGES.map(r => (
+        <button key={r} onClick={() => setRange(r)}
+          className={`px-3 py-1 rounded-md text-xs font-mono font-semibold transition-all
+            ${range === r ? 'bg-accent text-ink shadow-glow-gold' : 'text-muted hover:text-white'}`}>
+          {r}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── Full person panel ─────────────────────────────────────────────────────────
 function PersonPanel({ person, cashflowData, investments }) {
+  const [range, setRange] = useState('1Y');
   const color   = colorFor(person);
   const latest  = cashflowData[cashflowData.length - 1];
   const prev    = cashflowData[cashflowData.length - 2];
@@ -279,9 +328,12 @@ function PersonPanel({ person, cashflowData, investments }) {
     ? (Number(latest?.actual_saving || 0) / latestIncome * 100).toFixed(1)
     : '—';
 
-  const alerts = buildAlerts(cashflowData, investments);
+  const alerts = buildAlerts(cashflowData, investments, corpusGap);
 
-  const cashflowChartData = cashflowData.slice(-12).map(r => ({
+  // Sliced data for charts (range-aware)
+  const slicedCashflow = sliceByRange(cashflowData, range);
+
+  const cashflowChartData = slicedCashflow.map(r => ({
     month:   fmtDate(r.month),
     Income:  Number(r.income || 0) + Number(r.other_income || 0),
     Expense: Number(r.net_expense || 0),
@@ -356,15 +408,21 @@ function PersonPanel({ person, cashflowData, investments }) {
         />
       </div>
 
-      {/* Corpus vs Invested + Savings Rate */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 fade-up">
-        <CorpusVsInvestedChart cashflowData={cashflowData} investments={investments} />
-        <SavingsRateChart cashflowData={cashflowData} />
+      {/* Charts with range selector */}
+      <div className="flex items-center justify-between fade-up">
+        <p className="text-xs text-muted uppercase tracking-widest font-mono">Trend charts</p>
+        <RangePills range={range} setRange={setRange} />
       </div>
 
-      {/* Cashflow 12m trend */}
+      {/* Corpus vs Invested + Savings Rate */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 fade-up">
+        <CorpusVsInvestedChart cashflowData={slicedCashflow} investments={investments} allCashflowData={cashflowData} />
+        <SavingsRateChart cashflowData={slicedCashflow} />
+      </div>
+
+      {/* Cashflow trend */}
       <div className="card fade-up">
-        <p className="stat-label mb-4">Cashflow — last 12 months</p>
+        <p className="stat-label mb-4">Cashflow — {range === 'All' ? 'all time' : `last ${range}`}</p>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={cashflowChartData} barGap={4} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
