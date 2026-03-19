@@ -147,7 +147,7 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
 }
 
 export default function Investments() {
-  const { personName, persons, activePerson, setActivePerson, bumpDataVersion } = useAuth();
+  const { personName, persons, activePerson, bumpDataVersion } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -258,12 +258,6 @@ export default function Investments() {
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {persons.length > 1 && persons.map(p => (
-            <button key={p} onClick={() => setActivePerson(p)}
-              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${currentPerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
-              {p}
-            </button>
-          ))}
           <button
             onClick={() => { setEditing(null); setShowForm(true); }}
             className="btn-primary flex items-center gap-2"

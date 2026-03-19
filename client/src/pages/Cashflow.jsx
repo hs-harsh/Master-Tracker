@@ -604,7 +604,7 @@ function DefaultTargetWidget({ persons }) {
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function Cashflow() {
-  const { personName, persons, activePerson, setActivePerson, dataVersion } = useAuth();
+  const { personName, persons, activePerson, dataVersion } = useAuth();
   const [data, setData]           = useState([]);
   const [loading, setLoading]     = useState(true);
   const [activeTab, setActiveTab] = useState('charts');
@@ -691,12 +691,6 @@ export default function Cashflow() {
           <p className="text-muted text-sm mt-0.5">Monthly income, expenses &amp; savings</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {persons.length > 1 && persons.map(p => (
-            <button key={p} onClick={() => setActivePerson(p)}
-              className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${currentPerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
-              {p}
-            </button>
-          ))}
           <button onClick={openAdd} className="btn-primary flex items-center gap-1.5 text-sm">
             <Plus size={14} /> Add Month
           </button>

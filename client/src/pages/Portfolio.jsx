@@ -25,7 +25,7 @@ const riskForAsset = asset => {
 };
 
 export default function Portfolio() {
-  const { personName, persons, activePerson, setActivePerson, dataVersion } = useAuth();
+  const { personName, persons, activePerson, dataVersion } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [goalFilter, setGoalFilter] = useState('');
@@ -141,21 +141,6 @@ export default function Portfolio() {
               View by account and filter by goal
             </p>
           </div>
-          {persons.length > 1 && (
-            <div className="flex gap-1.5">
-              {persons.map(p => (
-                <button
-                  key={p}
-                  onClick={() => setActivePerson(p)}
-                  className={`px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
-                    currentPerson === p ? 'bg-accent text-ink font-bold' : 'btn-ghost'
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
