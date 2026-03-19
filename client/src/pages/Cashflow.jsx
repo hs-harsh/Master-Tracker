@@ -687,7 +687,7 @@ export default function Cashflow() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-white">Cashflow</h1>
+          <h1 className="font-display text-2xl font-bold text-white">{currentPerson ? `${currentPerson}'s Cashflow` : 'Cashflow'}</h1>
           <p className="text-muted text-sm mt-0.5">Monthly income, expenses &amp; savings</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">

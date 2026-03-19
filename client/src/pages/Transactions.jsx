@@ -145,7 +145,7 @@ export default function Transactions() {
     <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-white">Transactions</h1>
+          <h1 className="font-display text-2xl font-bold text-white">{currentPerson ? `${currentPerson}'s Transactions` : 'Transactions'}</h1>
           <p className="text-muted text-sm mt-0.5">All income, major, non-recurring & trip expenses</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
