@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  AreaChart, Area, ComposedChart, BarChart, Bar, Line,
+  AreaChart, Area, ComposedChart, BarChart, Bar, Line, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { Plus, Pencil, Trash2, X, Save, Target, Check } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Target, Check, ArrowLeft } from 'lucide-react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
@@ -25,6 +25,109 @@ function Leg({ items }) {
           {l}
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── Transaction type colours (shared between charts and drill-down) ────────────
+const TYPE_COLORS = {
+  'Income':        '#2dd4bf',
+  'Other Income':  '#34d399',
+  'Major':         '#fb7185',
+  'Non-Recurring': '#f97316',
+  'Regular':       '#facc15',
+  'EMI':           '#a78bfa',
+  'Trips':         '#60a5fa',
+};
+
+// ── Month drill-down ───────────────────────────────────────────────────────────
+function MonthDrillDown({ month, person, onBack }) {
+  const [txs, setTxs]       = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const from = month.slice(0, 7) + '-01';
+    const d    = new Date(from);
+    const to   = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+    setLoading(true);
+    api.get(`/transactions?from=${from}&to=${to}&account=${encodeURIComponent(person)}`)
+      .then(r => setTxs(r.data))
+      .finally(() => setLoading(false));
+  }, [month, person]);
+
+  // Group by type, sorted descending by total
+  const byType = {};
+  txs.forEach(t => { (byType[t.type] = byType[t.type] || []).push(t); });
+  const groups = Object.entries(byType)
+    .map(([type, items]) => ({ type, total: items.reduce((s, t) => s + Number(t.amount), 0), items }))
+    .sort((a, b) => b.total - a.total);
+
+  const barData = groups.map(({ type, total }) => ({ type, amount: total }));
+
+  return (
+    <div className="card space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-xs text-muted hover:text-white transition-colors"
+        >
+          <ArrowLeft size={13} /> Back to overview
+        </button>
+        <span className="text-border">·</span>
+        <p className="text-white font-semibold text-sm">{fmtDate(month)} — Transaction breakdown</p>
+        <span className="ml-auto text-xs text-muted">{txs.length} transaction{txs.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      {loading && <div className="py-8 text-center text-muted text-sm">Loading…</div>}
+
+      {!loading && txs.length === 0 && (
+        <div className="py-8 text-center text-muted text-sm">No transactions found for this month.</div>
+      )}
+
+      {!loading && txs.length > 0 && (
+        <>
+          {/* By-type bar chart */}
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={barData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
+              <XAxis dataKey="type" {...AX} />
+              <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
+              <Tooltip {...TT} />
+              <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
+                {barData.map((entry, i) => (
+                  <Cell key={i} fill={TYPE_COLORS[entry.type] || '#6b7280'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+
+          {/* Grouped transaction list */}
+          <div className="space-y-4">
+            {groups.map(({ type, total, items }) => (
+              <div key={type}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold font-display uppercase tracking-wider"
+                    style={{ color: TYPE_COLORS[type] || '#6b7280' }}>
+                    {type}
+                  </span>
+                  <span className="font-mono text-sm text-white">{fmt(total)}</span>
+                </div>
+                <div className="rounded-lg border border-border overflow-hidden">
+                  {items.map((t, i) => (
+                    <div key={i}
+                      className="flex items-center gap-3 px-3 py-2 text-xs border-b border-border/50 last:border-0 hover:bg-surface/50">
+                      <span className="text-muted w-20 shrink-0">{fmtDate(t.date)}</span>
+                      <span className="text-soft flex-1 truncate">{t.remark || '—'}</span>
+                      <span className="font-mono text-white shrink-0">{fmt(t.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -115,7 +218,7 @@ function CorpusChart({ data }) {
 // ── Chart 2: Income breakdown (stacked) + Ideal Saving line ──────────────────
 // Stacked bar = Fixed (Regular+EMI) + Special (Major+NonRec+Trips) + Actual Saving
 // The gap between Actual Saving and Ideal Saving = drag from special expenses
-function SavingChart({ data }) {
+function SavingChart({ data, onBarClick }) {
   const [range, setRange] = useState('ALL');
 
   const cd = sliceByRange(data, range).map(r => {
@@ -125,6 +228,7 @@ function SavingChart({ data }) {
     const actual  = Math.max(0, income - fixed - special);
     const ideal   = Number(r.target_saving) || 0;
     return {
+      monthRaw:        r.month,
       month:           fmtDate(r.month),
       'Fixed Costs':   fixed,
       'Special Exp':   special,
@@ -163,7 +267,12 @@ function SavingChart({ data }) {
         <RangeBar range={range} setRange={setRange} />
       </div>
       <ResponsiveContainer width="100%" height={220}>
-        <ComposedChart data={cd} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+        <ComposedChart data={cd} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+          style={{ cursor: onBarClick ? 'pointer' : 'default' }}
+          onClick={(chartData) => {
+            const raw = chartData?.activePayload?.[0]?.payload?.monthRaw;
+            if (raw && onBarClick) onBarClick(raw);
+          }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
           <XAxis dataKey="month" {...AX} />
           <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
@@ -180,10 +289,11 @@ function SavingChart({ data }) {
 }
 
 // ── Chart 3: Expense Breakdown ────────────────────────────────────────────────
-function ExpenseChart({ data }) {
+function ExpenseChart({ data, onBarClick }) {
   const [range, setRange] = useState('ALL');
   const EXP = [['Major','#fb7185'],['Non-Recurring','#f97316'],['Regular','#facc15'],['EMI','#a78bfa'],['Trips','#60a5fa']];
   const cd = sliceByRange(data, range).map(r => ({
+    monthRaw:        r.month,
     month:           fmtDate(r.month),
     Major:           Number(r.major_expense) || 0,
     'Non-Recurring': Number(r.non_recurring_expense) || 0,
@@ -192,17 +302,27 @@ function ExpenseChart({ data }) {
     Trips:           Number(r.trips_expense) || 0,
   }));
 
+  const handleClick = (chartData) => {
+    const raw = chartData?.activePayload?.[0]?.payload?.monthRaw;
+    if (raw && onBarClick) onBarClick(raw);
+  };
+
   return (
     <div className="card">
       <div className="flex items-start justify-between flex-wrap gap-2 mb-4">
         <div>
           <p className="stat-label mb-0.5">Expense Breakdown</p>
-          <p className="text-xs text-muted">Monthly spend stacked by category</p>
+          <p className="text-xs text-muted">
+            Monthly spend stacked by category
+            {onBarClick && <span className="text-accent ml-1">· click a bar to drill into transactions</span>}
+          </p>
         </div>
         <RangeBar range={range} setRange={setRange} />
       </div>
       <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={cd} barSize={18} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+        <BarChart data={cd} barSize={18} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+          style={{ cursor: onBarClick ? 'pointer' : 'default' }}
+          onClick={handleClick}>
           <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
           <XAxis dataKey="month" {...AX} />
           <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
@@ -490,6 +610,7 @@ export default function Cashflow() {
   const [activeTab, setActiveTab] = useState('charts');
   const [modal, setModal]         = useState(null);
   const [inlineEdit, setInlineEdit] = useState({ rowKey: null, value: '' });
+  const [drillMonth, setDrillMonth] = useState(null); // YYYY-MM-01 when drilling into a month
 
   const currentPerson = activePerson || personName;
 
@@ -604,12 +725,21 @@ export default function Cashflow() {
       )}
 
       {/* Charts */}
-      {!loading && data.length > 0 && activeTab === 'charts' && (
+      {!loading && data.length > 0 && activeTab === 'charts' && !drillMonth && (
         <div className="space-y-4">
           <CorpusChart  data={data} />
-          <SavingChart  data={data} />
-          <ExpenseChart data={data} />
+          <SavingChart  data={data} onBarClick={setDrillMonth} />
+          <ExpenseChart data={data} onBarClick={setDrillMonth} />
         </div>
+      )}
+
+      {/* Drill-down: month transaction breakdown */}
+      {!loading && data.length > 0 && activeTab === 'charts' && drillMonth && (
+        <MonthDrillDown
+          month={drillMonth}
+          person={currentPerson}
+          onBack={() => setDrillMonth(null)}
+        />
       )}
 
       {/* Table */}
