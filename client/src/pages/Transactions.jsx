@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save } from 'lucide-react';
-import AiEntryPanel from '../components/AiEntryPanel';
+import AiEntryPanel, { AiDeletePanel } from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
 const TYPES = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
@@ -119,6 +119,13 @@ export default function Transactions() {
     load();
   };
 
+  const handleAiDelete = async (operations) => {
+    for (const op of operations) {
+      await api.delete(`/transactions/${op.id}`);
+    }
+    load();
+  };
+
   const filtered = data.filter(t =>
     !filters.search ||
     t.remark?.toLowerCase().includes(filters.search.toLowerCase()) ||
@@ -142,6 +149,7 @@ export default function Transactions() {
       </div>
 
       <AiEntryPanel type="transactions" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} onEdit={handleAiEdit} />
+      <AiDeletePanel persons={persons.length ? persons : [personName]} onDelete={handleAiDelete} />
 
       {(showForm || editing) && (
         <TransactionForm

@@ -251,6 +251,166 @@ function OperationsTable({ operations, setOperations, type }) {
   );
 }
 
+// ── AiDeletePanel ─────────────────────────────────────────────────────────────
+export function AiDeletePanel({ persons, onDelete }) {
+  const [open, setOpen]         = useState(false);
+  const [prompt, setPrompt]     = useState('');
+  const [parsing, setParsing]   = useState(false);
+  const [operations, setOps]    = useState(null);
+  const [applying, setApplying] = useState(false);
+  const [error, setError]       = useState('');
+  const [done, setDone]         = useState(false);
+
+  const handleParse = async () => {
+    if (!prompt.trim()) return;
+    setParsing(true);
+    setError('');
+    setOps(null);
+    setDone(false);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const r = await api.post('/ai/edit', { prompt, type: 'transactions', persons, today });
+      const delOps = (r.data.operations || []).filter(op => op.action === 'delete');
+      if (!delOps.length) {
+        setError('No matching transactions found to delete. Try a more specific description.');
+      } else {
+        setOps(delOps);
+      }
+    } catch (e) {
+      setError(e.response?.data?.error || 'Failed to find matching transactions. Try again.');
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!operations?.length) return;
+    setApplying(true);
+    try {
+      await onDelete(operations);
+      setDone(true);
+      setOps(null);
+      setPrompt('');
+      setTimeout(() => { setDone(false); setOpen(false); }, 2000);
+    } catch (e) {
+      setError(e.response?.data?.error || 'Failed to delete transactions.');
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const handleReset = () => { setOps(null); setError(''); setDone(false); };
+
+  const fmt = v => v == null ? '—' : String(v);
+
+  return (
+    <div className="card border-rose/30 bg-gradient-to-br from-rose/5 to-transparent">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-2 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <Trash2 size={16} className="text-rose" />
+          <span className="font-display font-semibold text-white text-sm">Delete with AI</span>
+          <span className="text-xs text-muted">— describe what to delete, AI finds & confirms before removing</span>
+        </div>
+        {open ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
+      </button>
+
+      {open && (
+        <div className="mt-4 space-y-3">
+          {!operations && (
+            <>
+              <textarea
+                className="input w-full resize-none text-sm leading-relaxed"
+                rows={3}
+                placeholder='e.g. "delete all Regular expenses from March 2024" or "remove the Swiggy entries last month"'
+                value={prompt}
+                onChange={e => setPrompt(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleParse(); }}
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleParse}
+                  disabled={parsing || !prompt.trim()}
+                  className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-semibold bg-rose/80 hover:bg-rose text-white transition-colors disabled:opacity-50"
+                >
+                  {parsing
+                    ? <><Loader2 size={14} className="animate-spin" />Finding…</>
+                    : <><Trash2 size={14} />Find Transactions</>}
+                </button>
+                <span className="text-xs text-muted">Ctrl+Enter to search</span>
+              </div>
+            </>
+          )}
+
+          {error && (
+            <div className="rounded-lg bg-rose/10 border border-rose/30 px-3 py-2 text-sm text-rose flex items-center gap-2">
+              <X size={14} /> {error}
+              <button onClick={handleReset} className="ml-auto text-xs underline hover:no-underline">Try again</button>
+            </div>
+          )}
+
+          {done && (
+            <div className="rounded-lg bg-teal/10 border border-teal/30 px-3 py-2 text-sm text-teal flex items-center gap-2">
+              <Check size={14} /> Transactions deleted successfully!
+            </div>
+          )}
+
+          {operations && operations.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-white font-semibold">
+                  <span className="text-rose">{operations.length}</span> transaction{operations.length !== 1 ? 's' : ''} will be deleted
+                  <span className="text-muted font-normal"> — review below, then confirm</span>
+                </p>
+                <button onClick={handleReset} className="text-xs text-muted hover:text-white underline">← Change prompt</button>
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-rose/30">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-rose/5">
+                      {['Date', 'Type', 'Account', 'Amount', 'Remark'].map(h => (
+                        <th key={h} className="text-left py-2.5 px-3 text-muted font-display uppercase tracking-wider whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {operations.map((op, i) => {
+                      const o = op.original;
+                      return (
+                        <tr key={i} className="border-b border-border/50 hover:bg-rose/5">
+                          <td className="py-2 px-3 font-mono text-soft">{o?.date}</td>
+                          <td className="py-2 px-3 text-soft">{o?.type}</td>
+                          <td className="py-2 px-3 text-soft">{o?.account}</td>
+                          <td className="py-2 px-3 font-mono text-rose">₹{Number(o?.amount || 0).toLocaleString('en-IN')}</td>
+                          <td className="py-2 px-3 text-muted max-w-xs truncate">{o?.remark || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex gap-2 items-center">
+                <button
+                  onClick={handleConfirm}
+                  disabled={applying}
+                  className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-semibold bg-rose/80 hover:bg-rose text-white transition-colors disabled:opacity-50"
+                >
+                  {applying
+                    ? <><Loader2 size={14} className="animate-spin" />Deleting…</>
+                    : <><Trash2 size={14} />Delete {operations.length} transaction{operations.length !== 1 ? 's' : ''}</>}
+                </button>
+                <button onClick={handleReset} className="btn-ghost text-sm">Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main AiEntryPanel ─────────────────────────────────────────────────────────
 export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
   const [open, setOpen]         = useState(false);
