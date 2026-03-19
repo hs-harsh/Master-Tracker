@@ -273,7 +273,7 @@ export default function Investments() {
         </div>
       </div>
 
-      <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} onEdit={handleAiEdit} />
+      <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
 
       {(showForm || editing) && (
         <InvestmentForm

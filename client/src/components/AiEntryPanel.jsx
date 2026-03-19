@@ -2,10 +2,6 @@ import { useState } from 'react';
 import { Sparkles, Loader2, Check, X, Trash2, Edit2, ChevronDown, ChevronUp } from 'lucide-react';
 import api from '../lib/api';
 
-// Detect edit/delete intent from the prompt text
-function isEditIntent(text) {
-  return /\b(update|edit|change|set|delete|remove|fix|rename|replace|correct|modify|clear)\b/i.test(text);
-}
 
 const TX_TYPES    = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
 const INV_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
@@ -399,22 +395,21 @@ export function AiEditPanel({ type, persons, onEdit }) {
 }
 
 // ── Main AiEntryPanel ─────────────────────────────────────────────────────────
-export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
+export default function AiEntryPanel({ type, persons, onAdd }) {
   const [open, setOpen]         = useState(false);
   const [prompt, setPrompt]     = useState('');
   const [parsing, setParsing]   = useState(false);
   const [entries, setEntries]   = useState(null);
-  const [operations, setOps]    = useState(null);
   const [applying, setApplying] = useState(false);
   const [error, setError]       = useState('');
   const [done, setDone]         = useState(false);
 
   const placeholder =
     type === 'transactions'
-      ? 'Describe or paste transactions — or say "delete all Regular for March" / "change remark of ₹50k income to Bonus"'
+      ? 'Describe or paste transactions in any format — plain text, table, or bullet points'
       : type === 'cashflow'
       ? 'Paste a monthly cashflow table (Month | Income | Other Income | Major | Non-Recurring | Regular | EMI | Trips)'
-      : 'Add: "Bought Nifty 50 for ₹15k via Zerodha" — or edit: "Set goal to Retirement for all Zerodha entries"';
+      : 'Describe or paste investment entries — e.g. "Bought Nifty 50 for ₹15k via Zerodha on 3 Jan"';
 
   const handleParse = async () => {
     if (!prompt.trim()) return;
@@ -425,13 +420,8 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
     setDone(false);
     try {
       const today = new Date().toISOString().slice(0, 10);
-      if (type !== 'cashflow' && isEditIntent(prompt)) {
-        const r = await api.post('/ai/edit', { prompt, type, persons, today });
-        setOps(r.data.operations);
-      } else {
-        const r = await api.post('/ai/parse', { prompt, type, persons, today });
-        setEntries(r.data.entries);
-      }
+      const r = await api.post('/ai/parse', { prompt, type, persons, today });
+      setEntries(r.data.entries);
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to parse. Try again.');
     } finally {
@@ -455,28 +445,7 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
     }
   };
 
-  const handleConfirmEdit = async () => {
-    if (!operations?.length) return;
-    setApplying(true);
-    try {
-      await onEdit(operations);
-      setDone(true);
-      setOps(null);
-      setPrompt('');
-      setTimeout(() => { setDone(false); setOpen(false); }, 2000);
-    } catch (e) {
-      setError(e.response?.data?.error || 'Failed to apply changes.');
-    } finally {
-      setApplying(false);
-    }
-  };
-
-  const handleReset = () => { setEntries(null); setOps(null); setError(''); setDone(false); };
-
-  const isParsed  = !!(entries || operations);
-  const itemCount = entries?.length || operations?.length || 0;
-  const delCount  = operations?.filter(o => o.action === 'delete').length || 0;
-  const updCount  = operations?.filter(o => o.action === 'update').length || 0;
+  const handleReset = () => { setEntries(null); setError(''); setDone(false); };
 
   return (
     <div className="card border-accent/30 bg-gradient-to-br from-accent/5 to-transparent">
@@ -495,7 +464,7 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
       {open && (
         <div className="mt-4 space-y-3">
           {/* Prompt input */}
-          {!isParsed && (
+          {!entries && (
             <>
               <textarea
                 className="input w-full resize-none text-sm leading-relaxed"
@@ -531,7 +500,7 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
           {/* Success */}
           {done && (
             <div className="rounded-lg bg-teal/10 border border-teal/30 px-3 py-2 text-sm text-teal flex items-center gap-2">
-              <Check size={14} /> {operations ? 'Changes applied successfully!' : 'Entries added successfully!'}
+              <Check size={14} /> Entries added successfully!
             </div>
           )}
 
@@ -563,35 +532,6 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
             </div>
           )}
 
-          {/* ── Edit/Delete: operations review table ── */}
-          {operations && operations.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-white font-semibold">
-                  {itemCount} operation{itemCount !== 1 ? 's' : ''} found
-                  {updCount > 0 && <span className="text-accent font-normal"> · {updCount} update{updCount !== 1 ? 's' : ''}</span>}
-                  {delCount > 0 && <span className="text-rose font-normal"> · {delCount} delete{delCount !== 1 ? 's' : ''}</span>}
-                  <span className="text-muted font-normal"> — review below, then apply</span>
-                </p>
-                <button onClick={handleReset} className="text-xs text-muted hover:text-white underline">← Change prompt</button>
-              </div>
-              <OperationsTable operations={operations} setOperations={setOps} type={type} />
-              <div className="flex gap-2 items-center">
-                <button
-                  onClick={handleConfirmEdit}
-                  disabled={applying || operations.length === 0}
-                  className={`flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 ${
-                    delCount > 0 && updCount === 0 ? 'bg-rose/80 hover:bg-rose text-white' : 'btn-primary'
-                  }`}
-                >
-                  {applying
-                    ? <><Loader2 size={14} className="animate-spin" />Applying…</>
-                    : <><Check size={14} />Apply {itemCount} operation{itemCount !== 1 ? 's' : ''}</>}
-                </button>
-                <button onClick={handleReset} className="btn-ghost text-sm">Cancel</button>
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>

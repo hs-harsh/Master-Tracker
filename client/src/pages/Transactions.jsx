@@ -161,7 +161,7 @@ export default function Transactions() {
         </div>
       </div>
 
-      <AiEntryPanel type="transactions" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} onEdit={handleAiEdit} />
+      <AiEntryPanel type="transactions" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
       <AiEditPanel type="transactions" persons={persons.length ? persons : [personName]} onEdit={handleAiEdit} />
 
       {(showForm || editing) && (
