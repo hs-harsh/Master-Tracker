@@ -63,7 +63,7 @@ function CorpusChart({ data }) {
   const baseCorpus = (Number(first?.corpus) || 0) - (Number(first?.actual_saving) || 0);
   let cumPlan = 0, cumIncome = 0;
   const cd = sliced.map(r => {
-    cumPlan   += Number(r.ideal_saving) || 0;
+    cumPlan   += Number(r.target_saving) || 0;
     cumIncome += (Number(r.income) || 0) + (Number(r.other_income) || 0);
     return {
       month:            fmtDate(r.month),
@@ -124,7 +124,7 @@ function SavingChart({ data }) {
     const fixed   = (Number(r.regular_expense) || 0) + (Number(r.emi) || 0);
     const special = (Number(r.major_expense) || 0) + (Number(r.non_recurring_expense) || 0) + (Number(r.trips_expense) || 0);
     const actual  = Math.max(0, income - fixed - special);
-    const ideal   = Number(r.ideal_saving) || 0;
+    const ideal   = Number(r.target_saving) || 0;
     return {
       month:           fmtDate(r.month),
       'Fixed Costs':   fixed,
@@ -290,7 +290,7 @@ const EMPTY = (def = {}) => ({
   regular_expense:        '',
   emi:                    '',
   trips_expense:          0,
-  ideal_saving:           def.ideal_saving ?? '',
+  target_saving:          def.target_saving ?? '',
 });
 
 function Field({ label, name, form, setForm, readOnly = false, hint }) {
@@ -320,7 +320,7 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
     }
     const defaults = getDefaultTargets();
     const person = persons[0] || '';
-    return EMPTY({ person, ideal_saving: defaults[person] ?? '' });
+    return EMPTY({ person, target_saving: defaults[person] ?? '' });
   });
 
   const [saving, setSaving] = useState(false);
@@ -334,8 +334,8 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
   const trips        = Number(form.trips_expense) || 0;
   const netExp       = majorExp + nonRec + regular + emi + trips;
   const actualSaving = (income + otherInc) - netExp;
-  const idealSaving  = Number(form.ideal_saving) || 0;
-  // Ideal saving = Income - Regular - EMI (no special expenses)
+  const targetSaving = Number(form.target_saving) || 0;
+  // Target saving = Income - Regular - EMI (no special expenses)
   const suggestedIdeal = income + otherInc - regular - emi;
 
   const handleSave = async () => {
@@ -346,8 +346,8 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
         ...form,
         net_expense:   netExp,
         actual_saving: actualSaving,
-        ideal_saving:  idealSaving,
-        target:        idealSaving,
+        target_saving: targetSaving,
+        target:        targetSaving,
       };
       if (isEdit) {
         await api.put(`/cashflow/${editRow.id}`, payload);
@@ -389,7 +389,7 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
                   onChange={e => {
                     const p = e.target.value;
                     const defaults = getDefaultTargets();
-                    setForm(f => ({ ...f, person: p, ...(defaults[p] !== undefined ? { ideal_saving: defaults[p] } : {}) }));
+                    setForm(f => ({ ...f, person: p, ...(defaults[p] !== undefined ? { target_saving: defaults[p] } : {}) }));
                   }}>
                   {persons.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
@@ -410,11 +410,11 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
           <div>
             <p className="text-xs text-muted uppercase tracking-wider mb-2 font-display">Saving Target</p>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Target Saving" name="ideal_saving" form={form} setForm={setForm}
+              <Field label="Target Saving" name="target_saving" form={form} setForm={setForm}
                 hint={suggestedIdeal > 0 ? `Income − Regular − EMI = ${fmt(suggestedIdeal)}` : undefined} />
               <div className="flex flex-col justify-end">
                 <label className="label">Actual Saving (auto)</label>
-                <div className={`input w-full font-mono ${actualSaving >= idealSaving ? 'text-teal' : 'text-rose'}`}>
+                <div className={`input w-full font-mono ${actualSaving >= targetSaving ? 'text-teal' : 'text-rose'}`}>
                   {fmt(actualSaving)}
                 </div>
               </div>
@@ -452,12 +452,12 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
             </div>
             <div>
               <p className="text-muted text-xs">Actual Saving</p>
-              <p className={`font-mono font-semibold ${actualSaving >= idealSaving ? 'text-teal' : 'text-rose'}`}>{fmt(actualSaving)}</p>
+              <p className={`font-mono font-semibold ${actualSaving >= targetSaving ? 'text-teal' : 'text-rose'}`}>{fmt(actualSaving)}</p>
             </div>
             <div>
               <p className="text-muted text-xs">vs Ideal</p>
-              <p className={`font-mono font-semibold ${actualSaving >= idealSaving ? 'text-teal' : 'text-rose'}`}>
-                {actualSaving >= idealSaving ? '+' : ''}{fmt(actualSaving - idealSaving)}
+              <p className={`font-mono font-semibold ${actualSaving >= targetSaving ? 'text-teal' : 'text-rose'}`}>
+                {actualSaving >= targetSaving ? '+' : ''}{fmt(actualSaving - targetSaving)}
               </p>
             </div>
           </div>
@@ -572,10 +572,10 @@ export default function Cashflow() {
         regular_expense:       Number(e.regular_expense)      || 0,
         emi:                   Number(e.emi)                  || 0,
         trips_expense:         Number(e.trips_expense)        || 0,
-        ideal_saving:          Number(e.ideal_saving)         || 0,
+        target_saving:         Number(e.target_saving)        || 0,
         net_expense:           net,
         actual_saving:         actual,
-        target:                Number(e.ideal_saving)         || 0,
+        target:                Number(e.target_saving)        || 0,
       });
     }
     load();
@@ -657,7 +657,7 @@ export default function Cashflow() {
               </thead>
               <tbody>
                 {[...data].reverse().map(row => {
-                  const ok = Number(row.actual_saving) >= Number(row.ideal_saving || row.target);
+                  const ok = Number(row.actual_saving) >= Number(row.target_saving || row.target);
                   return (
                     <tr key={row.id || `${row.person}-${row.month}`}
                       className="border-b border-border/50 hover:bg-surface/50 transition-colors group">
@@ -670,7 +670,7 @@ export default function Cashflow() {
                       <td className="py-3 px-3 font-mono text-rose">{fmt(row.emi)}</td>
                       <td className="py-3 px-3 font-mono text-rose">{fmt(row.trips_expense)}</td>
                       <td className="py-3 px-3 font-mono text-rose">{fmt(row.net_expense)}</td>
-                      <td className="py-3 px-3 font-mono text-muted">{fmt(row.ideal_saving || row.target)}</td>
+                      <td className="py-3 px-3 font-mono text-muted">{fmt(row.target_saving || row.target)}</td>
                       <td className={`py-3 px-3 font-mono ${ok ? 'text-teal' : 'text-rose'}`}>{fmt(row.actual_saving)}</td>
                       <td className="py-3 px-3 font-mono text-white">{fmt(row.corpus)}</td>
                       <td className="py-3 px-3">

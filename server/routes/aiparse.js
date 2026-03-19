@@ -69,13 +69,13 @@ Available accounts (persons): ${persons.join(', ')}
 RULES:
 - Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
 - Each object represents ONE MONTH:
-  { "month": "YYYY-MM-01", "person": "...", "income": <number>, "other_income": <number>, "major_expense": <number>, "non_recurring_expense": <number>, "regular_expense": <number>, "emi": <number>, "trips_expense": <number>, "ideal_saving": <number> }
+  { "month": "YYYY-MM-01", "person": "...", "income": <number>, "other_income": <number>, "major_expense": <number>, "non_recurring_expense": <number>, "regular_expense": <number>, "emi": <number>, "trips_expense": <number>, "target_saving": <number> }
 - Parse table columns: Month/Date → month, Income → income, Other Income → other_income, Major Expense → major_expense, Non-Recurring/Non-Reccuring → non_recurring_expense, Regular Expense → regular_expense, EMI → emi, Trips Expense → trips_expense
 - For month like "April-2023" use "2023-04-01", "Jan-2024" use "2024-01-01"
 - Skip rows with label "Initial Balance" or header rows
 - Strip ₹ symbols and commas from numbers (₹1,377,420 → 1377420)
 - All numeric fields default to 0 if missing or empty
-- ideal_saving defaults to 0 unless explicitly provided
+- target_saving defaults to 0 unless explicitly provided
 - Pick the person from the text context (e.g. "for harsh" → pick "Harsh" or closest match). If unclear, use first available account.
 
 User input:

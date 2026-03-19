@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS monthly_cashflow (
   emi BIGINT DEFAULT 0,
   trips_expense BIGINT DEFAULT 0,
   net_expense BIGINT DEFAULT 0,
-  ideal_saving BIGINT DEFAULT 0,
+  target_saving BIGINT DEFAULT 0,
   actual_saving BIGINT DEFAULT 0,
   target BIGINT DEFAULT 0,
   corpus BIGINT DEFAULT 0,
@@ -315,6 +315,12 @@ BEGIN
   -- Add user-scoped unique constraint
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_cashflow_user_month_person') THEN
     ALTER TABLE monthly_cashflow ADD CONSTRAINT uq_cashflow_user_month_person UNIQUE (user_id, month, person);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='monthly_cashflow' AND column_name='ideal_saving') THEN
+    ALTER TABLE monthly_cashflow RENAME COLUMN ideal_saving TO target_saving;
   END IF;
 END $$;
 

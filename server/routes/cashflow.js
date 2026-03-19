@@ -50,7 +50,7 @@ router.get('/', auth, async (req, res) => {
           COALESCE(NULLIF(t.trips_expense, 0), NULLIF(m.trips_expense, 0), 0) AS trips_expense,
 
           -- Ideal saving: cashflow row only → 0
-          COALESCE(NULLIF(m.ideal_saving, 0), 0) AS ideal_saving,
+          COALESCE(NULLIF(m.target_saving, 0), 0) AS target_saving,
 
           COALESCE(m.cash, 0)              AS cash,
           COALESCE(m.gold_silver, 0)       AS gold_silver,
@@ -87,7 +87,7 @@ router.get('/', auth, async (req, res) => {
           (income + other_income)
           - (major_expense + non_recurring_expense + regular_expense + emi + trips_expense) AS net_expense_inv,
           major_expense + non_recurring_expense + regular_expense + emi + trips_expense AS net_expense,
-          ideal_saving AS target
+          target_saving AS target
         FROM base
       )
       SELECT
@@ -123,7 +123,7 @@ router.post('/', auth, async (req, res) => {
     const uid = req.user.id;
 
     const income        = Number(d.income)          || 0;
-    const idealSaving   = Number(d.ideal_saving)    || 0;
+    const targetSaving   = Number(d.target_saving)    || 0;
     const regularExp    = Number(d.regular_expense) || 0;
     const emi           = Number(d.emi)             || 0;
     const netExpense    = (Number(d.major_expense)||0) + (Number(d.non_recurring_expense)||0)
@@ -134,7 +134,7 @@ router.post('/', auth, async (req, res) => {
       INSERT INTO monthly_cashflow (
         month, person, user_id,
         income, other_income, major_expense, non_recurring_expense,
-        regular_expense, emi, trips_expense, net_expense, ideal_saving, actual_saving,
+        regular_expense, emi, trips_expense, net_expense, target_saving, actual_saving,
         target, corpus, cash, gold_silver, debt_pf, debt_ppf, debt_mf,
         equity_indian, equity_intl, equity_nps, equity_trading, equity_smallcase,
         real_estate, home_loan, personal_loan, owed_friends, net_total,
@@ -152,7 +152,7 @@ router.post('/', auth, async (req, res) => {
         emi                 = EXCLUDED.emi,
         trips_expense       = EXCLUDED.trips_expense,
         net_expense         = EXCLUDED.net_expense,
-        ideal_saving        = EXCLUDED.ideal_saving,
+        target_saving        = EXCLUDED.target_saving,
         actual_saving       = EXCLUDED.actual_saving,
         target              = EXCLUDED.target,
         updated_at          = NOW()
@@ -161,7 +161,7 @@ router.post('/', auth, async (req, res) => {
       d.month, d.person, uid,
       income, Number(d.other_income)||0, Number(d.major_expense)||0,
       Number(d.non_recurring_expense)||0, regularExp, emi,
-      Number(d.trips_expense)||0, netExpense, idealSaving, actualSaving, idealSaving,
+      Number(d.trips_expense)||0, netExpense, targetSaving, actualSaving, targetSaving,
       Number(d.corpus)||0, Number(d.cash)||0, Number(d.gold_silver)||0,
       Number(d.debt_pf)||0, Number(d.debt_ppf)||0, Number(d.debt_mf)||0,
       Number(d.equity_indian)||0, Number(d.equity_intl)||0, Number(d.equity_nps)||0,
@@ -189,7 +189,7 @@ router.put('/:id', auth, async (req, res) => {
       UPDATE monthly_cashflow SET
         income=$1, other_income=$2, major_expense=$3, non_recurring_expense=$4,
         regular_expense=$5, emi=$6, trips_expense=$7, net_expense=$8,
-        ideal_saving=$9, actual_saving=$10, target=$9,
+        target_saving=$9, actual_saving=$10, target=$9,
         cash=$11, gold_silver=$12, debt_pf=$13, debt_ppf=$14, debt_mf=$15,
         equity_indian=$16, equity_intl=$17, equity_nps=$18, equity_trading=$19,
         equity_smallcase=$20, real_estate=$21, home_loan=$22, personal_loan=$23,
@@ -201,7 +201,7 @@ router.put('/:id', auth, async (req, res) => {
       Number(d.income)||0, Number(d.other_income)||0, Number(d.major_expense)||0,
       Number(d.non_recurring_expense)||0, Number(d.regular_expense)||0, Number(d.emi)||0,
       Number(d.trips_expense)||0, netExpense,
-      Number(d.ideal_saving)||0, actualSaving,
+      Number(d.target_saving)||0, actualSaving,
       Number(d.cash)||0, Number(d.gold_silver)||0, Number(d.debt_pf)||0,
       Number(d.debt_ppf)||0, Number(d.debt_mf)||0,
       Number(d.equity_indian)||0, Number(d.equity_intl)||0, Number(d.equity_nps)||0,
@@ -219,21 +219,21 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // ── PATCH /api/cashflow/target-saving  ───────────────────────────────────────
-// Upserts ONLY ideal_saving for a given month+person — safe to call from
+// Upserts ONLY target_saving for a given month+person — safe to call from
 // Transactions page without touching any other cashflow fields.
 router.patch('/target-saving', auth, async (req, res) => {
   try {
-    const { month, person, ideal_saving } = req.body;
+    const { month, person, target_saving } = req.body;
     if (!month || !person) return res.status(400).json({ error: 'month and person are required' });
-    const amount = Number(ideal_saving) || 0;
+    const amount = Number(target_saving) || 0;
     const { rows } = await pool.query(`
-      INSERT INTO monthly_cashflow (month, person, user_id, ideal_saving, target)
+      INSERT INTO monthly_cashflow (month, person, user_id, target_saving, target)
       VALUES ($1, $2, $3, $4, $4)
       ON CONFLICT (user_id, month, person) DO UPDATE SET
-        ideal_saving = EXCLUDED.ideal_saving,
+        target_saving = EXCLUDED.target_saving,
         target       = EXCLUDED.target,
         updated_at   = NOW()
-      RETURNING id, month, person, ideal_saving
+      RETURNING id, month, person, target_saving
     `, [month, person, req.user.id, amount]);
     res.json(rows[0]);
   } catch (err) {

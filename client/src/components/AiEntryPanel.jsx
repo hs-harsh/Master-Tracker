@@ -115,7 +115,7 @@ function CfConfirmTable({ entries, setEntries, persons }) {
     ['income','Income','number'],['other_income','Other Inc','number'],
     ['major_expense','Major','number'],['non_recurring_expense','Non-Rec','number'],
     ['regular_expense','Regular','number'],['emi','EMI','number'],
-    ['trips_expense','Trips','number'],['ideal_saving','Ideal Save','number'],
+    ['trips_expense','Trips','number'],['target_saving','Target Save','number'],
   ];
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
