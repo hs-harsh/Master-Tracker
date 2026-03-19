@@ -12,6 +12,26 @@ async function getApiKey() {
   return (rows[0]?.value ?? '').trim() || process.env.ANTHROPIC_API_KEY || '';
 }
 
+// Snap an AI-returned account name to the closest real person, or fallback to persons[0].
+// Prevents "Account does not belong to your profile" 403s.
+function resolveAccount(account, persons) {
+  if (!persons?.length) return account;
+  const val = (account || '').trim();
+  // 1. exact match
+  if (persons.includes(val)) return val;
+  // 2. case-insensitive exact
+  const lower = val.toLowerCase();
+  const ci = persons.find(p => p.toLowerCase() === lower);
+  if (ci) return ci;
+  // 3. one contains the other (e.g. AI said "Harsh Kumar", person is "Harsh")
+  const partial = persons.find(p =>
+    lower.includes(p.toLowerCase()) || p.toLowerCase().includes(lower)
+  );
+  if (partial) return partial;
+  // 4. fallback to first person
+  return persons[0];
+}
+
 function buildTxPrompt(userText, persons, today) {
   return `You are a financial data parser. Extract transaction entries from the user's input.
 
@@ -337,6 +357,11 @@ router.post('/parse', auth, async (req, res) => {
       return res.status(422).json({ error: 'No entries found. Check the input format.' });
     }
 
+    // Snap account names to real persons so the save never 403s
+    if (persons.length) {
+      entries = entries.map(e => ({ ...e, account: resolveAccount(e.account, persons) }));
+    }
+
     res.json({ entries });
   } catch (err) {
     console.error('[AI parse] upstream error:', err.message);
@@ -449,6 +474,11 @@ OTHER RULES:
 
     if (!Array.isArray(entries) || entries.length === 0) {
       return res.status(422).json({ error: 'No investment entries found in the image.' });
+    }
+
+    // Snap account names to real persons so the save never 403s
+    if (persons.length) {
+      entries = entries.map(e => ({ ...e, account: resolveAccount(e.account, persons) }));
     }
 
     res.json({ entries });
