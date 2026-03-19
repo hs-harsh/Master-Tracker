@@ -50,7 +50,8 @@ router.get('/', auth, async (req, res) => {
 
 router.post('/', auth, async (req, res) => {
   try {
-    const { date, account, goal, asset_class, instrument, side, amount, broker } = req.body;
+    const { date, account, goal, asset_class, instrument, side, broker } = req.body;
+    const amount = Math.round(Number(req.body.amount) || 0); // BIGINT column — no decimals
     const check = await pool.query(
       'SELECT 1 FROM user_persons WHERE user_id = $1 AND person_name = $2',
       [req.user.id, account]
@@ -71,7 +72,8 @@ router.post('/', auth, async (req, res) => {
 
 router.put('/:id', auth, async (req, res) => {
   try {
-    const { date, account, goal, asset_class, instrument, side, amount, broker } = req.body;
+    const { date, account, goal, asset_class, instrument, side, broker } = req.body;
+    const amount = Math.round(Number(req.body.amount) || 0); // BIGINT column — no decimals
     const check = await pool.query(
       'SELECT 1 FROM user_persons WHERE user_id = $1 AND person_name = $2',
       [req.user.id, account]

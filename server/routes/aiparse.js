@@ -358,8 +358,13 @@ router.post('/parse', auth, async (req, res) => {
     }
 
     // Snap account names to real persons so the save never 403s
+    // For investments: round amounts to integers (BIGINT column — no decimals)
     if (persons.length) {
-      entries = entries.map(e => ({ ...e, account: resolveAccount(e.account, persons) }));
+      entries = entries.map(e => ({
+        ...e,
+        account: resolveAccount(e.account, persons),
+        ...(type === 'investments' ? { amount: Math.round(Number(e.amount) || 0) } : {}),
+      }));
     }
 
     res.json({ entries });
@@ -477,9 +482,12 @@ OTHER RULES:
     }
 
     // Snap account names to real persons so the save never 403s
-    if (persons.length) {
-      entries = entries.map(e => ({ ...e, account: resolveAccount(e.account, persons) }));
-    }
+    // Round amounts to integers (investments.amount is BIGINT — no decimals allowed)
+    entries = entries.map(e => ({
+      ...e,
+      amount:  Math.round(Number(e.amount)  || 0),
+      account: persons.length ? resolveAccount(e.account, persons) : e.account,
+    }));
 
     res.json({ entries });
   } catch (err) {
