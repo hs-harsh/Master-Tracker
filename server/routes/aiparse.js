@@ -100,8 +100,10 @@ RULES:
 - Only reference IDs that exist in the provided data above.
 - For "update", include only the fields that need to change in "changes".
 - Match entries by their content (remark, amount, account, date, type) based on the user's description. Account name matching is case-insensitive.
+- STRICT AMOUNT MATCHING: If the user specifies a source amount (e.g. "from 65k", "of ₹75,000", "65000"), you MUST only match entries whose amount field EXACTLY equals that number. "65k" = 65000, "1.5L" = 150000, "2L" = 200000. Never match entries with a different amount.
 - If the user says "update all X" or "delete all Y", return multiple operations covering ALL matching entries.
 - If the user says "for <name>" or "of <name>", match entries where account matches that name (case-insensitive).
+- Apply ALL filter conditions simultaneously (type AND amount AND account AND date range must all match).
 - For date fields use YYYY-MM-DD. Amounts must be positive numbers.
 - If nothing matches, return an empty array [].
 
@@ -128,7 +130,9 @@ RULES:
 - Only reference IDs that exist in the provided data above.
 - For "update", include only the fields that need to change in "changes".
 - Match entries by their content (instrument, goal, account, broker, amount, date) based on the user's description.
+- STRICT AMOUNT MATCHING: If the user specifies a source amount (e.g. "from 15k", "of ₹50,000"), you MUST only match entries whose amount field EXACTLY equals that number. "15k" = 15000, "1L" = 100000. Never match entries with a different amount.
 - If the user says "update all X" or "delete all Y", return multiple operations covering all matches.
+- Apply ALL filter conditions simultaneously (asset_class AND amount AND account AND goal must all match).
 - For date fields use YYYY-MM-DD. Amounts must be positive numbers.
 - If nothing matches, return an empty array [].
 
