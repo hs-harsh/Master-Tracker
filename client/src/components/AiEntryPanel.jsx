@@ -1,14 +1,10 @@
 import { useState } from 'react';
-import { Sparkles, Loader2, Check, X, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Sparkles, Loader2, Check, X, Trash2, Edit2, ChevronDown, ChevronUp } from 'lucide-react';
 import api from '../lib/api';
 
 // Detect edit/delete intent from the prompt text
 function isEditIntent(text) {
   return /\b(update|edit|change|set|delete|remove|fix|rename|replace|correct|modify|clear)\b/i.test(text);
-}
-
-function isDeleteIntent(text) {
-  return /\b(delete|remove|clear)\b/i.test(text);
 }
 
 const TX_TYPES    = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
@@ -255,8 +251,10 @@ function OperationsTable({ operations, setOperations, type }) {
   );
 }
 
-// ── AiDeletePanel ─────────────────────────────────────────────────────────────
-export function AiDeletePanel({ persons, onDelete }) {
+// ── AiEditPanel ───────────────────────────────────────────────────────────────
+// Handles both edits (UPDATE) and deletions (DELETE) via a single prompt.
+// Shows the full OperationsTable for review before applying.
+export function AiEditPanel({ type, persons, onEdit }) {
   const [open, setOpen]         = useState(false);
   const [prompt, setPrompt]     = useState('');
   const [parsing, setParsing]   = useState(false);
@@ -273,16 +271,15 @@ export function AiDeletePanel({ persons, onDelete }) {
     setDone(false);
     try {
       const today = new Date().toISOString().slice(0, 10);
-      const deletePrompt = `Delete (action: "delete") all matching transactions. ${prompt}`;
-      const r = await api.post('/ai/edit', { prompt: deletePrompt, type: 'transactions', persons, today });
-      const delOps = (r.data.operations || []).filter(op => op.action === 'delete');
-      if (!delOps.length) {
-        setError('No matching transactions found to delete. Try a more specific description.');
+      const r = await api.post('/ai/edit', { prompt, type, persons, today });
+      const ops = r.data.operations || [];
+      if (!ops.length) {
+        setError('No matching entries found. Try a more specific description.');
       } else {
-        setOps(delOps);
+        setOps(ops);
       }
     } catch (e) {
-      setError(e.response?.data?.error || 'Failed to find matching transactions. Try again.');
+      setError(e.response?.data?.error || 'Failed to find matching entries. Try again.');
     } finally {
       setParsing(false);
     }
@@ -292,13 +289,13 @@ export function AiDeletePanel({ persons, onDelete }) {
     if (!operations?.length) return;
     setApplying(true);
     try {
-      await onDelete(operations);
+      await onEdit(operations);
       setDone(true);
       setOps(null);
       setPrompt('');
       setTimeout(() => { setDone(false); setOpen(false); }, 2000);
     } catch (e) {
-      setError(e.response?.data?.error || 'Failed to delete transactions.');
+      setError(e.response?.data?.error || 'Failed to apply changes.');
     } finally {
       setApplying(false);
     }
@@ -306,18 +303,23 @@ export function AiDeletePanel({ persons, onDelete }) {
 
   const handleReset = () => { setOps(null); setError(''); setDone(false); };
 
-  const fmt = v => v == null ? '—' : String(v);
+  const delCount = operations?.filter(o => o.action === 'delete').length || 0;
+  const updCount = operations?.filter(o => o.action === 'update').length || 0;
+
+  const placeholder = type === 'transactions'
+    ? '"delete all Regular for March" / "change remark of ₹50k income to Bonus" / "remove Kirti\'s trip entries"'
+    : '"delete all Equity under Goal X" / "set goal to Retirement for all Zerodha entries"';
 
   return (
-    <div className="card border-rose/30 bg-gradient-to-br from-rose/5 to-transparent">
+    <div className="card border-violet-500/30 bg-gradient-to-br from-violet-500/5 to-transparent">
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between gap-2 text-left"
       >
         <div className="flex items-center gap-2">
-          <Trash2 size={16} className="text-rose" />
-          <span className="font-display font-semibold text-white text-sm">Delete with AI</span>
-          <span className="text-xs text-muted">— describe what to delete, AI finds & confirms before removing</span>
+          <Edit2 size={16} className="text-violet-400" />
+          <span className="font-display font-semibold text-white text-sm">Edit with AI</span>
+          <span className="text-xs text-muted">— describe changes or deletions, AI previews before applying</span>
         </div>
         {open ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
       </button>
@@ -329,7 +331,7 @@ export function AiDeletePanel({ persons, onDelete }) {
               <textarea
                 className="input w-full resize-none text-sm leading-relaxed"
                 rows={3}
-                placeholder='e.g. "delete all Regular expenses from March 2024" or "remove the Swiggy entries last month"'
+                placeholder={placeholder}
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleParse(); }}
@@ -338,11 +340,11 @@ export function AiDeletePanel({ persons, onDelete }) {
                 <button
                   onClick={handleParse}
                   disabled={parsing || !prompt.trim()}
-                  className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-semibold bg-rose/80 hover:bg-rose text-white transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-50"
                 >
                   {parsing
                     ? <><Loader2 size={14} className="animate-spin" />Finding…</>
-                    : <><Trash2 size={14} />Find Transactions</>}
+                    : <><Edit2 size={14} />Find & Preview</>}
                 </button>
                 <span className="text-xs text-muted">Ctrl+Enter to search</span>
               </div>
@@ -358,7 +360,7 @@ export function AiDeletePanel({ persons, onDelete }) {
 
           {done && (
             <div className="rounded-lg bg-teal/10 border border-teal/30 px-3 py-2 text-sm text-teal flex items-center gap-2">
-              <Check size={14} /> Transactions deleted successfully!
+              <Check size={14} /> Changes applied successfully!
             </div>
           )}
 
@@ -366,45 +368,24 @@ export function AiDeletePanel({ persons, onDelete }) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-white font-semibold">
-                  <span className="text-rose">{operations.length}</span> transaction{operations.length !== 1 ? 's' : ''} will be deleted
-                  <span className="text-muted font-normal"> — review below, then confirm</span>
+                  {delCount > 0 && <><span className="text-rose">{delCount} delete{delCount !== 1 ? 's' : ''}</span>{updCount > 0 ? ' · ' : ''}</>}
+                  {updCount > 0 && <span className="text-accent">{updCount} update{updCount !== 1 ? 's' : ''}</span>}
+                  <span className="text-muted font-normal"> — review &amp; adjust below, then apply</span>
                 </p>
                 <button onClick={handleReset} className="text-xs text-muted hover:text-white underline">← Change prompt</button>
               </div>
-              <div className="overflow-x-auto rounded-xl border border-rose/30">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-border bg-rose/5">
-                      {['Date', 'Type', 'Account', 'Amount', 'Remark'].map(h => (
-                        <th key={h} className="text-left py-2.5 px-3 text-muted font-display uppercase tracking-wider whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {operations.map((op, i) => {
-                      const o = op.original;
-                      return (
-                        <tr key={i} className="border-b border-border/50 hover:bg-rose/5">
-                          <td className="py-2 px-3 font-mono text-soft">{o?.date}</td>
-                          <td className="py-2 px-3 text-soft">{o?.type}</td>
-                          <td className="py-2 px-3 text-soft">{o?.account}</td>
-                          <td className="py-2 px-3 font-mono text-rose">₹{Number(o?.amount || 0).toLocaleString('en-IN')}</td>
-                          <td className="py-2 px-3 text-muted max-w-xs truncate">{o?.remark || '—'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+
+              <OperationsTable operations={operations} setOperations={setOps} type={type} />
+
               <div className="flex gap-2 items-center">
                 <button
                   onClick={handleConfirm}
-                  disabled={applying}
-                  className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-semibold bg-rose/80 hover:bg-rose text-white transition-colors disabled:opacity-50"
+                  disabled={applying || operations.length === 0}
+                  className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-50"
                 >
                   {applying
-                    ? <><Loader2 size={14} className="animate-spin" />Deleting…</>
-                    : <><Trash2 size={14} />Delete {operations.length} transaction{operations.length !== 1 ? 's' : ''}</>}
+                    ? <><Loader2 size={14} className="animate-spin" />Applying…</>
+                    : <><Check size={14} />Apply {operations.length} change{operations.length !== 1 ? 's' : ''}</>}
                 </button>
                 <button onClick={handleReset} className="btn-ghost text-sm">Cancel</button>
               </div>
@@ -436,11 +417,6 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
 
   const handleParse = async () => {
     if (!prompt.trim()) return;
-    // Redirect delete-only prompts to the Delete with AI panel
-    if (type === 'transactions' && isDeleteIntent(prompt) && !isEditIntent(prompt.replace(/\b(delete|remove|clear)\b/gi, ''))) {
-      setError('Looks like you want to delete transactions. Use the "Delete with AI" panel below instead.');
-      return;
-    }
     setParsing(true);
     setError('');
     setEntries(null);
@@ -456,13 +432,7 @@ export default function AiEntryPanel({ type, persons, onAdd, onEdit }) {
         setEntries(r.data.entries);
       }
     } catch (e) {
-      const msg = e.response?.data?.error || 'Failed to parse. Try again.';
-      // If parse failed and prompt looks like a delete, guide the user
-      if (isDeleteIntent(prompt)) {
-        setError('Use the "Delete with AI" panel below to delete transactions.');
-      } else {
-        setError(msg);
-      }
+      setError(e.response?.data?.error || 'Failed to parse. Try again.');
     } finally {
       setParsing(false);
     }
