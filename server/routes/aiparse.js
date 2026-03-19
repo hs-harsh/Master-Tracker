@@ -349,9 +349,14 @@ router.post('/parse', auth, async (req, res) => {
 router.post('/parse-image', auth, async (req, res) => {
   const t0  = Date.now();
   const tag = '[AI parse-image]';
-  const { imageBase64, mediaType = 'image/png', persons = [], today } = req.body;
+  const { imageBase64, mediaType = 'image/png', images, note = '', persons = [], today } = req.body;
 
-  if (!imageBase64) return res.status(400).json({ error: 'imageBase64 is required' });
+  // Support both legacy single-image and new multi-image format
+  const imageList = Array.isArray(images) && images.length
+    ? images
+    : imageBase64 ? [{ imageBase64, mediaType }] : [];
+
+  if (!imageList.length) return res.status(400).json({ error: 'At least one image is required' });
 
   const key = await getApiKey();
   console.log(`${tag} API key fetched — ${Date.now()-t0}ms — key present=${!!key}`);
@@ -359,12 +364,12 @@ router.post('/parse-image', auth, async (req, res) => {
 
   const todayStr = today || new Date().toISOString().slice(0, 10);
 
-  const systemPrompt = `You are a financial data parser. Extract investment holdings from the broker screenshot.
+  const systemPrompt = `You are a financial data parser. Extract investment holdings from the broker screenshot(s).
 
 Today's date: ${todayStr}
 Available accounts (persons): ${persons.join(', ')}
 Asset classes: ${INV_CLASSES.join(', ')}
-
+${note.trim() ? `\nUser note: ${note.trim()}\n` : ''}
 CRITICAL RULE — AMOUNT TO USE:
 Use the INVESTED amount (the amount actually paid / buy value / cost), NOT the current market value.
 - If screenshot shows: current value ₹11,70,627 and (₹12,04,480) in parentheses → invested = 1204480
@@ -375,6 +380,7 @@ Use the INVESTED amount (the amount actually paid / buy value / cost), NOT the c
 OTHER RULES:
 - Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
 - Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "", "asset_class": "...", "instrument": "...", "side": "BUY", "amount": <invested_number>, "broker": "..." }
+- If multiple screenshots are provided, extract holdings from ALL of them and combine into one list. De-duplicate if the same instrument appears in multiple images.
 - One entry per instrument/holding line.
 - Infer asset class from instrument name:
   * NIFTYBEES, JUNIORBEES, MID150BEES, NIFTY IT ETF, equity funds → Equity
@@ -409,10 +415,10 @@ OTHER RULES:
           messages: [{
             role: 'user',
             content: [
-              {
+              ...imageList.map(img => ({
                 type: 'image',
-                source: { type: 'base64', media_type: mediaType, data: imageBase64 },
-              },
+                source: { type: 'base64', media_type: img.mediaType || 'image/png', data: img.imageBase64 },
+              })),
               { type: 'text', text: systemPrompt },
             ],
           }],

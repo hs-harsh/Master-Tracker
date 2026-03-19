@@ -436,7 +436,8 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
   const [applying, setApplying] = useState(false);
   const [error, setError]       = useState('');
   const [done, setDone]         = useState(false);
-  const [preview, setPreview]   = useState(null);   // image data-URL (image mode only)
+  const [images, setImages]     = useState([]);      // [{dataUrl, mediaType}]
+  const [imageNote, setImageNote] = useState('');   // optional user note in image mode
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef(null);
 
@@ -480,46 +481,56 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
     }
   };
 
-  // ── image parse ──
-  const processFile = useCallback(async (file) => {
+  // ── image mode: add files to queue (no API call yet) ──
+  const processFile = useCallback((file) => {
     if (!file || !file.type.startsWith('image/')) {
-      setError('Please upload an image file (PNG, JPG, WEBP).');
+      setError('Please upload image files (PNG, JPG, WEBP).');
       return;
     }
     setError('');
-    setEntries(null);
-    setDone(false);
-    setStage('reading');
-
     const reader = new FileReader();
-    reader.onload = async (e) => {
-      const dataUrl = e.target.result;
-      setPreview(dataUrl);
-      const base64    = dataUrl.split(',')[1];
-      const mediaType = file.type;
-
-      let thinkTimer;
-      try {
-        setStage('sending');
-        thinkTimer = setTimeout(() => setStage('thinking'), 1200);
-        const today = new Date().toISOString().slice(0, 10);
-        const r = await api.post('/ai/parse-image', { imageBase64: base64, mediaType, persons, today });
-        clearTimeout(thinkTimer);
-        setEntries(r.data.entries);
-      } catch (err) {
-        clearTimeout(thinkTimer);
-        setError(err.response?.data?.error || 'Failed to extract entries from image. Try again.');
-      } finally {
-        setStage(null);
-      }
+    reader.onload = (e) => {
+      setImages(prev => [...prev, { dataUrl: e.target.result, mediaType: file.type }]);
     };
     reader.readAsDataURL(file);
-  }, [persons]);
+  }, []);
 
-  const onDrop      = useCallback((e) => { e.preventDefault(); setDragging(false); processFile(e.dataTransfer.files?.[0]); }, [processFile]);
+  // ── image mode: send all queued images + note to AI ──
+  const handleParseImages = async () => {
+    if (!images.length) return;
+    setError('');
+    setEntries(null);
+    setDone(false);
+
+    let thinkTimer;
+    try {
+      setStage('sending');
+      thinkTimer = setTimeout(() => setStage('thinking'), 1200);
+      const today = new Date().toISOString().slice(0, 10);
+      const r = await api.post('/ai/parse-image', {
+        images: images.map(img => ({ imageBase64: img.dataUrl.split(',')[1], mediaType: img.mediaType })),
+        note:   imageNote.trim(),
+        persons,
+        today,
+      });
+      clearTimeout(thinkTimer);
+      setEntries(r.data.entries);
+    } catch (err) {
+      clearTimeout(thinkTimer);
+      setError(err.response?.data?.error || 'Failed to extract entries from image. Try again.');
+    } finally {
+      setStage(null);
+    }
+  };
+
+  const onDrop = useCallback((e) => {
+    e.preventDefault();
+    setDragging(false);
+    Array.from(e.dataTransfer.files || []).forEach(f => processFile(f));
+  }, [processFile]);
   const onDragOver  = (e) => { e.preventDefault(); setDragging(true); };
   const onDragLeave = () => setDragging(false);
-  const onFileInput = (e) => { processFile(e.target.files?.[0]); e.target.value = ''; };
+  const onFileInput = (e) => { Array.from(e.target.files || []).forEach(f => processFile(f)); e.target.value = ''; };
 
   // ── confirm ──
   const handleConfirmAdd = async () => {
@@ -530,7 +541,8 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
       setDone(true);
       setEntries(null);
       setPrompt('');
-      setPreview(null);
+      setImages([]);
+      setImageNote('');
       setTimeout(() => { setDone(false); setOpen(false); }, 2000);
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to add entries.');
@@ -539,7 +551,7 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
     }
   };
 
-  const handleReset = () => { setEntries(null); setError(''); setDone(false); setPreview(null); };
+  const handleReset = () => { setEntries(null); setError(''); setDone(false); setImages([]); setImageNote(''); };
 
   return (
     <div className="card border-accent/30 bg-gradient-to-br from-accent/5 to-transparent">
@@ -606,33 +618,70 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
             </>
           )}
 
-          {/* ── Screenshot drop zone ── */}
+          {/* ── Screenshot multi-image mode ── */}
           {mode === 'image' && !entries && (
-            <div
-              onDrop={onDrop}
-              onDragOver={onDragOver}
-              onDragLeave={onDragLeave}
-              onClick={() => !parsing && inputRef.current?.click()}
-              className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 cursor-pointer transition-colors ${
-                dragging
-                  ? 'border-accent bg-accent/10'
-                  : 'border-border hover:border-accent/50 hover:bg-accent/5'
-              } ${parsing ? 'pointer-events-none opacity-60' : ''}`}
-            >
-              <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onFileInput} />
-              {preview
-                ? <img src={preview} alt="preview" className="max-h-48 rounded-lg object-contain" />
-                : <UploadCloud size={36} className="text-muted" />
-              }
-              {parsing ? (
-                <div className="flex items-center gap-2 text-sm text-muted">
-                  <Loader2 size={14} className="animate-spin" />
-                  <StageLabel stage={stage} stages={IMAGE_STAGES} />
+            <div className="space-y-3">
+              <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={onFileInput} />
+
+              {/* Thumbnail strip */}
+              {images.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {images.map((img, i) => (
+                    <div key={i} className="relative group shrink-0">
+                      <img src={img.dataUrl} alt={`img-${i+1}`} className="h-20 w-20 object-cover rounded-lg border border-border" />
+                      <button
+                        onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}
+                        className="absolute -top-1.5 -right-1.5 bg-rose text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Remove"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ) : (
+              )}
+
+              {/* Drop zone */}
+              <div
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onClick={() => !parsing && inputRef.current?.click()}
+                className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 cursor-pointer transition-colors ${
+                  dragging ? 'border-accent bg-accent/10' : 'border-border hover:border-accent/50 hover:bg-accent/5'
+                } ${parsing ? 'pointer-events-none opacity-60' : ''}`}
+              >
+                <UploadCloud size={28} className="text-muted" />
                 <div className="text-center">
-                  <p className="text-sm text-soft">Drop a broker screenshot here or click to browse</p>
-                  <p className="text-xs text-muted mt-1">Zerodha, Groww, Angel, etc. · PNG, JPG, WEBP · invested amounts will be extracted</p>
+                  <p className="text-sm text-soft">
+                    {images.length > 0 ? 'Drop more screenshots or click to add' : 'Drop broker screenshots here or click to browse'}
+                  </p>
+                  <p className="text-xs text-muted mt-0.5">Zerodha, Groww, Angel, etc. · PNG, JPG, WEBP · multiple images supported</p>
+                </div>
+              </div>
+
+              {/* Optional notes */}
+              <textarea
+                className="input w-full resize-none text-sm"
+                rows={2}
+                placeholder="Notes for AI (optional) — e.g. account name, broker, any extra context"
+                value={imageNote}
+                onChange={e => setImageNote(e.target.value)}
+              />
+
+              {/* Parse button */}
+              {images.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleParseImages}
+                    disabled={parsing}
+                    className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50"
+                  >
+                    {parsing
+                      ? <><Loader2 size={14} className="animate-spin" />Parsing…</>
+                      : <><Sparkles size={14} />Parse {images.length} image{images.length > 1 ? 's' : ''}</>}
+                  </button>
+                  {parsing && <StageLabel stage={stage} stages={IMAGE_STAGES} />}
                 </div>
               )}
             </div>
@@ -665,7 +714,13 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
                   ← {mode === 'image' ? 'Try another image' : 'Change prompt'}
                 </button>
               </div>
-              {preview && <img src={preview} alt="source" className="max-h-28 rounded-lg object-contain opacity-50" />}
+              {images.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {images.map((img, i) => (
+                    <img key={i} src={img.dataUrl} alt={`src-${i+1}`} className="h-14 w-14 object-cover rounded-lg border border-border opacity-50" />
+                  ))}
+                </div>
+              )}
               {type === 'transactions' && <TxConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
               {type === 'investments'  && <InvConfirmTable entries={entries} setEntries={setEntries} persons={persons} />}
               {type === 'cashflow'     && <CfConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
