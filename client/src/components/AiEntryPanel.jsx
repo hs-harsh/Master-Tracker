@@ -429,14 +429,25 @@ export function AiEditPanel({ type, persons, onEdit }) {
 // ── Main AiEntryPanel ─────────────────────────────────────────────────────────
 export default function AiEntryPanel({ type, persons, onAdd }) {
   const [open, setOpen]         = useState(false);
+  const [mode, setMode]         = useState('text');  // 'text' | 'image'
   const [prompt, setPrompt]     = useState('');
-  const [stage, setStage]       = useState(null);   // null | 'sending'|'thinking'|'reading'
+  const [stage, setStage]       = useState(null);   // null | 'sending'|'thinking'|'reading'|'reading-img'
   const [entries, setEntries]   = useState(null);
   const [applying, setApplying] = useState(false);
   const [error, setError]       = useState('');
   const [done, setDone]         = useState(false);
+  const [preview, setPreview]   = useState(null);   // image data-URL (image mode only)
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef(null);
 
-  const parsing = !!stage;
+  const parsing    = !!stage;
+  const canImage   = type === 'investments';
+
+  const IMAGE_STAGES = [
+    { key: 'reading',  label: 'Reading image…'  },
+    { key: 'sending',  label: 'Sending to AI…'  },
+    { key: 'thinking', label: 'AI is thinking…' },
+  ];
 
   const placeholder =
     type === 'transactions'
@@ -445,7 +456,8 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
       ? 'Paste a monthly cashflow table (Month | Income | Other Income | Major | Non-Recurring | Regular | EMI | Trips)'
       : 'Describe or paste investment entries — e.g. "Bought Nifty 50 for ₹15k via Zerodha on 3 Jan"';
 
-  const handleParse = async () => {
+  // ── text parse ──
+  const handleParseText = async () => {
     if (!prompt.trim()) return;
     setError('');
     setEntries(null);
@@ -468,132 +480,7 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
     }
   };
 
-  const handleConfirmAdd = async () => {
-    if (!entries?.length) return;
-    setApplying(true);
-    try {
-      await onAdd(entries);
-      setDone(true);
-      setEntries(null);
-      setPrompt('');
-      setTimeout(() => { setDone(false); setOpen(false); }, 2000);
-    } catch (e) {
-      setError(e.response?.data?.error || 'Failed to add entries.');
-    } finally {
-      setApplying(false);
-    }
-  };
-
-  const handleReset = () => { setEntries(null); setError(''); setDone(false); };
-
-  return (
-    <div className="card border-accent/30 bg-gradient-to-br from-accent/5 to-transparent">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between gap-2 text-left"
-      >
-        <div className="flex items-center gap-2">
-          <Sparkles size={16} className="text-accent" />
-          <span className="font-display font-semibold text-white text-sm">Add with AI</span>
-          <span className="text-xs text-muted">— describe in plain text, AI creates the entries</span>
-        </div>
-        {open ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
-      </button>
-
-      {open && (
-        <div className="mt-4 space-y-3">
-          {/* Prompt input */}
-          {!entries && (
-            <>
-              <textarea
-                className="input w-full resize-none text-sm leading-relaxed"
-                rows={3}
-                placeholder={placeholder}
-                value={prompt}
-                onChange={e => setPrompt(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleParse(); }}
-              />
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleParse}
-                  disabled={parsing || !prompt.trim()}
-                  className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50"
-                >
-                  {parsing
-                    ? <><Loader2 size={14} className="animate-spin" />Parsing…</>
-                    : <><Sparkles size={14} />Parse</>}
-                </button>
-                {parsing
-                  ? <StageLabel stage={stage} stages={PARSE_STAGES} />
-                  : <span className="text-xs text-muted">Ctrl+Enter to parse</span>}
-              </div>
-            </>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div className="rounded-lg bg-rose/10 border border-rose/30 px-3 py-2 text-sm text-rose flex items-center gap-2">
-              <X size={14} /> {error}
-              <button onClick={handleReset} className="ml-auto text-xs underline hover:no-underline">Try again</button>
-            </div>
-          )}
-
-          {/* Success */}
-          {done && (
-            <div className="rounded-lg bg-teal/10 border border-teal/30 px-3 py-2 text-sm text-teal flex items-center gap-2">
-              <Check size={14} /> Entries added successfully!
-            </div>
-          )}
-
-          {/* ── Add: confirmation table ── */}
-          {entries && entries.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-white font-semibold">
-                  {entries.length} entr{entries.length === 1 ? 'y' : 'ies'} parsed —
-                  <span className="text-muted font-normal"> review and edit below, then confirm</span>
-                </p>
-                <button onClick={handleReset} className="text-xs text-muted hover:text-white underline">← Change prompt</button>
-              </div>
-              {type === 'transactions' && <TxConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
-              {type === 'investments'  && <InvConfirmTable entries={entries} setEntries={setEntries} persons={persons} />}
-              {type === 'cashflow'     && <CfConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
-              <div className="flex gap-2 items-center">
-                <button
-                  onClick={handleConfirmAdd}
-                  disabled={applying || entries.length === 0}
-                  className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50"
-                >
-                  {applying
-                    ? <><Loader2 size={14} className="animate-spin" />Adding…</>
-                    : <><Check size={14} />Confirm &amp; Add {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}</>}
-                </button>
-                <button onClick={handleReset} className="btn-ghost text-sm">Cancel</button>
-              </div>
-            </div>
-          )}
-
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── AiImagePanel ──────────────────────────────────────────────────────────────
-// Drag-and-drop screenshot → Claude vision → InvConfirmTable
-export function AiImagePanel({ persons, onAdd }) {
-  const [open, setOpen]         = useState(false);
-  const [stage, setStage]       = useState(null); // null | 'reading'|'sending'|'thinking'
-  const [entries, setEntries]   = useState(null);
-  const [applying, setApplying] = useState(false);
-  const [error, setError]       = useState('');
-  const [done, setDone]         = useState(false);
-  const [preview, setPreview]   = useState(null); // data URL for display
-  const [dragging, setDragging] = useState(false);
-  const inputRef = useRef(null);
-
-  const parsing = !!stage;
-
+  // ── image parse ──
   const processFile = useCallback(async (file) => {
     if (!file || !file.type.startsWith('image/')) {
       setError('Please upload an image file (PNG, JPG, WEBP).');
@@ -629,16 +516,12 @@ export function AiImagePanel({ persons, onAdd }) {
     reader.readAsDataURL(file);
   }, [persons]);
 
-  const onDrop = useCallback((e) => {
-    e.preventDefault();
-    setDragging(false);
-    processFile(e.dataTransfer.files?.[0]);
-  }, [processFile]);
-
+  const onDrop      = useCallback((e) => { e.preventDefault(); setDragging(false); processFile(e.dataTransfer.files?.[0]); }, [processFile]);
   const onDragOver  = (e) => { e.preventDefault(); setDragging(true); };
-  const onDragLeave = ()  => setDragging(false);
+  const onDragLeave = () => setDragging(false);
   const onFileInput = (e) => { processFile(e.target.files?.[0]); e.target.value = ''; };
 
+  // ── confirm ──
   const handleConfirmAdd = async () => {
     if (!entries?.length) return;
     setApplying(true);
@@ -646,6 +529,7 @@ export function AiImagePanel({ persons, onAdd }) {
       await onAdd(entries);
       setDone(true);
       setEntries(null);
+      setPrompt('');
       setPreview(null);
       setTimeout(() => { setDone(false); setOpen(false); }, 2000);
     } catch (e) {
@@ -655,31 +539,75 @@ export function AiImagePanel({ persons, onAdd }) {
     }
   };
 
-  const handleReset = () => { setEntries(null); setError(''); setPreview(null); setDone(false); };
-
-  const IMAGE_STAGES = [
-    { key: 'reading',  label: 'Reading image…'  },
-    { key: 'sending',  label: 'Sending to AI…'  },
-    { key: 'thinking', label: 'AI is thinking…' },
-  ];
+  const handleReset = () => { setEntries(null); setError(''); setDone(false); setPreview(null); };
 
   return (
-    <div className="card border-orange-500/30 bg-gradient-to-br from-orange-500/5 to-transparent">
+    <div className="card border-accent/30 bg-gradient-to-br from-accent/5 to-transparent">
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between gap-2 text-left"
       >
         <div className="flex items-center gap-2">
-          <ImagePlus size={16} className="text-orange-400" />
-          <span className="font-display font-semibold text-white text-sm">Add from Screenshot</span>
-          <span className="text-xs text-muted">— drag &amp; drop a broker screenshot, AI extracts the entries</span>
+          <Sparkles size={16} className="text-accent" />
+          <span className="font-display font-semibold text-white text-sm">Add with AI</span>
+          <span className="text-xs text-muted">
+            {canImage ? '— type a description or upload a broker screenshot' : '— describe in plain text, AI creates the entries'}
+          </span>
         </div>
         {open ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
       </button>
 
       {open && (
         <div className="mt-4 space-y-3">
-          {!entries && (
+
+          {/* Mode toggle — investments only, hidden once entries are parsed */}
+          {canImage && !entries && (
+            <div className="flex rounded-lg border border-border overflow-hidden text-xs self-start">
+              <button
+                onClick={() => { setMode('text'); setError(''); }}
+                className={`px-3 py-1.5 flex items-center gap-1.5 transition-colors ${mode === 'text' ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'}`}
+              >
+                <Sparkles size={11} /> Text
+              </button>
+              <button
+                onClick={() => { setMode('image'); setError(''); }}
+                className={`px-3 py-1.5 flex items-center gap-1.5 transition-colors ${mode === 'image' ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'}`}
+              >
+                <ImagePlus size={11} /> Screenshot
+              </button>
+            </div>
+          )}
+
+          {/* ── Text input ── */}
+          {mode === 'text' && !entries && (
+            <>
+              <textarea
+                className="input w-full resize-none text-sm leading-relaxed"
+                rows={3}
+                placeholder={placeholder}
+                value={prompt}
+                onChange={e => setPrompt(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleParseText(); }}
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleParseText}
+                  disabled={parsing || !prompt.trim()}
+                  className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-50"
+                >
+                  {parsing
+                    ? <><Loader2 size={14} className="animate-spin" />Parsing…</>
+                    : <><Sparkles size={14} />Parse</>}
+                </button>
+                {parsing
+                  ? <StageLabel stage={stage} stages={PARSE_STAGES} />
+                  : <span className="text-xs text-muted">Ctrl+Enter to parse</span>}
+              </div>
+            </>
+          )}
+
+          {/* ── Screenshot drop zone ── */}
+          {mode === 'image' && !entries && (
             <div
               onDrop={onDrop}
               onDragOver={onDragOver}
@@ -687,8 +615,8 @@ export function AiImagePanel({ persons, onAdd }) {
               onClick={() => !parsing && inputRef.current?.click()}
               className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 cursor-pointer transition-colors ${
                 dragging
-                  ? 'border-orange-400 bg-orange-500/10'
-                  : 'border-border hover:border-orange-400/50 hover:bg-orange-500/5'
+                  ? 'border-accent bg-accent/10'
+                  : 'border-border hover:border-accent/50 hover:bg-accent/5'
               } ${parsing ? 'pointer-events-none opacity-60' : ''}`}
             >
               <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onFileInput} />
@@ -703,36 +631,44 @@ export function AiImagePanel({ persons, onAdd }) {
                 </div>
               ) : (
                 <div className="text-center">
-                  <p className="text-sm text-soft">Drop a screenshot here or click to browse</p>
-                  <p className="text-xs text-muted mt-1">Broker app · portfolio export · trade confirmation · PNG, JPG, WEBP</p>
+                  <p className="text-sm text-soft">Drop a broker screenshot here or click to browse</p>
+                  <p className="text-xs text-muted mt-1">Zerodha, Groww, Angel, etc. · PNG, JPG, WEBP · invested amounts will be extracted</p>
                 </div>
               )}
             </div>
           )}
 
+          {/* Error */}
           {error && (
             <div className="rounded-lg bg-rose/10 border border-rose/30 px-3 py-2 text-sm text-rose flex items-center gap-2">
               <X size={14} /> {error}
               <button onClick={handleReset} className="ml-auto text-xs underline hover:no-underline">Try again</button>
             </div>
           )}
+
+          {/* Success */}
           {done && (
             <div className="rounded-lg bg-teal/10 border border-teal/30 px-3 py-2 text-sm text-teal flex items-center gap-2">
               <Check size={14} /> Entries added successfully!
             </div>
           )}
 
+          {/* Confirmation table */}
           {entries && entries.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-white font-semibold">
-                  {entries.length} entr{entries.length === 1 ? 'y' : 'ies'} found —
-                  <span className="text-muted font-normal"> review and edit, then confirm</span>
+                  {entries.length} entr{entries.length === 1 ? 'y' : 'ies'} parsed —
+                  <span className="text-muted font-normal"> review and edit below, then confirm</span>
                 </p>
-                <button onClick={handleReset} className="text-xs text-muted hover:text-white underline">← Try another image</button>
+                <button onClick={handleReset} className="text-xs text-muted hover:text-white underline">
+                  ← {mode === 'image' ? 'Try another image' : 'Change prompt'}
+                </button>
               </div>
               {preview && <img src={preview} alt="source" className="max-h-28 rounded-lg object-contain opacity-50" />}
-              <InvConfirmTable entries={entries} setEntries={setEntries} persons={persons} />
+              {type === 'transactions' && <TxConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
+              {type === 'investments'  && <InvConfirmTable entries={entries} setEntries={setEntries} persons={persons} />}
+              {type === 'cashflow'     && <CfConfirmTable  entries={entries} setEntries={setEntries} persons={persons} />}
               <div className="flex gap-2 items-center">
                 <button
                   onClick={handleConfirmAdd}
@@ -747,8 +683,12 @@ export function AiImagePanel({ persons, onAdd }) {
               </div>
             </div>
           )}
+
         </div>
       )}
     </div>
   );
 }
+
+// ── AiImagePanel — kept as a no-op shim for any existing imports ───────────────
+export function AiImagePanel() { return null; }

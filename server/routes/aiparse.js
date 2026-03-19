@@ -359,22 +359,32 @@ router.post('/parse-image', auth, async (req, res) => {
 
   const todayStr = today || new Date().toISOString().slice(0, 10);
 
-  const systemPrompt = `You are a financial data parser. Extract investment entries from the screenshot.
+  const systemPrompt = `You are a financial data parser. Extract investment holdings from the broker screenshot.
 
 Today's date: ${todayStr}
 Available accounts (persons): ${persons.join(', ')}
 Asset classes: ${INV_CLASSES.join(', ')}
-Sides: ${INV_SIDES.join(', ')}
 
-RULES:
+CRITICAL RULE — AMOUNT TO USE:
+Use the INVESTED amount (the amount actually paid / buy value / cost), NOT the current market value.
+- If screenshot shows: current value ₹11,70,627 and (₹12,04,480) in parentheses → invested = 1204480
+- If screenshot shows: "Invested 4,65,879" → invested = 465879
+- If screenshot shows: Avg price × Qty (e.g. Avg 73.70, Qty 6321) → invested = 73.70 × 6321 = 466158
+- Never use LTP, current value, or market value as the amount
+
+OTHER RULES:
 - Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
-- Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "...", "asset_class": "...", "instrument": "...", "side": "BUY" or "SELL", "amount": <number>, "broker": "..." }
-- Infer asset class: stocks/shares/equity/mutual fund → Equity; bonds/fd/ppf/debt → Debt; gold/silver → Gold; crypto/bitcoin → Crypto; property/real estate → Real Estate
-- Use today's date if no date visible
-- If goal is not mentioned, leave it as ""
-- If broker is not mentioned, try to infer from the screenshot logo/name, else leave ""
-- Strip ₹ symbols and commas from amounts
-- Amount must be a positive number (the total rupee value)
+- Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "", "asset_class": "...", "instrument": "...", "side": "BUY", "amount": <invested_number>, "broker": "..." }
+- One entry per instrument/holding line.
+- Infer asset class from instrument name:
+  * NIFTYBEES, JUNIORBEES, MID150BEES, NIFTY IT ETF, equity funds → Equity
+  * GOLDBEES, Gold BeES, Gold ETF → Gold
+  * SILVERBEES, Silver ETF → Gold
+  * bonds, FD, PPF, debt funds → Debt
+  * crypto, bitcoin → Crypto
+- Try to infer broker from the app logo/name visible in the screenshot (Zerodha, Groww, Angel, Kite, etc.), else leave ""
+- Use today's date unless a specific date is visible in the screenshot
+- Strip ₹ symbols and commas from all numbers
 - If nothing can be extracted, return []`;
 
   console.log(`${tag} Calling Anthropic vision API — model=claude-sonnet-4-20250514 — ${Date.now()-t0}ms`);
