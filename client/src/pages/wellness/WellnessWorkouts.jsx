@@ -83,7 +83,8 @@ export default function WellnessWorkouts() {
   const { personName, activePerson } = useAuth();
   const currentPerson = activePerson || personName;
 
-  const [view,       setView]       = useState('planner');
+  const [view,       setViewRaw]    = useState(() => localStorage.getItem('wellness_workouts_view') || 'planner');
+  const setView = (v) => { setViewRaw(v); localStorage.setItem('wellness_workouts_view', v); };
   const [weekStart,  setWeekStart]  = useState(() => getMonday(todayStr()));
   const [plan,       setPlan]       = useState(null);
   const [gymDays,    setGymDays]    = useState(new Set());
@@ -163,9 +164,23 @@ export default function WellnessWorkouts() {
     setGenerated(null);
   }
 
+  // ── reset week ────────────────────────────────────────────────────────────
+  async function resetWeek() {
+    if (!plan) return;
+    try {
+      await api.put(`/workouts/week/${plan.id}`, { status: 'draft' });
+      await loadWeek(weekStart, currentPerson);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   // ── generate plan ─────────────────────────────────────────────────────────
   async function generatePlan() {
-    if (!plan) return;
+    if (!plan) {
+      setAiError('Plan not loaded yet, please wait or refresh.');
+      return;
+    }
     setGenerating(true); setAiError('');
     try {
       const selectedDays = weekDays.filter((_, i) => gymDays.has(i));
@@ -291,13 +306,32 @@ export default function WellnessWorkouts() {
                 <ChevronRight size={18} />
               </button>
             </div>
-            {isAccepted && (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
-                <Check size={13} /> Plan Accepted
-              </span>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              {isAccepted && (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
+                  <Check size={13} /> Plan Accepted
+                </span>
+              )}
+              {isAccepted && (
+                <button onClick={resetWeek}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors">
+                  Reset Week
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Onboarding callout */}
+        {!isAccepted && !generated && (
+          <div className="px-4 py-3 rounded-xl border border-white/8 bg-white/[0.02] text-xs text-muted font-mono">
+            <span className="text-white/70">① Pick gym days</span>
+            {' → '}
+            <span className="text-white/70">② Describe your workout style</span>
+            {' → '}
+            <span className="text-white/70">③ Generate &amp; accept your plan</span>
+          </div>
+        )}
 
         {/* Step 1: Gym Day Picker */}
         <div className="card p-4">
@@ -337,6 +371,11 @@ export default function WellnessWorkouts() {
               {gymDays.size} gym {gymDays.size === 1 ? 'day' : 'days'} selected — generate your workout plan below
             </p>
           )}
+          {isAccepted && (
+            <p className="text-xs text-muted/60 font-mono mt-3 text-center">
+              This week's plan is accepted. Navigate to another week to plan ahead.
+            </p>
+          )}
         </div>
 
         {/* Step 2: AI Generate */}
@@ -360,9 +399,10 @@ export default function WellnessWorkouts() {
               {generated && !generating && (
                 <button onClick={generatePlan} disabled={generating}
                   title="Regenerate"
-                  className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs
+                  className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs
                     text-muted hover:text-white border border-white/10 hover:border-white/20 transition-colors">
                   <RotateCcw size={12} />
+                  <span>Retry</span>
                 </button>
               )}
             </div>
@@ -499,12 +539,25 @@ export default function WellnessWorkouts() {
 
   // ── analytics view ─────────────────────────────────────────────────────────
   function Analytics() {
-    if (aLoading) return <div className="text-center py-10 text-muted text-sm">Loading analytics…</div>;
+    if (aLoading) return (
+      <div className="space-y-3 fade-up-1">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[...Array(4)].map((_, i) => <div key={i} className="card h-20 animate-pulse bg-white/[0.03]" />)}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[...Array(2)].map((_, i) => <div key={i} className="card h-56 animate-pulse bg-white/[0.03]" />)}
+        </div>
+      </div>
+    );
 
     const weekData = buildWeeklyData(analytics);
     if (!weekData?.length) return (
-      <div className="card p-8 text-center text-muted text-sm fade-up-1">
-        No accepted workout data for this period. Accept a week plan to see analytics.
+      <div className="card p-8 text-center fade-up-1">
+        <p className="text-muted text-sm">No accepted workout data for this period. Accept a week plan to see analytics.</p>
+        <button onClick={() => setView('planner')}
+          className="mt-4 text-xs text-accent underline hover:text-accent/80 transition-colors">
+          Go to Planner →
+        </button>
       </div>
     );
 
@@ -624,7 +677,13 @@ export default function WellnessWorkouts() {
         </div>
       </div>
 
-      {loading && <div className="text-center py-10 text-muted text-sm fade-up-1">Loading…</div>}
+      {loading && view === 'planner' && (
+        <div className="space-y-3 fade-up-1">
+          <div className="card h-24 animate-pulse bg-white/[0.03]" />
+          <div className="card h-48 animate-pulse bg-white/[0.03]" />
+          <div className="card h-32 animate-pulse bg-white/[0.03]" />
+        </div>
+      )}
 
       {!loading && view === 'planner'  && <Planner />}
       {           view === 'analytics' && <Analytics />}

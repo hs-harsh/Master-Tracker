@@ -21,14 +21,14 @@ const SUB_TABS = [
 
 // ─── habit types ──────────────────────────────────────────────────────────────
 const HABIT_TYPES = [
-  { key: 'clean_food', label: 'Clean Food', icon: Leaf,      color: 'text-amber-400',  dot: 'bg-amber-400',  ring: 'bg-amber-400/10 border-amber-400/25',  stroke: '#fbbf24' },
-  { key: 'walk',       label: 'Walk',       icon: Activity,  color: 'text-teal-400',   dot: 'bg-teal-400',   ring: 'bg-teal-400/10 border-teal-400/25',    stroke: '#2dd4bf' },
-  { key: 'gym',        label: 'Gym',        icon: Dumbbell,  color: 'text-blue-400',   dot: 'bg-blue-400',   ring: 'bg-blue-400/10 border-blue-400/25',    stroke: '#60a5fa' },
-  { key: 'sports',     label: 'Sports',     icon: Trophy,    color: 'text-purple-400', dot: 'bg-purple-400', ring: 'bg-purple-400/10 border-purple-400/25', stroke: '#c084fc' },
+  { key: 'clean_food', label: 'Clean Food', shortLabel: 'Food',  icon: Leaf,      color: 'text-amber-400',  dot: 'bg-amber-400',  ring: 'bg-amber-400/10 border-amber-400/25',  stroke: '#fbbf24' },
+  { key: 'walk',       label: 'Walk',       shortLabel: 'Walk',  icon: Activity,  color: 'text-teal-400',   dot: 'bg-teal-400',   ring: 'bg-teal-400/10 border-teal-400/25',    stroke: '#2dd4bf' },
+  { key: 'gym',        label: 'Gym',        shortLabel: 'Gym',   icon: Dumbbell,  color: 'text-blue-400',   dot: 'bg-blue-400',   ring: 'bg-blue-400/10 border-blue-400/25',    stroke: '#60a5fa' },
+  { key: 'sports',     label: 'Sports',     shortLabel: 'Sport', icon: Trophy,    color: 'text-purple-400', dot: 'bg-purple-400', ring: 'bg-purple-400/10 border-purple-400/25', stroke: '#c084fc' },
 ];
 
-const PERIODS = ['1M', '3M', '1Y', 'ALL'];
-const PERIOD_MAP = { '1M': '1M', '3M': '3M', '1Y': '1Y', 'ALL': '1Y' }; // ALL uses max period supported
+const PERIODS = ['1M', '3M', '1Y', 'Max'];
+const PERIOD_MAP = { '1M': '1M', '3M': '3M', '1Y': '1Y', 'Max': '1Y' }; // Max uses max period supported
 const DAILY_TARGET = 10; // out of 20 max (4 habits × 5)
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -84,7 +84,8 @@ export default function WellnessHabits() {
   const { personName, activePerson } = useAuth();
   const currentPerson = activePerson || personName;
 
-  const [view,      setView]      = useState('planner');
+  const [view,      setViewRaw]   = useState(() => localStorage.getItem('wellness_habits_view') || 'planner');
+  const setView = (v) => { setViewRaw(v); localStorage.setItem('wellness_habits_view', v); };
   const [weekStart, setWeekStart] = useState(() => getMonday(todayStr()));
   const [entries,   setEntries]   = useState({});
   const [saving,    setSaving]    = useState({});
@@ -139,9 +140,12 @@ export default function WellnessHabits() {
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
-    const todayEl = container.querySelector('[data-today="true"]');
+    const todayEl = container.querySelector('[data-today-col="true"]');
     if (!todayEl) return;
-    todayEl.scrollIntoView({ inline: 'center', block: 'nearest' });
+    // Center today's column in the scroll container
+    const containerCenter = container.clientWidth / 2;
+    const elCenter = todayEl.offsetLeft + todayEl.offsetWidth / 2;
+    container.scrollLeft = elCenter - containerCenter;
   }, [weekStart, loading]);
 
   // ── set habit ──────────────────────────────────────────────────────────────
@@ -220,6 +224,8 @@ export default function WellnessHabits() {
 
   // ── planner ────────────────────────────────────────────────────────────────
   function Planner() {
+    const currentWeekStart = getMonday(today);
+    const isCurrentWeek = weekStart === currentWeekStart;
     return (
       <div className="card fade-up-1 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-white/5">
@@ -233,8 +239,17 @@ export default function WellnessHabits() {
               className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
               <ChevronRight size={18} />
             </button>
+            {!isCurrentWeek && (
+              <button onClick={() => setWeekStart(currentWeekStart)}
+                className="px-2.5 py-1 rounded-lg text-xs font-mono bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors">
+                Today
+              </button>
+            )}
           </div>
-          <p className="text-xs text-muted font-mono">Click stars to log — auto-saved</p>
+          <div className="text-right">
+            <p className="text-xs text-muted font-mono">Click stars to log — auto-saved</p>
+            <p className="text-[10px] text-muted/50 font-mono">1 = low effort · 5 = excellent</p>
+          </div>
         </div>
 
         <div className="overflow-x-auto" ref={scrollRef}>
@@ -245,7 +260,7 @@ export default function WellnessHabits() {
                 const h = fmtDayHeader(ds);
                 const isT = ds === today;
                 return (
-                  <div key={ds} data-today={isT ? 'true' : undefined} className={`p-3 text-center border-l border-white/5 ${isT ? 'bg-accent/5' : ''}`}>
+                  <div key={ds} data-today-col={isT ? 'true' : undefined} className={`p-3 text-center border-l border-white/5 ${isT ? 'bg-accent/5' : ''}`}>
                     <p className={`text-xs font-mono uppercase ${isT ? 'text-accent' : 'text-muted'}`}>{h.wd}</p>
                     <p className={`text-xl font-bold font-display ${isT ? 'text-accent' : 'text-white'}`}>{h.day}</p>
                     <p className="text-xs text-muted font-mono">{h.mo}</p>
@@ -258,7 +273,8 @@ export default function WellnessHabits() {
               <div key={ht.key} className="grid grid-cols-8 border-b border-white/5 last:border-0">
                 <div className={`flex items-center gap-2 p-3 border-r border-white/5 ${ht.ring.split(' ')[0]}`}>
                   <ht.icon size={14} className={ht.color} />
-                  <span className={`text-xs font-semibold ${ht.color} hidden sm:block`}>{ht.label}</span>
+                  <span className={`text-xs font-semibold ${ht.color} hidden sm:inline`}>{ht.label}</span>
+                  <span className={`text-xs font-semibold ${ht.color} sm:hidden`}>{ht.shortLabel}</span>
                 </div>
                 {weekDays.map(ds => {
                   const val  = entries[ds]?.[ht.key] ?? 0;
@@ -270,8 +286,8 @@ export default function WellnessHabits() {
                       <div className="flex gap-px flex-wrap">
                         {[1,2,3,4,5].map(n => (
                           <button key={n} onClick={() => setHabit(ds, ht.key, n)}
-                            className="p-px transition-transform hover:scale-110 active:scale-95">
-                            <Star size={11} className={n <= val
+                            className="p-1 transition-transform hover:scale-110 active:scale-95">
+                            <Star size={12} className={n <= val
                               ? `fill-current ${ht.color} ${isSav ? 'opacity-60' : ''}`
                               : 'text-white/15 hover:text-white/30 transition-colors'} />
                           </button>
@@ -291,10 +307,21 @@ export default function WellnessHabits() {
 
   // ── analytics ──────────────────────────────────────────────────────────────
   function Analytics() {
-    if (aLoading) return <div className="text-center py-10 text-muted text-sm">Loading analytics…</div>;
+    if (aLoading) return (
+      <div className="space-y-3 fade-up-1">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[...Array(6)].map((_, i) => <div key={i} className="card h-20 animate-pulse bg-white/[0.03]" />)}
+        </div>
+        {[...Array(2)].map((_, i) => <div key={i} className="card h-56 animate-pulse bg-white/[0.03]" />)}
+      </div>
+    );
     if (!stats?.chartData?.length) return (
-      <div className="card p-8 text-center text-muted text-sm fade-up-1">
-        No habit data yet for this period. Start logging habits in the planner.
+      <div className="card p-8 text-center fade-up-1">
+        <p className="text-muted text-sm">No habit data yet for this period. Start logging habits in the planner.</p>
+        <button onClick={() => setView('planner')}
+          className="mt-4 text-xs text-accent underline hover:text-accent/80 transition-colors">
+          Go to Planner →
+        </button>
       </div>
     );
 
@@ -452,7 +479,22 @@ export default function WellnessHabits() {
         </div>
       </div>
 
-      {loading && <div className="text-center py-10 text-muted text-sm fade-up-1">Loading…</div>}
+      {loading && view === 'planner' && (
+        <div className="card fade-up-1 overflow-hidden animate-pulse">
+          <div className="grid grid-cols-8 gap-0">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className={`h-20 ${i === 0 ? '' : 'border-l border-white/5'} bg-white/[0.03]`} />
+            ))}
+          </div>
+          {[...Array(4)].map((_, r) => (
+            <div key={r} className="grid grid-cols-8 border-t border-white/5">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className={`h-[72px] ${i === 0 ? '' : 'border-l border-white/5'} bg-white/[0.02]`} />
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
 
       {!loading && view === 'planner'   && Planner()}
       {           view === 'analytics'  && Analytics()}
