@@ -96,11 +96,11 @@ export default function WellnessHabits() {
   const [aLoading,setALoading]= useState(false);
 
   // ── load week ──────────────────────────────────────────────────────────────
-  const loadWeek = useCallback(async (ws) => {
+  const loadWeek = useCallback(async (ws, person) => {
     setLoading(true);
     try {
       const days = getWeekDays(ws);
-      const { data } = await api.get(`/habits?from=${days[0]}&to=${days[6]}`);
+      const { data } = await api.get(`/habits?from=${days[0]}&to=${days[6]}&person=${encodeURIComponent(person || '')}`);
       const map = {};
       (data || []).forEach(e => {
         const ds = String(e.date).slice(0, 10);
@@ -114,14 +114,14 @@ export default function WellnessHabits() {
     }
   }, []);
 
-  useEffect(() => { loadWeek(weekStart); }, [weekStart, loadWeek]);
+  useEffect(() => { loadWeek(weekStart, currentPerson); }, [weekStart, currentPerson, loadWeek]);
 
   // ── load analytics ─────────────────────────────────────────────────────────
-  const loadStats = useCallback(async (p) => {
+  const loadStats = useCallback(async (p, person) => {
     setALoading(true);
     try {
       const apiPeriod = PERIOD_MAP[p] || '1Y';
-      const { data } = await api.get(`/habits/stats?period=${apiPeriod}`);
+      const { data } = await api.get(`/habits/stats?period=${apiPeriod}&person=${encodeURIComponent(person || '')}`);
       setStats(data);
     } catch (err) {
       setStats(null);
@@ -131,8 +131,8 @@ export default function WellnessHabits() {
   }, []);
 
   useEffect(() => {
-    if (view === 'analytics') loadStats(period);
-  }, [view, period, loadStats]);
+    if (view === 'analytics') loadStats(period, currentPerson);
+  }, [view, period, currentPerson, loadStats]);
 
   // ── set habit ──────────────────────────────────────────────────────────────
   async function setHabit(date, habitKey, value) {
@@ -142,7 +142,7 @@ export default function WellnessHabits() {
     setEntries(e => ({ ...e, [date]: next }));
     setSaving(s => ({ ...s, [date]: true }));
     try {
-      await api.put('/habits', { date, ...next });
+      await api.put('/habits', { date, ...next, person: currentPerson || '' });
     } catch (err) {
       console.error(err);
     } finally {

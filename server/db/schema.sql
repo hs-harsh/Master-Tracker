@@ -416,3 +416,38 @@ CREATE TABLE IF NOT EXISTS workout_entries (
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_workout_entries_user_date ON workout_entries(user_id, entry_date);
+
+-- ─── Per-profile wellness data migration ─────────────────────────────────────
+-- Add person_name to habit_entries so each profile has independent habit data
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'habit_entries' AND column_name = 'person_name') THEN
+    ALTER TABLE habit_entries ADD COLUMN person_name VARCHAR(50) NOT NULL DEFAULT '';
+    -- Drop old unique constraint and create per-profile one
+    ALTER TABLE habit_entries DROP CONSTRAINT IF EXISTS habit_entries_user_id_date_key;
+    ALTER TABLE habit_entries ADD CONSTRAINT uq_habit_entries_user_person_date UNIQUE (user_id, person_name, date);
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_habit_entries_person ON habit_entries(user_id, person_name, date);
+
+-- Add person_name to meal_plans
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'meal_plans' AND column_name = 'person_name') THEN
+    ALTER TABLE meal_plans ADD COLUMN person_name VARCHAR(50) NOT NULL DEFAULT '';
+    ALTER TABLE meal_plans DROP CONSTRAINT IF EXISTS meal_plans_user_id_week_start_key;
+    ALTER TABLE meal_plans ADD CONSTRAINT uq_meal_plans_user_person_week UNIQUE (user_id, person_name, week_start);
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_meal_plans_person ON meal_plans(user_id, person_name, week_start);
+
+-- Add person_name to workout_plans
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'workout_plans' AND column_name = 'person_name') THEN
+    ALTER TABLE workout_plans ADD COLUMN person_name VARCHAR(50) NOT NULL DEFAULT '';
+    ALTER TABLE workout_plans DROP CONSTRAINT IF EXISTS workout_plans_user_id_week_start_key;
+    ALTER TABLE workout_plans ADD CONSTRAINT uq_workout_plans_user_person_week UNIQUE (user_id, person_name, week_start);
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_workout_plans_person ON workout_plans(user_id, person_name, week_start);

@@ -22,28 +22,29 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-// ── GET /api/meals/week?week_start=YYYY-MM-DD ─────────────────────────────────
+// ── GET /api/meals/week?week_start=YYYY-MM-DD&person=Harsh ───────────────────
 // Returns the plan + entries for a week; auto-creates plan if missing.
 router.get('/week', async (req, res) => {
   try {
     const ws = req.query.week_start
       ? getMonday(req.query.week_start)
       : getMonday(todayStr());
+    const person = req.query.person || '';
 
     // Find or create plan
     let { rows } = await pool.query(
-      `SELECT id, user_id, week_start::text AS week_start, status, created_at, updated_at
-       FROM meal_plans WHERE user_id=$1 AND week_start=$2`,
-      [req.user.id, ws]
+      `SELECT id, user_id, person_name, week_start::text AS week_start, status, created_at, updated_at
+       FROM meal_plans WHERE user_id=$1 AND person_name=$2 AND week_start=$3`,
+      [req.user.id, person, ws]
     );
 
     let plan = rows[0];
     if (!plan) {
       const ins = await pool.query(
-        `INSERT INTO meal_plans (user_id, week_start)
-         VALUES ($1,$2)
-         RETURNING id, user_id, week_start::text AS week_start, status, created_at, updated_at`,
-        [req.user.id, ws]
+        `INSERT INTO meal_plans (user_id, person_name, week_start)
+         VALUES ($1,$2,$3)
+         RETURNING id, user_id, person_name, week_start::text AS week_start, status, created_at, updated_at`,
+        [req.user.id, person, ws]
       );
       plan = ins.rows[0];
     }
@@ -148,11 +149,11 @@ router.post('/week/:id/accept', async (req, res) => {
   }
 });
 
-// ── GET /api/meals/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD ────────────────────
+// ── GET /api/meals/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD&person=Harsh ───────
 // Returns accepted meal entries in date range (for calendar view).
 router.get('/calendar', async (req, res) => {
   try {
-    const { from, to } = req.query;
+    const { from, to, person = '' } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'from and to required' });
 
     const { rows } = await pool.query(
@@ -161,11 +162,12 @@ router.get('/calendar', async (req, res) => {
        FROM meal_entries me
        JOIN meal_plans   mp ON me.meal_plan_id = mp.id
        WHERE me.user_id=$1
+         AND mp.person_name=$2
          AND mp.status='accepted'
-         AND me.entry_date >= $2
-         AND me.entry_date <= $3
+         AND me.entry_date >= $3
+         AND me.entry_date <= $4
        ORDER BY me.entry_date, me.meal_type`,
-      [req.user.id, from, to]
+      [req.user.id, person, from, to]
     );
 
     res.json({ entries: rows });

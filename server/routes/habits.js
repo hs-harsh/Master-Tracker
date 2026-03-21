@@ -2,16 +2,16 @@ const router = require('express').Router();
 const pool = require('../db');
 const auth = require('../middleware/auth');
 
-// All routes require auth. Data is strictly scoped by req.user.id — users only see their own entries.
+// All routes require auth. Data is scoped by req.user.id + person_name.
 const PERIOD_DAYS = { '1W': 7, '1M': 30, '3M': 90, '6M': 180, '1Y': 365 };
 
-// GET /api/habits?from=YYYY-MM-DD&to=YYYY-MM-DD
+// GET /api/habits?from=YYYY-MM-DD&to=YYYY-MM-DD&person=Harsh
 router.get('/', auth, async (req, res) => {
   try {
-    const { from, to } = req.query;
-    let q = `SELECT * FROM habit_entries WHERE user_id = $1`;
-    const params = [req.user.id];
-    let i = 2;
+    const { from, to, person = '' } = req.query;
+    let q = `SELECT * FROM habit_entries WHERE user_id = $1 AND person_name = $2`;
+    const params = [req.user.id, person];
+    let i = 3;
     if (from) { q += ` AND date >= $${i++}`; params.push(from); }
     if (to) { q += ` AND date <= $${i++}`; params.push(to); }
     q += ' ORDER BY date ASC';
@@ -22,10 +22,11 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// GET /api/habits/stats?period=1W|1M|3M|6M|1Y
+// GET /api/habits/stats?period=1W|1M|3M|6M|1Y&person=Harsh
 router.get('/stats', auth, async (req, res) => {
   try {
     const period = req.query.period || '1M';
+    const person = req.query.person || '';
     const days = PERIOD_DAYS[period] ?? 30;
     const from = new Date();
     from.setDate(from.getDate() - days);
@@ -34,9 +35,9 @@ router.get('/stats', auth, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT date, clean_food, walk, gym, sports
        FROM habit_entries
-       WHERE user_id = $1 AND date >= $2
+       WHERE user_id = $1 AND person_name = $2 AND date >= $3
        ORDER BY date ASC`,
-      [req.user.id, fromStr]
+      [req.user.id, person, fromStr]
     );
 
     // Compute daily overall + per-habit + count for charts
@@ -98,23 +99,23 @@ function avgOf(arr) {
   return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
 }
 
-// POST /api/habits — upsert by date
+// POST /api/habits — upsert by date+person
 router.post('/', auth, async (req, res) => {
   try {
-    const { date, clean_food, walk, gym, sports } = req.body;
+    const { date, clean_food, walk, gym, sports, person = '' } = req.body;
     if (!date) return res.status(400).json({ error: 'date required' });
 
     const { rows } = await pool.query(
-      `INSERT INTO habit_entries (user_id, date, clean_food, walk, gym, sports, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       ON CONFLICT (user_id, date) DO UPDATE SET
+      `INSERT INTO habit_entries (user_id, person_name, date, clean_food, walk, gym, sports, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (user_id, person_name, date) DO UPDATE SET
          clean_food = COALESCE(EXCLUDED.clean_food, habit_entries.clean_food),
          walk = COALESCE(EXCLUDED.walk, habit_entries.walk),
          gym = COALESCE(EXCLUDED.gym, habit_entries.gym),
          sports = COALESCE(EXCLUDED.sports, habit_entries.sports),
          updated_at = NOW()
        RETURNING *`,
-      [req.user.id, date, clean_food ?? null, walk ?? null, gym ?? null, sports ?? null]
+      [req.user.id, person, date, clean_food ?? null, walk ?? null, gym ?? null, sports ?? null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -122,23 +123,23 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// PUT /api/habits — full replace for a date
+// PUT /api/habits — full replace for a date+person
 router.put('/', auth, async (req, res) => {
   try {
-    const { date, clean_food, walk, gym, sports } = req.body;
+    const { date, clean_food, walk, gym, sports, person = '' } = req.body;
     if (!date) return res.status(400).json({ error: 'date required' });
 
     const { rows } = await pool.query(
-      `INSERT INTO habit_entries (user_id, date, clean_food, walk, gym, sports, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       ON CONFLICT (user_id, date) DO UPDATE SET
+      `INSERT INTO habit_entries (user_id, person_name, date, clean_food, walk, gym, sports, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (user_id, person_name, date) DO UPDATE SET
          clean_food = EXCLUDED.clean_food,
          walk = EXCLUDED.walk,
          gym = EXCLUDED.gym,
          sports = EXCLUDED.sports,
          updated_at = NOW()
        RETURNING *`,
-      [req.user.id, date, clean_food ?? null, walk ?? null, gym ?? null, sports ?? null]
+      [req.user.id, person, date, clean_food ?? null, walk ?? null, gym ?? null, sports ?? null]
     );
     res.json(rows[0]);
   } catch (err) {
