@@ -451,3 +451,11 @@ BEGIN
   END IF;
 END $$;
 CREATE INDEX IF NOT EXISTS idx_workout_plans_person ON workout_plans(user_id, person_name, week_start);
+
+-- Add email to user_persons for wellness reminder emails
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_persons' AND column_name = 'email') THEN
+    ALTER TABLE user_persons ADD COLUMN email VARCHAR(255);
+  END IF;
+END $$;

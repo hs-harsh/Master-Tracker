@@ -5,6 +5,7 @@ import {
   ChevronLeft, ChevronRight,
   Check, Save, Sparkles, AlertTriangle,
   RotateCcw, Flame, Target, TrendingUp,
+  Clock, ChevronDown, ChevronUp, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -21,6 +22,7 @@ const SUB_TABS = [
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const PERIODS = ['1M', '3M', '1Y'];
+const PROMPT_HISTORY_KEY = 'workout_prompt_history';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function parseD(d) {
@@ -78,6 +80,14 @@ function countSets(exercises) {
   return exercises.reduce((sum, ex) => sum + (Number(ex.sets) || 0), 0);
 }
 
+// localStorage prompt history helpers
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(PROMPT_HISTORY_KEY) || '[]'); } catch { return []; }
+}
+function saveHistory(history) {
+  try { localStorage.setItem(PROMPT_HISTORY_KEY, JSON.stringify(history)); } catch {}
+}
+
 // ─── component ────────────────────────────────────────────────────────────────
 export default function WellnessWorkouts() {
   const { personName, activePerson } = useAuth();
@@ -92,9 +102,17 @@ export default function WellnessWorkouts() {
   const [loading,    setLoading]    = useState(false);
   const [saving,     setSaving]     = useState(false);
   const [accepting,  setAccepting]  = useState(false);
+  const [resetting,  setResetting]  = useState(false);
   const [generating, setGenerating] = useState(false);
   const [aiError,    setAiError]    = useState('');
-  const aiInputRef = useRef(null);
+  const [reasoning,  setReasoning]  = useState('');
+  const [showReasoning, setShowReasoning] = useState(false);
+
+  // Prompt state (controlled, persists across generate clicks)
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [promptHistory, setPromptHistory] = useState(loadHistory);
+  const [showHistory, setShowHistory] = useState(false);
+  const historyRef = useRef(null);
 
   const [period,    setPeriod]    = useState('1M');
   const [analytics, setAnalytics] = useState(null);
@@ -103,6 +121,17 @@ export default function WellnessWorkouts() {
   const today    = todayStr();
   const weekDays = getWeekDays(weekStart);
   const isAccepted = plan?.status === 'accepted';
+
+  // Close history dropdown on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (historyRef.current && !historyRef.current.contains(e.target)) {
+        setShowHistory(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   // ── load week ──────────────────────────────────────────────────────────────
   const loadWeek = useCallback(async (ws, person) => {
@@ -124,6 +153,8 @@ export default function WellnessWorkouts() {
         setGymDays(new Set());
         setGenerated(null);
       }
+      setReasoning('');
+      setShowReasoning(false);
     } catch (err) {
       console.error(err);
     } finally {
@@ -164,31 +195,43 @@ export default function WellnessWorkouts() {
     setGenerated(null);
   }
 
-  // ── reset week ────────────────────────────────────────────────────────────
-  async function resetWeek() {
-    if (!plan) return;
-    try {
-      await api.put(`/workouts/week/${plan.id}`, { status: 'draft' });
-      await loadWeek(weekStart, currentPerson);
-    } catch (err) {
-      console.error(err);
-    }
+  // ── inline exercise edit ───────────────────────────────────────────────────
+  function updateExercise(dateStr, exIdx, field, value) {
+    setGenerated(prev => prev.map(entry => {
+      if (String(entry.entry_date).slice(0, 10) !== dateStr) return entry;
+      const rawNotes = typeof entry.notes === 'string' ? entry.notes : JSON.stringify(entry.notes || []);
+      const exs = parseExercises(rawNotes);
+      exs[exIdx] = { ...exs[exIdx], [field]: value };
+      return { ...entry, notes: JSON.stringify(exs) };
+    }));
   }
 
   // ── generate plan ─────────────────────────────────────────────────────────
   async function generatePlan() {
+<<<<<<< HEAD
     if (!plan) {
       setAiError('Plan not loaded yet, please wait or refresh.');
       return;
     }
     setGenerating(true); setAiError('');
+=======
+    if (!plan) return;
+    setGenerating(true); setAiError(''); setReasoning(''); setShowReasoning(false);
+    // Save prompt to history
+    if (aiPrompt.trim()) {
+      const newHistory = [aiPrompt, ...promptHistory.filter(h => h !== aiPrompt)].slice(0, 5);
+      setPromptHistory(newHistory);
+      saveHistory(newHistory);
+    }
+>>>>>>> e016175 (Wellness: 7-feature update — reset plans, inline edit, prompt history, reasoning, emails, cron reminders)
     try {
       const selectedDays = weekDays.filter((_, i) => gymDays.has(i));
       const { data } = await api.post(`/workouts/week/${plan.id}/generate`, {
-        prompt: aiInputRef.current?.value || '',
+        prompt: aiPrompt,
         gym_days: selectedDays,
       });
       setGenerated(data.entries || []);
+      if (data.reasoning) { setReasoning(data.reasoning); setShowReasoning(true); }
     } catch (err) {
       setAiError(err.response?.data?.error || 'Generation failed. Check your API key in Settings.');
     } finally {
@@ -223,6 +266,15 @@ export default function WellnessWorkouts() {
       const { data } = await api.post(`/workouts/week/${plan.id}/accept`);
       setPlan(data.plan);
     } catch (err) { console.error(err); } finally { setAccepting(false); }
+  }
+
+  async function resetPlan() {
+    if (!plan || !confirm('Reset this plan to draft? You can then edit or regenerate it.')) return;
+    setResetting(true);
+    try {
+      const { data } = await api.post(`/workouts/week/${plan.id}/reset`);
+      setPlan(data.plan);
+    } catch (err) { console.error(err); } finally { setResetting(false); }
   }
 
   function shiftWeek(dir) {
@@ -306,6 +358,7 @@ export default function WellnessWorkouts() {
                 <ChevronRight size={18} />
               </button>
             </div>
+<<<<<<< HEAD
             <div className="flex items-center gap-2 flex-wrap">
               {isAccepted && (
                 <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
@@ -317,6 +370,21 @@ export default function WellnessWorkouts() {
                   className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors">
                   Reset Week
                 </button>
+=======
+            <div className="flex items-center gap-2">
+              {isAccepted && (
+                <>
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
+                    <Check size={13} /> Plan Accepted
+                  </span>
+                  <button onClick={resetPlan} disabled={resetting}
+                    title="Reset to draft so you can edit or regenerate"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                      border border-white/15 text-soft hover:text-white hover:border-white/30 transition-colors disabled:opacity-50">
+                    <RefreshCw size={12} />{resetting ? 'Resetting…' : 'Reset Plan'}
+                  </button>
+                </>
+>>>>>>> e016175 (Wellness: 7-feature update — reset plans, inline edit, prompt history, reasoning, emails, cron reminders)
               )}
             </div>
           </div>
@@ -386,10 +454,36 @@ export default function WellnessWorkouts() {
               <div className="flex items-center gap-1.5 text-xs text-purple-400 font-semibold shrink-0">
                 <Sparkles size={13} />AI
               </div>
-              <input ref={aiInputRef} className="input flex-1 text-xs py-1.5"
-                placeholder="e.g. Push Pull Legs, Upper Lower, 4-day split, chest focus…"
-                defaultValue=""
-                onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()} />
+              <div className="flex-1 relative" ref={historyRef}>
+                <div className="flex items-center gap-1">
+                  <input
+                    className="input flex-1 text-xs py-1.5"
+                    placeholder="e.g. Push Pull Legs, Upper Lower, 4-day split, chest focus…"
+                    value={aiPrompt}
+                    onChange={e => setAiPrompt(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()}
+                  />
+                  {promptHistory.length > 0 && (
+                    <button
+                      onClick={() => setShowHistory(h => !h)}
+                      title="Prompt history"
+                      className="flex items-center px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/20 text-muted hover:text-white transition-colors">
+                      <Clock size={13} />
+                    </button>
+                  )}
+                </div>
+                {showHistory && promptHistory.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-white/10 rounded-lg py-1 z-10 shadow-xl">
+                    {promptHistory.map((h, i) => (
+                      <button key={i}
+                        onClick={() => { setAiPrompt(h); setShowHistory(false); }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-soft hover:text-white hover:bg-white/5 transition-colors truncate">
+                        {h}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button onClick={generatePlan} disabled={generating}
                 className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
                   bg-purple-500/20 text-purple-300 border border-purple-500/30
@@ -407,6 +501,26 @@ export default function WellnessWorkouts() {
               )}
             </div>
             {aiError && <p className="text-xs text-red-400 mt-2">{aiError}</p>}
+          </div>
+        )}
+
+        {/* Reasoning panel */}
+        {reasoning && (
+          <div className="card overflow-hidden">
+            <button
+              onClick={() => setShowReasoning(r => !r)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors">
+              <div className="flex items-center gap-2">
+                <Sparkles size={13} className="text-purple-400" />
+                <span className="text-xs text-purple-300 font-semibold uppercase tracking-wider">AI Reasoning</span>
+              </div>
+              {showReasoning ? <ChevronUp size={14} className="text-muted" /> : <ChevronDown size={14} className="text-muted" />}
+            </button>
+            {showReasoning && (
+              <div className="px-4 pb-4 text-sm text-soft leading-relaxed border-t border-white/5">
+                {reasoning}
+              </div>
+            )}
           </div>
         )}
 
@@ -432,29 +546,21 @@ export default function WellnessWorkouts() {
             </div>
 
             {/* Stats banner */}
-            {planStats && (
+            {computePlanStats(generated) && (
               <div className="grid grid-cols-3 gap-3">
-                <div className="card px-4 py-3 flex items-center gap-3">
-                  <Dumbbell size={18} className="text-accent shrink-0" />
-                  <div>
-                    <p className="text-[10px] text-muted uppercase tracking-wider">Gym Days</p>
-                    <p className="font-mono text-xl font-bold text-white">{planStats.gymDays}</p>
+                {[
+                  { label: 'Gym Days',   value: computePlanStats(generated).gymDays,      icon: Dumbbell, color: 'text-accent'     },
+                  { label: 'Total Sets', value: computePlanStats(generated).totalSets,     icon: Target,   color: 'text-blue-400'   },
+                  { label: 'Exercises',  value: computePlanStats(generated).totalExercises, icon: Flame,   color: 'text-orange-400' },
+                ].map(({ label, value, icon: Icon, color }) => (
+                  <div key={label} className="card px-4 py-3 flex items-center gap-3">
+                    <Icon size={18} className={`${color} shrink-0`} />
+                    <div>
+                      <p className="text-[10px] text-muted uppercase tracking-wider">{label}</p>
+                      <p className={`font-mono text-xl font-bold text-white`}>{value}</p>
+                    </div>
                   </div>
-                </div>
-                <div className="card px-4 py-3 flex items-center gap-3">
-                  <Target size={18} className="text-blue-400 shrink-0" />
-                  <div>
-                    <p className="text-[10px] text-muted uppercase tracking-wider">Total Sets</p>
-                    <p className="font-mono text-xl font-bold text-white">{planStats.totalSets}</p>
-                  </div>
-                </div>
-                <div className="card px-4 py-3 flex items-center gap-3">
-                  <Flame size={18} className="text-orange-400 shrink-0" />
-                  <div>
-                    <p className="text-[10px] text-muted uppercase tracking-wider">Exercises</p>
-                    <p className="font-mono text-xl font-bold text-white">{planStats.totalExercises}</p>
-                  </div>
-                </div>
+                ))}
               </div>
             )}
 
@@ -464,9 +570,8 @@ export default function WellnessWorkouts() {
               if (!entry) return null;
               const isT   = ds === today;
               const isGym = entry.workout_type === 'strength';
-              const exs   = isGym ? parseExercises(
-                typeof entry.notes === 'string' ? entry.notes : JSON.stringify(entry.notes || [])
-              ) : [];
+              const rawNotes = typeof entry.notes === 'string' ? entry.notes : JSON.stringify(entry.notes || []);
+              const exs   = isGym ? parseExercises(rawNotes) : [];
 
               return (
                 <div key={ds} className={`card overflow-hidden ${isT ? 'ring-1 ring-accent/30' : ''}`}>
@@ -507,13 +612,43 @@ export default function WellnessWorkouts() {
                         <tbody>
                           {exs.map((ex, j) => (
                             <tr key={j} className="border-b border-white/[0.03] last:border-0 hover:bg-white/[0.02]">
-                              <td className="px-4 py-2.5 text-soft">{ex.name}</td>
-                              <td className="px-3 py-2.5 text-center">
-                                <span className="inline-block min-w-[28px] text-center font-mono font-semibold text-accent bg-accent/10 rounded px-1.5 py-0.5">
-                                  {ex.sets ?? '—'}
-                                </span>
+                              <td className="px-4 py-2 text-soft">
+                                {!isAccepted ? (
+                                  <input
+                                    className="bg-transparent text-soft text-xs w-full outline-none focus:text-white placeholder-white/20"
+                                    value={ex.name || ''}
+                                    onChange={e => updateExercise(ds, j, 'name', e.target.value)}
+                                    placeholder="Exercise name"
+                                  />
+                                ) : ex.name}
                               </td>
-                              <td className="px-3 py-2.5 text-center text-soft font-mono">{ex.reps ?? '—'}</td>
+                              <td className="px-3 py-2 text-center">
+                                {!isAccepted ? (
+                                  <input
+                                    type="number"
+                                    className="bg-accent/10 text-accent text-xs text-center w-12 outline-none font-mono font-semibold rounded px-1.5 py-0.5"
+                                    value={ex.sets ?? ''}
+                                    onChange={e => updateExercise(ds, j, 'sets', e.target.value)}
+                                    min="1"
+                                  />
+                                ) : (
+                                  <span className="inline-block min-w-[28px] text-center font-mono font-semibold text-accent bg-accent/10 rounded px-1.5 py-0.5">
+                                    {ex.sets ?? '—'}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                {!isAccepted ? (
+                                  <input
+                                    className="bg-transparent text-soft text-xs text-center w-16 outline-none font-mono"
+                                    value={ex.reps ?? ''}
+                                    onChange={e => updateExercise(ds, j, 'reps', e.target.value)}
+                                    placeholder="8-12"
+                                  />
+                                ) : (
+                                  <span className="text-soft font-mono">{ex.reps ?? '—'}</span>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>

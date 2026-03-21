@@ -59,5 +59,14 @@ async function initDb() {
 }
 
 initDb().then(() => {
-  app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    // Start scheduled reminder emails
+    try {
+      const { startCronJobs } = require('./cron');
+      startCronJobs();
+    } catch (err) {
+      console.warn('Cron jobs not started:', err.message);
+    }
+  });
 });

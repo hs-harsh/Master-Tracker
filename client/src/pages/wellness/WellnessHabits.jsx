@@ -135,17 +135,20 @@ export default function WellnessHabits() {
     if (view === 'analytics') loadStats(period, currentPerson);
   }, [view, period, currentPerson, loadStats]);
 
-  // ── scroll today into view on mobile ───────────────────────────────────────
+  // ── scroll today to leftmost visible column ────────────────────────────────
   const scrollRef = useRef(null);
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
     const todayEl = container.querySelector('[data-today-col="true"]');
     if (!todayEl) return;
-    // Center today's column in the scroll container
-    const containerCenter = container.clientWidth / 2;
-    const elCenter = todayEl.offsetLeft + todayEl.offsetWidth / 2;
-    container.scrollLeft = elCenter - containerCenter;
+    // Scroll so today is the first visible day (leftmost after sticky label column)
+    const labelCol = container.querySelector('[data-label-col="true"]');
+    const labelWidth = labelCol ? labelCol.offsetWidth : 0;
+    const containerLeft = container.getBoundingClientRect().left;
+    const todayLeft = todayEl.getBoundingClientRect().left;
+    const currentScroll = container.scrollLeft;
+    container.scrollLeft = currentScroll + (todayLeft - containerLeft) - labelWidth;
   }, [weekStart, loading]);
 
   // ── set habit ──────────────────────────────────────────────────────────────
@@ -255,7 +258,8 @@ export default function WellnessHabits() {
         <div className="overflow-x-auto" ref={scrollRef}>
           <div className="min-w-[680px]">
             <div className="grid grid-cols-8 border-b border-white/5">
-              <div className="p-3" />
+              <div className="p-3" data-label-col="true"
+                style={{ position: 'sticky', left: 0, zIndex: 2, background: 'var(--surface, #1a1a1a)' }} />
               {weekDays.map(ds => {
                 const h = fmtDayHeader(ds);
                 const isT = ds === today;
@@ -271,7 +275,8 @@ export default function WellnessHabits() {
 
             {HABIT_TYPES.map(ht => (
               <div key={ht.key} className="grid grid-cols-8 border-b border-white/5 last:border-0">
-                <div className={`flex items-center gap-2 p-3 border-r border-white/5 ${ht.ring.split(' ')[0]}`}>
+                <div className={`flex items-center gap-2 p-3 border-r border-white/5 ${ht.ring.split(' ')[0]}`}
+                  style={{ position: 'sticky', left: 0, zIndex: 2, background: 'var(--surface, #1a1a1a)' }}>
                   <ht.icon size={14} className={ht.color} />
                   <span className={`text-xs font-semibold ${ht.color} hidden sm:inline`}>{ht.label}</span>
                   <span className={`text-xs font-semibold ${ht.color} sm:hidden`}>{ht.shortLabel}</span>

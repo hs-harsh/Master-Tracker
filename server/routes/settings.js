@@ -142,6 +142,34 @@ router.put('/', auth, async (req, res) => {
   }
 });
 
+// ── GET /api/settings/profile — list all profiles with their emails ────────────
+router.get('/profile', auth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT person_name, email FROM user_persons WHERE user_id = $1 ORDER BY person_name',
+      [req.user.id]
+    );
+    res.json({ profiles: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUT /api/settings/profile — save email for a profile ─────────────────────
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const { person_name, email } = req.body || {};
+    if (!person_name) return res.status(400).json({ error: 'person_name required' });
+    await pool.query(
+      'UPDATE user_persons SET email = $1 WHERE user_id = $2 AND person_name = $3',
+      [email ? email.trim() : null, req.user.id, person_name]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/sync-from-sheet', auth, async (req, res) => {
   try {
     const { type } = req.body || {};

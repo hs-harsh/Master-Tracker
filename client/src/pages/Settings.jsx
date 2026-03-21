@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { Save, Trash2, UserPlus, X } from 'lucide-react';
+import { Save, Trash2, UserPlus, X, Mail } from 'lucide-react';
 import { applyTheme } from '../lib/theme';
 import { useAuth } from '../hooks/useAuth';
 
@@ -23,6 +23,10 @@ export default function Settings() {
   const [newPersonName, setNewPersonName] = useState('');
   const [personError,   setPersonError]   = useState('');
   const [addingPerson,  setAddingPerson]  = useState(false);
+
+  // ── Profile emails ───────────────────────────────────────────────────────────
+  const [profileEmails, setProfileEmails] = useState({});  // { personName: email }
+  const [savingEmail,   setSavingEmail]   = useState({});  // { personName: bool }
 
   // ── Preferences / theme ──────────────────────────────────────────────────────
   const [defaultAccount,           setDefaultAccount]           = useState('');
@@ -50,7 +54,15 @@ export default function Settings() {
     }).catch(() => {});
   };
 
-  useEffect(() => { load(); }, []);
+  const loadProfileEmails = () => {
+    api.get('/settings/profile').then(r => {
+      const map = {};
+      (r.data.profiles || []).forEach(p => { map[p.person_name] = p.email || ''; });
+      setProfileEmails(map);
+    }).catch(() => {});
+  };
+
+  useEffect(() => { load(); loadProfileEmails(); }, []);
 
   // ── Add person ──────────────────────────────────────────────────────────────
   const handleAddPerson = async () => {
@@ -61,6 +73,7 @@ export default function Settings() {
       await api.post('/persons', { personName: newPersonName.trim() });
       setNewPersonName('');
       fetchPersons();
+      loadProfileEmails();
     } catch (err) {
       setPersonError(err.response?.data?.error || 'Failed to add person');
     } finally {
@@ -75,6 +88,17 @@ export default function Settings() {
       fetchPersons();
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to remove');
+    }
+  };
+
+  const handleSaveEmail = async (personName) => {
+    setSavingEmail(s => ({ ...s, [personName]: true }));
+    try {
+      await api.put('/settings/profile', { person_name: personName, email: profileEmails[personName] || '' });
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to save email');
+    } finally {
+      setSavingEmail(s => ({ ...s, [personName]: false }));
     }
   };
 
@@ -140,19 +164,43 @@ export default function Settings() {
         <p className="text-sm text-soft mb-4">
           Each person has their own transactions, investments and cashflow.
         </p>
-        <div className="flex flex-wrap gap-2 mb-4">
+
+        {/* Profile list with email */}
+        <div className="space-y-3 mb-4">
           {persons.map(p => (
-            <div key={p} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-card/60 border border-border text-sm font-mono text-white">
-              {p}
-              {p !== personName && (
-                <button onClick={() => handleRemovePerson(p)}
-                  className="text-muted hover:text-rose ml-1 transition-colors" title={`Remove ${p}`}>
-                  <X size={13} />
+            <div key={p} className="p-3 rounded-lg bg-card/60 border border-border">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-mono text-white font-semibold">{p}</span>
+                {p !== personName && (
+                  <button onClick={() => handleRemovePerson(p)}
+                    className="text-muted hover:text-rose transition-colors" title={`Remove ${p}`}>
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2 items-center">
+                <Mail size={13} className="text-muted shrink-0" />
+                <input
+                  className="input flex-1 text-xs py-1.5"
+                  type="email"
+                  placeholder={`${p.toLowerCase()}@example.com`}
+                  value={profileEmails[p] || ''}
+                  onChange={e => setProfileEmails(m => ({ ...m, [p]: e.target.value }))}
+                  onKeyDown={e => e.key === 'Enter' && handleSaveEmail(p)}
+                />
+                <button
+                  onClick={() => handleSaveEmail(p)}
+                  disabled={savingEmail[p]}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                    bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors disabled:opacity-50">
+                  <Save size={12} />{savingEmail[p] ? 'Saving…' : 'Save email'}
                 </button>
-              )}
+              </div>
+              <p className="text-[10px] text-muted mt-1.5 ml-5">Used for plan acceptance emails & wellness reminders</p>
             </div>
           ))}
         </div>
+
         <div className="flex gap-2 items-start">
           <div className="flex-1">
             <input className="input w-full" placeholder="New person name (e.g. Bob)"
@@ -166,7 +214,6 @@ export default function Settings() {
             <UserPlus size={14} /> Add
           </button>
         </div>
-
       </div>
 
       {/* ── 2. Preferences ── */}

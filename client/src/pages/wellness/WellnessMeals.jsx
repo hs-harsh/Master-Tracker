@@ -5,6 +5,7 @@ import {
   ChevronLeft, ChevronRight,
   Plus, X, Check, Save, Sparkles,
   Coffee, Sun, Moon, Apple, AlertTriangle,
+  Clock, ChevronDown, ChevronUp, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -74,8 +75,17 @@ function fmtDayHeader(ds) {
   };
 }
 
+const PROMPT_HISTORY_KEY = 'meal_prompt_history';
+
 function eKey(date, mealType) {
   return `${String(date).slice(0,10)}_${mealType}`;
+}
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(PROMPT_HISTORY_KEY) || '[]'); } catch { return []; }
+}
+function saveHistory(history) {
+  try { localStorage.setItem(PROMPT_HISTORY_KEY, JSON.stringify(history)); } catch {}
 }
 
 function dateRangeFor(period) {
@@ -101,7 +111,15 @@ export default function WellnessMeals() {
   const [accepting,  setAccepting] = useState(false);
   const [generating, setGenerating]= useState(false);
   const [aiError,    setAiError]   = useState('');
-  const aiInputRef = useRef(null);
+  const [resetting,  setResetting] = useState(false);
+  const [reasoning,  setReasoning] = useState('');
+  const [showReasoning, setShowReasoning] = useState(false);
+
+  // Prompt state: controlled + history
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [promptHistory, setPromptHistory] = useState(loadHistory);
+  const [showHistory, setShowHistory] = useState(false);
+  const historyRef = useRef(null);
 
   // cell edit modal
   const [editCell, setEditCell] = useState(null);
@@ -112,6 +130,17 @@ export default function WellnessMeals() {
   const [period,    setPeriod]    = useState('1M');
   const [analytics, setAnalytics] = useState(null);
   const [aLoading,  setALoading]  = useState(false);
+
+  // Close history dropdown on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (historyRef.current && !historyRef.current.contains(e.target)) {
+        setShowHistory(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   // ── load week ──────────────────────────────────────────────────────────────
   const loadWeek = useCallback(async (ws, person) => {
@@ -182,9 +211,15 @@ export default function WellnessMeals() {
 
   async function generatePlan() {
     if (!plan) return;
-    setGenerating(true); setAiError('');
+    setGenerating(true); setAiError(''); setReasoning(''); setShowReasoning(false);
+    // Save prompt to history
+    if (aiPrompt.trim()) {
+      const newHistory = [aiPrompt, ...promptHistory.filter(h => h !== aiPrompt)].slice(0, 5);
+      setPromptHistory(newHistory);
+      saveHistory(newHistory);
+    }
     try {
-      const { data } = await api.post(`/meals/week/${plan.id}/generate`, { prompt: aiInputRef.current?.value || '' });
+      const { data } = await api.post(`/meals/week/${plan.id}/generate`, { prompt: aiPrompt });
       const map = {};
       (data.entries || []).forEach(e => {
         map[eKey(e.entry_date, e.meal_type)] = {
@@ -193,9 +228,19 @@ export default function WellnessMeals() {
         };
       });
       setEntries(map);
+      if (data.reasoning) { setReasoning(data.reasoning); setShowReasoning(true); }
     } catch (err) {
       setAiError(err.response?.data?.error || 'Generation failed. Check your API key in Settings.');
     } finally { setGenerating(false); }
+  }
+
+  async function resetPlan() {
+    if (!plan || !confirm('Reset this plan to draft? You can then edit or regenerate it.')) return;
+    setResetting(true);
+    try {
+      const { data } = await api.post(`/meals/week/${plan.id}/reset`);
+      setPlan(data.plan);
+    } catch (err) { console.error(err); } finally { setResetting(false); }
   }
 
   function shiftWeek(dir) {
@@ -332,11 +377,19 @@ export default function WellnessMeals() {
               <ChevronRight size={18} />
             </button>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {isAccepted ? (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
-                <Check size={13} /> Plan Accepted — saved to calendar
-              </span>
+              <>
+                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
+                  <Check size={13} /> Plan Accepted — saved to calendar
+                </span>
+                <button onClick={resetPlan} disabled={resetting}
+                  title="Reset to draft so you can edit or regenerate"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                    border border-white/15 text-soft hover:text-white hover:border-white/30 transition-colors disabled:opacity-50">
+                  <RefreshCw size={12} />{resetting ? 'Resetting…' : 'Reset Plan'}
+                </button>
+              </>
             ) : (
               <>
                 <button onClick={() => saveEntries()} disabled={saving}
@@ -358,10 +411,36 @@ export default function WellnessMeals() {
               <div className="flex items-center gap-1.5 text-xs text-purple-400 font-semibold shrink-0">
                 <Sparkles size={13} />AI
               </div>
-              <input ref={aiInputRef} className="input flex-1 text-xs py-1.5"
-                placeholder="e.g. High protein Indian diet, low carb, vegetarian…"
-                defaultValue=""
-                onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()} />
+              <div className="flex-1 relative" ref={historyRef}>
+                <div className="flex items-center gap-1">
+                  <input
+                    className="input flex-1 text-xs py-1.5"
+                    placeholder="e.g. High protein Indian diet, low carb, vegetarian…"
+                    value={aiPrompt}
+                    onChange={e => setAiPrompt(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()}
+                  />
+                  {promptHistory.length > 0 && (
+                    <button
+                      onClick={() => setShowHistory(h => !h)}
+                      title="Prompt history"
+                      className="flex items-center px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/20 text-muted hover:text-white transition-colors">
+                      <Clock size={13} />
+                    </button>
+                  )}
+                </div>
+                {showHistory && promptHistory.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-white/10 rounded-lg py-1 z-10 shadow-xl">
+                    {promptHistory.map((h, i) => (
+                      <button key={i}
+                        onClick={() => { setAiPrompt(h); setShowHistory(false); }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-soft hover:text-white hover:bg-white/5 transition-colors truncate">
+                        {h}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button onClick={generatePlan} disabled={generating}
                 className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
                   bg-purple-500/20 text-purple-300 border border-purple-500/30
@@ -370,6 +449,25 @@ export default function WellnessMeals() {
               </button>
             </div>
             {aiError && <p className="text-xs text-red-400 mt-1.5">{aiError}</p>}
+            {/* Reasoning panel */}
+            {reasoning && (
+              <div className="mt-2 rounded-lg overflow-hidden border border-white/8">
+                <button
+                  onClick={() => setShowReasoning(r => !r)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-white/[0.02] transition-colors">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={12} className="text-purple-400" />
+                    <span className="text-xs text-purple-300 font-semibold uppercase tracking-wider">AI Reasoning</span>
+                  </div>
+                  {showReasoning ? <ChevronUp size={13} className="text-muted" /> : <ChevronDown size={13} className="text-muted" />}
+                </button>
+                {showReasoning && (
+                  <div className="px-3 pb-3 text-xs text-soft leading-relaxed border-t border-white/5">
+                    {reasoning}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

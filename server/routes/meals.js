@@ -22,6 +22,19 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+async function getApiKey() {
+  const { rows } = await pool.query("SELECT value FROM settings WHERE key='anthropic_api_key'");
+  return (rows[0]?.value ?? '').trim() || process.env.ANTHROPIC_API_KEY || '';
+}
+
+function getWeekDays(weekStart) {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart + 'T12:00:00');
+    d.setDate(d.getDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
 // ── GET /api/meals/week?week_start=YYYY-MM-DD&person=Harsh ───────────────────
 // Returns the plan + entries for a week; auto-creates plan if missing.
 router.get('/week', async (req, res) => {
@@ -112,7 +125,7 @@ router.post('/week/:id/accept', async (req, res) => {
       `UPDATE meal_plans
        SET status='accepted', updated_at=NOW()
        WHERE id=$1 AND user_id=$2
-       RETURNING id, user_id, week_start::text AS week_start, status, created_at, updated_at`,
+       RETURNING id, user_id, person_name, week_start::text AS week_start, status, created_at, updated_at`,
       [planId, req.user.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Plan not found' });
@@ -122,19 +135,26 @@ router.post('/week/:id/accept', async (req, res) => {
     // Send email in background — don't block the response
     (async () => {
       try {
-        const [userRes, entriesRes] = await Promise.all([
-          pool.query(`SELECT username FROM users WHERE id=$1`, [req.user.id]),
+        const [personRes, entriesRes] = await Promise.all([
+          pool.query(
+            `SELECT person_name, email FROM user_persons WHERE user_id=$1 AND person_name=$2`,
+            [req.user.id, plan.person_name]
+          ),
           pool.query(
             `SELECT entry_date::text AS entry_date, meal_type, title, notes, calories
              FROM meal_entries WHERE meal_plan_id=$1 ORDER BY entry_date, meal_type`,
             [planId]
           ),
         ]);
-        const toEmail = userRes.rows[0]?.username;
-        if (toEmail) {
-          await sendMealPlanEmail(toEmail, {
+        const toEmail = personRes.rows[0]?.email;
+        const personName = plan.person_name;
+        if (toEmail && entriesRes.rows.length) {
+          // Generate grocery lists via Claude
+          const groceryLists = await generateGroceryLists(entriesRes.rows);
+          await sendMealPlanEmail(toEmail, personName, {
             weekStart: plan.week_start,
             entries:   entriesRes.rows,
+            groceryLists,
           });
         }
       } catch (emailErr) {
@@ -145,6 +165,27 @@ router.post('/week/:id/accept', async (req, res) => {
     res.json({ plan });
   } catch (e) {
     console.error('POST /meals/week/:id/accept', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── POST /api/meals/week/:id/reset — revert accepted plan to draft ────────────
+router.post('/week/:id/reset', async (req, res) => {
+  try {
+    const planId = parseInt(req.params.id, 10);
+
+    const { rows } = await pool.query(
+      `UPDATE meal_plans
+       SET status='draft', updated_at=NOW()
+       WHERE id=$1 AND user_id=$2
+       RETURNING id, user_id, person_name, week_start::text AS week_start, status, created_at, updated_at`,
+      [planId, req.user.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Plan not found' });
+
+    res.json({ plan: rows[0] });
+  } catch (e) {
+    console.error('POST /meals/week/:id/reset', e);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -177,19 +218,48 @@ router.get('/calendar', async (req, res) => {
   }
 });
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── Generate grocery lists via Claude ─────────────────────────────────────────
+async function generateGroceryLists(entries) {
+  try {
+    const apiKey = await getApiKey();
+    if (!apiKey) return null;
 
-async function getApiKey() {
-  const { rows } = await pool.query("SELECT value FROM settings WHERE key='anthropic_api_key'");
-  return (rows[0]?.value ?? '').trim() || process.env.ANTHROPIC_API_KEY || '';
+    const mealSummary = entries.map(e =>
+      `${e.entry_date} ${e.meal_type}: ${e.title}${e.notes ? ` (${e.notes.split('\n').slice(1).join(', ')})` : ''}`
+    ).join('\n');
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        system: `You are a meal planning assistant. Generate grocery lists from meal plans.
+Return ONLY a valid JSON object with no explanation, no markdown, no code fences:
+{
+  "days1to3": ["ingredient 1 (quantity)", "ingredient 2 (quantity)", ...],
+  "days4to7": ["ingredient 1 (quantity)", "ingredient 2 (quantity)", ...]
 }
+Group similar ingredients, include approximate quantities.`,
+        messages: [{
+          role: 'user',
+          content: `Generate grocery lists for these meals:\n\n${mealSummary}\n\nSplit into days 1-3 and days 4-7.`,
+        }],
+      }),
+    });
 
-function getWeekDays(weekStart) {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart + 'T12:00:00');
-    d.setDate(d.getDate() + i);
-    return d.toISOString().slice(0, 10);
-  });
+    const aiData = await aiRes.json();
+    if (!aiRes.ok) return null;
+
+    const raw = aiData.content?.[0]?.text || '{}';
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 // ── POST /api/meals/week/:id/generate ────────────────────────────────────────
@@ -201,7 +271,7 @@ router.post('/week/:id/generate', async (req, res) => {
 
     // Ownership + plan details
     const { rows: planRows } = await pool.query(
-      `SELECT id, week_start::text AS week_start, status FROM meal_plans WHERE id=$1 AND user_id=$2`,
+      `SELECT id, week_start::text AS week_start, person_name, status FROM meal_plans WHERE id=$1 AND user_id=$2`,
       [planId, req.user.id]
     );
     if (!planRows[0]) return res.status(404).json({ error: 'Plan not found' });
@@ -209,28 +279,59 @@ router.post('/week/:id/generate', async (req, res) => {
       return res.status(400).json({ error: 'Accepted plans cannot be regenerated' });
 
     const weekStart = planRows[0].week_start;
+    const personName = planRows[0].person_name;
     const days = getWeekDays(weekStart);
 
-    // Fetch last 4 accepted weeks for context
-    const { rows: pastEntries } = await pool.query(
-      `SELECT me.entry_date::text AS entry_date, me.meal_type, me.title, me.notes, me.calories
+    // Fetch last week's accepted plan specifically
+    const prevWeekStart = (() => {
+      const d = new Date(weekStart + 'T12:00:00');
+      d.setDate(d.getDate() - 7);
+      return d.toISOString().slice(0, 10);
+    })();
+
+    const { rows: lastWeekEntries } = await pool.query(
+      `SELECT me.entry_date::text AS entry_date, me.meal_type, me.title, me.calories
        FROM meal_entries me
        JOIN meal_plans mp ON me.meal_plan_id = mp.id
-       WHERE me.user_id=$1 AND mp.status='accepted' AND mp.id != $2
-       ORDER BY me.entry_date DESC
-       LIMIT 112`,
-      [req.user.id, planId]
+       WHERE me.user_id=$1 AND mp.person_name=$2 AND mp.status='accepted'
+         AND mp.week_start=$3
+       ORDER BY me.entry_date, me.meal_type`,
+      [req.user.id, personName, prevWeekStart]
     );
 
-    const pastSummary = pastEntries.length
-      ? pastEntries.slice(0, 56).map(e =>
+    // Fetch broader history
+    const { rows: pastEntries } = await pool.query(
+      `SELECT me.entry_date::text AS entry_date, me.meal_type, me.title, me.calories
+       FROM meal_entries me
+       JOIN meal_plans mp ON me.meal_plan_id = mp.id
+       WHERE me.user_id=$1 AND mp.person_name=$2 AND mp.status='accepted' AND mp.id != $3
+         AND mp.week_start != $4
+       ORDER BY me.entry_date DESC
+       LIMIT 56`,
+      [req.user.id, personName, planId, prevWeekStart]
+    );
+
+    const lastWeekSummary = lastWeekEntries.length
+      ? lastWeekEntries.map(e =>
           `${e.entry_date} ${e.meal_type}: ${e.title}${e.calories ? ` (${e.calories} kcal)` : ''}`
         ).join('\n')
-      : 'No past meal history yet.';
+      : null;
+
+    const olderSummary = pastEntries.length
+      ? pastEntries.map(e =>
+          `${e.entry_date} ${e.meal_type}: ${e.title}${e.calories ? ` (${e.calories} kcal)` : ''}`
+        ).join('\n')
+      : 'No older meal history.';
 
     const systemPrompt = `You are a meal planning assistant helping create healthy weekly meal plans.
-Return ONLY a valid JSON array with no explanation, no markdown, no code fences.
-Each object must have exactly these fields:
+Return ONLY a valid JSON object with no explanation, no markdown, no code fences.
+The object must have exactly these top-level keys:
+{
+  "entries": [...array of meal entries...],
+  "reasoning": "One paragraph explaining the nutritional logic, variety choices, and how this plan differs from last week."
+}
+
+Each entry object must have exactly these fields:
 { "entry_date": "YYYY-MM-DD", "meal_type": "breakfast|lunch|dinner|snack", "title": "string", "notes": "string or null", "calories": number_or_null }`;
 
     const userMessage = `Generate a complete 7-day meal plan for the week of ${weekStart}.
@@ -239,8 +340,10 @@ Days to fill (Monday to Sunday): ${days.join(', ')}
 
 User's goal / feedback: ${userPrompt || 'Healthy balanced diet'}
 
-Past meal history for reference (learn from patterns, avoid too much repetition):
-${pastSummary}
+${lastWeekSummary ? `Last week's accepted meal plan (vary meals and avoid repetition):\n${lastWeekSummary}` : 'No plan from last week.'}
+
+Older meal history for reference:
+${olderSummary}
 
 Requirements:
 - Fill all 4 meal types (breakfast, lunch, dinner, snack) for all 7 days = 28 entries total
@@ -249,6 +352,7 @@ Requirements:
 - title: concise meal name (e.g. "Masoor Dal with Brown Rice")
 - notes: FIRST LINE must be macro summary in format "Protein: Xg | Carbs: Xg | Fat: Xg", then a newline, then brief ingredients (e.g. "Protein: 35g | Carbs: 42g | Fat: 12g\nChicken breast, brown rice, salad")
 - calories: estimated integer (or null)
+- Vary meals significantly compared to last week
 - Align meals with the user's goal above`;
 
     const apiKey = await getApiKey();
@@ -263,7 +367,7 @@ Requirements:
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
+        max_tokens: 6000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
       }),
@@ -272,16 +376,22 @@ Requirements:
     const aiData = await aiRes.json();
     if (!aiRes.ok) return res.status(aiRes.status).json({ error: aiData?.error?.message || 'AI error' });
 
-    const raw = aiData.content?.[0]?.text || '[]';
-    let entries;
+    const raw = aiData.content?.[0]?.text || '{}';
+    let entries = [], reasoning = '';
     try {
-      entries = JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        entries = parsed;
+      } else {
+        entries = parsed.entries || [];
+        reasoning = parsed.reasoning || '';
+      }
     } catch {
       const match = raw.match(/\[[\s\S]*\]/);
       entries = match ? JSON.parse(match[0]) : [];
     }
 
-    res.json({ entries });
+    res.json({ entries, reasoning });
   } catch (e) {
     console.error('POST /meals/week/:id/generate', e);
     res.status(500).json({ error: 'Server error' });

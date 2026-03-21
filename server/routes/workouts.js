@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db');
 const auth    = require('../middleware/auth');
+const { sendWorkoutPlanEmail } = require('../utils/email');
 
 router.use(auth);
 
@@ -111,14 +112,64 @@ router.post('/week/:id/accept', async (req, res) => {
       `UPDATE workout_plans
        SET status='accepted', updated_at=NOW()
        WHERE id=$1 AND user_id=$2
-       RETURNING id, user_id, week_start::text AS week_start, status, created_at, updated_at`,
+       RETURNING id, user_id, person_name, week_start::text AS week_start, status, created_at, updated_at`,
+      [planId, req.user.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Plan not found' });
+
+    const plan = rows[0];
+
+    // Send email in background — don't block the response
+    (async () => {
+      try {
+        const [personRes, entriesRes] = await Promise.all([
+          pool.query(
+            `SELECT person_name, email FROM user_persons WHERE user_id=$1 AND person_name=$2`,
+            [req.user.id, plan.person_name]
+          ),
+          pool.query(
+            `SELECT entry_date::text AS entry_date, workout_type, title, notes, duration
+             FROM workout_entries WHERE workout_plan_id=$1 ORDER BY entry_date, workout_type`,
+            [planId]
+          ),
+        ]);
+        const toEmail = personRes.rows[0]?.email;
+        const personName = plan.person_name;
+        if (toEmail) {
+          await sendWorkoutPlanEmail(toEmail, personName, {
+            weekStart: plan.week_start,
+            entries:   entriesRes.rows,
+          });
+        }
+      } catch (emailErr) {
+        console.error('Workout plan email failed (non-fatal):', emailErr.message);
+      }
+    })();
+
+    res.json({ plan });
+  } catch (e) {
+    console.error('POST /workouts/week/:id/accept', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── POST /api/workouts/week/:id/reset — revert accepted plan to draft ─────────
+router.post('/week/:id/reset', async (req, res) => {
+  try {
+    const planId = parseInt(req.params.id, 10);
+
+    const { rows } = await pool.query(
+      `UPDATE workout_plans
+       SET status='draft', updated_at=NOW()
+       WHERE id=$1 AND user_id=$2
+       RETURNING id, user_id, person_name, week_start::text AS week_start, status, created_at, updated_at`,
       [planId, req.user.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Plan not found' });
 
     res.json({ plan: rows[0] });
   } catch (e) {
-    console.error('POST /workouts/week/:id/accept', e);
+    console.error('POST /workouts/week/:id/reset', e);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -186,29 +237,59 @@ router.post('/week/:id/generate', async (req, res) => {
     const personName = planRows[0].person_name;
     const days = getWeekDays(weekStart);
 
-    // Fetch last 4 accepted weeks for context (same person only)
+    // Fetch last week's accepted plan specifically, then older history
+    const prevWeekStart = (() => {
+      const d = new Date(weekStart + 'T12:00:00');
+      d.setDate(d.getDate() - 7);
+      return d.toISOString().slice(0, 10);
+    })();
+
+    const { rows: lastWeekEntries } = await pool.query(
+      `SELECT we.entry_date::text AS entry_date, we.workout_type, we.title, we.notes, we.duration
+       FROM workout_entries we
+       JOIN workout_plans wp ON we.workout_plan_id = wp.id
+       WHERE we.user_id=$1 AND wp.person_name=$2 AND wp.status='accepted'
+         AND wp.week_start=$3
+       ORDER BY we.entry_date, we.workout_type`,
+      [req.user.id, personName, prevWeekStart]
+    );
+
+    // Fetch last 4 accepted weeks for broader context (same person only)
     const { rows: pastEntries } = await pool.query(
       `SELECT we.entry_date::text AS entry_date, we.workout_type, we.title, we.notes, we.duration
        FROM workout_entries we
        JOIN workout_plans wp ON we.workout_plan_id = wp.id
        WHERE we.user_id=$1 AND wp.person_name=$2 AND wp.status='accepted' AND wp.id != $3
+         AND wp.week_start != $4
        ORDER BY we.entry_date DESC
-       LIMIT 56`,
-      [req.user.id, personName, planId]
+       LIMIT 42`,
+      [req.user.id, personName, planId, prevWeekStart]
     );
 
-    const pastSummary = pastEntries.length
-      ? pastEntries.map(e =>
+    const lastWeekSummary = lastWeekEntries.length
+      ? lastWeekEntries.map(e =>
           `${e.entry_date} ${e.workout_type}: ${e.title}${e.duration ? ` (${e.duration} min)` : ''}`
         ).join('\n')
-      : 'No past workout history yet.';
+      : null;
+
+    const olderSummary = pastEntries.length
+      ? pastEntries.map(e =>
+          `${e.entry_date} ${e.workout_type}: ${e.title}`
+        ).join('\n')
+      : 'No older workout history.';
 
     const gymDaysSet = new Set(gym_days);
     const restDays = days.filter(d => !gymDaysSet.has(d));
 
     const systemPrompt = `You are a fitness planning assistant creating detailed gym workout plans.
-Return ONLY a valid JSON array with no explanation, no markdown, no code fences.
-Each object must have exactly these fields:
+Return ONLY a valid JSON object with no explanation, no markdown, no code fences.
+The object must have exactly these top-level keys:
+{
+  "entries": [...array of day entries...],
+  "reasoning": "One paragraph explaining the logic of this plan: muscle split rationale, how it differs from last week, and progressive overload strategy."
+}
+
+Each entry object must have exactly these fields:
 { "entry_date": "YYYY-MM-DD", "workout_type": "strength|rest", "title": "string", "notes": "JSON_STRING_ARRAY", "duration": number_or_null }
 
 The "notes" field must be a JSON-encoded string of an exercise array, like:
@@ -224,8 +305,10 @@ Rest days: ${restDays.join(', ') || 'None'}
 
 User's goal / split preference: ${userPrompt || 'Balanced strength training'}
 
-Past workout history (use for progressive overload, avoid repetition):
-${pastSummary}
+${lastWeekSummary ? `Last week's accepted plan (vary exercises and progression from this):\n${lastWeekSummary}` : 'No plan from last week.'}
+
+Older workout history (use for progressive overload context):
+${olderSummary}
 
 Requirements:
 - One entry per day = 7 entries total
@@ -235,8 +318,8 @@ Requirements:
 - notes: JSON-encoded exercise array for gym days (5-8 exercises), empty array "[]" for rest days
   Each exercise: {"name": "Exercise Name", "sets": 4, "reps": "8"}
 - duration: minutes for gym days (typically 45-75), null for rest days
-- Align with the user's split preference above`;
-
+- Align with the user's split preference above
+- Vary exercises compared to last week to avoid monotony`;
 
     const apiKey = await getApiKey();
     if (!apiKey) return res.status(500).json({ error: 'Anthropic API key not configured in Settings' });
@@ -259,16 +342,22 @@ Requirements:
     const aiData = await aiRes.json();
     if (!aiRes.ok) return res.status(aiRes.status).json({ error: aiData?.error?.message || 'AI error' });
 
-    const raw = aiData.content?.[0]?.text || '[]';
-    let entries;
+    const raw = aiData.content?.[0]?.text || '{}';
+    let entries = [], reasoning = '';
     try {
-      entries = JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        entries = parsed;
+      } else {
+        entries = parsed.entries || [];
+        reasoning = parsed.reasoning || '';
+      }
     } catch {
       const match = raw.match(/\[[\s\S]*\]/);
       entries = match ? JSON.parse(match[0]) : [];
     }
 
-    res.json({ entries });
+    res.json({ entries, reasoning });
   } catch (e) {
     console.error('POST /workouts/week/:id/generate', e);
     res.status(500).json({ error: 'Server error' });

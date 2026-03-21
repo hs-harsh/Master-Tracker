@@ -157,10 +157,153 @@ async function sendLoginOtp(toEmail, otp, isNewUser = false) {
   });
 }
 
-module.exports = { sendAdminOtp, sendLoginOtp, sendMealPlanEmail };
+module.exports = { sendAdminOtp, sendLoginOtp, sendMealPlanEmail, sendWorkoutPlanEmail, sendEmail };
+
+// ── Generic sendEmail helper ──────────────────────────────────────────────────
+async function sendEmail(to, subject, htmlBody) {
+  await sendViaResend({ to, subject, html: htmlBody, text: subject });
+}
+
+// ── Workout plan accepted email ───────────────────────────────────────────────
+async function sendWorkoutPlanEmail(toEmail, personName, { weekStart, entries }) {
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart + 'T12:00:00');
+    d.setDate(d.getDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+
+  function fmtDay(ds) {
+    const d = new Date(ds + 'T12:00:00');
+    return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+
+  function fmtWeekRange(ws) {
+    const s = new Date(ws + 'T12:00:00');
+    const e = new Date(ws + 'T12:00:00'); e.setDate(e.getDate() + 6);
+    const o = { day: 'numeric', month: 'short' };
+    return `${s.toLocaleDateString('en-IN', o)} – ${e.toLocaleDateString('en-IN', { ...o, year: 'numeric' })}`;
+  }
+
+  // Group entries by date
+  const byDate = {};
+  for (const e of entries) {
+    const ds = String(e.entry_date).slice(0, 10);
+    byDate[ds] = e;
+  }
+
+  const gymDays = entries.filter(e => e.workout_type === 'strength');
+  const totalSets = gymDays.reduce((sum, e) => {
+    try {
+      const exs = JSON.parse(e.notes || '[]');
+      return sum + (Array.isArray(exs) ? exs.reduce((s, ex) => s + (Number(ex.sets) || 0), 0) : 0);
+    } catch { return sum; }
+  }, 0);
+
+  const dayRows = days.map(ds => {
+    const e = byDate[ds];
+    if (!e) return '';
+    const isGym = e.workout_type === 'strength';
+    if (!isGym) {
+      return `
+      <div style="margin-bottom:12px; padding:12px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:10px;">
+        <div style="font-size:13px; font-weight:700; color:#888; border-bottom:1px solid #2a2a2a; padding-bottom:6px; margin-bottom:8px;">${fmtDay(ds)}</div>
+        <div style="font-size:13px; color:#555;">Rest Day</div>
+      </div>`;
+    }
+
+    let exerciseRows = '';
+    try {
+      const exs = JSON.parse(e.notes || '[]');
+      if (Array.isArray(exs)) {
+        exerciseRows = exs.map(ex => `
+          <tr>
+            <td style="padding:4px 8px; font-size:12px; color:#ccc;">${ex.name || ''}</td>
+            <td style="padding:4px 8px; font-size:12px; color:#f0c040; text-align:center; font-family:'Courier New',monospace;">${ex.sets ?? '—'}</td>
+            <td style="padding:4px 8px; font-size:12px; color:#9ca3af; text-align:center; font-family:'Courier New',monospace;">${ex.reps ?? '—'}</td>
+          </tr>`).join('');
+      }
+    } catch {}
+
+    return `
+      <div style="margin-bottom:16px; padding:14px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:10px;">
+        <div style="font-size:13px; font-weight:700; color:#f0c040; border-bottom:1px solid #2a2a2a; padding-bottom:6px; margin-bottom:8px;">💪 ${fmtDay(ds)}</div>
+        <div style="font-size:14px; font-weight:600; color:#fff; margin-bottom:8px;">${e.title || ''}${e.duration ? `<span style="font-size:11px; color:#888; font-weight:400; margin-left:8px;">${e.duration} min</span>` : ''}</div>
+        ${exerciseRows ? `
+        <table style="width:100%; border-collapse:collapse;">
+          <thead><tr>
+            <th style="padding:3px 8px; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#555; text-align:left;">Exercise</th>
+            <th style="padding:3px 8px; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#555; text-align:center;">Sets</th>
+            <th style="padding:3px 8px; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#555; text-align:center;">Reps</th>
+          </tr></thead>
+          <tbody>${exerciseRows}</tbody>
+        </table>` : ''}
+      </div>`;
+  }).join('');
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#0a0a0a; margin:0; padding:32px 16px;">
+  <div style="max-width:540px; margin:0 auto; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:16px; overflow:hidden;">
+    <div style="padding:28px 28px 20px; border-bottom:1px solid #2a2a2a;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+        <div style="width:34px;height:34px;background:#f0c040;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;color:#0f0f0f;">IT</div>
+        <span style="font-size:15px;font-weight:700;color:#fff;">InvestTrack</span>
+      </div>
+      <h1 style="margin:0;font-size:20px;font-weight:700;color:#fff;">🏋️ Workout Plan Accepted</h1>
+      <p style="margin:6px 0 0;font-size:13px;color:#888;">Hey ${personName || 'there'}! Week of ${fmtWeekRange(weekStart)}</p>
+    </div>
+    <div style="padding:14px 28px; background:#0f0f0f; border-bottom:1px solid #2a2a2a; display:flex; gap:24px;">
+      <div><span style="font-size:12px; color:#888;">Gym days: </span><span style="font-size:14px; font-weight:700; color:#f0c040; font-family:'Courier New',monospace;">${gymDays.length}</span></div>
+      <div><span style="font-size:12px; color:#888;">Total sets: </span><span style="font-size:14px; font-weight:700; color:#60a5fa; font-family:'Courier New',monospace;">${totalSets}</span></div>
+    </div>
+    <div style="padding:24px 28px;">
+      ${dayRows || '<p style="color:#666;font-size:14px;">No workouts planned.</p>'}
+    </div>
+    <div style="padding:16px 28px; border-top:1px solid #2a2a2a; font-size:11px; color:#555;">
+      Sent to ${toEmail} · InvestTrack Wellness
+    </div>
+  </div>
+</body>
+</html>`.trim();
+
+  const textLines = [`Workout Plan — ${personName ? personName + ' — ' : ''}Week of ${fmtWeekRange(weekStart)}`, ''];
+  for (const ds of days) {
+    const e = byDate[ds];
+    if (!e) continue;
+    if (e.workout_type !== 'strength') {
+      textLines.push(`${fmtDay(ds)}: Rest Day`);
+    } else {
+      textLines.push(`${fmtDay(ds)}: ${e.title || ''}${e.duration ? ` (${e.duration} min)` : ''}`);
+      try {
+        const exs = JSON.parse(e.notes || '[]');
+        if (Array.isArray(exs)) {
+          exs.forEach(ex => textLines.push(`  - ${ex.name}: ${ex.sets ?? '?'} sets × ${ex.reps ?? '?'} reps`));
+        }
+      } catch {}
+    }
+    textLines.push('');
+  }
+
+  await sendViaResend({
+    to: toEmail,
+    subject: `${personName ? personName + "'s " : ''}workout plan for ${fmtWeekRange(weekStart)} is set ✓`,
+    html,
+    text: textLines.join('\n'),
+  });
+}
 
 // ── Meal plan accepted email ──────────────────────────────────────────────────
-async function sendMealPlanEmail(toEmail, { weekStart, entries }) {
+async function sendMealPlanEmail(toEmail, personName, { weekStart, entries, groceryLists }) {
+  // Support old call signature: sendMealPlanEmail(toEmail, { weekStart, entries })
+  if (personName && typeof personName === 'object') {
+    const opts = personName;
+    personName = '';
+    weekStart = opts.weekStart;
+    entries = opts.entries;
+    groceryLists = opts.groceryLists;
+  }
   // Build day -> mealType -> entry map
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart + 'T12:00:00');
@@ -245,7 +388,7 @@ async function sendMealPlanEmail(toEmail, { weekStart, entries }) {
         <span style="font-size:15px;font-weight:700;color:#fff;">InvestTrack</span>
       </div>
       <h1 style="margin:0;font-size:20px;font-weight:700;color:#fff;">🥗 Meal Plan Accepted</h1>
-      <p style="margin:6px 0 0;font-size:13px;color:#888;">Week of ${fmtWeekRange(weekStart)}</p>
+      <p style="margin:6px 0 0;font-size:13px;color:#888;">${personName ? `Hey ${personName}! ` : ''}Week of ${fmtWeekRange(weekStart)}</p>
     </div>
 
     <!-- total calories strip -->
@@ -259,6 +402,26 @@ async function sendMealPlanEmail(toEmail, { weekStart, entries }) {
     <div style="padding:24px 28px;">
       ${dayRows || '<p style="color:#666;font-size:14px;">No meals planned for this week.</p>'}
     </div>
+
+    <!-- grocery lists -->
+    ${groceryLists ? `
+    <div style="padding:20px 28px; border-top:1px solid #2a2a2a; background:#0d0d0d;">
+      <h2 style="margin:0 0 16px; font-size:16px; font-weight:700; color:#fff;">🛒 Grocery Lists</h2>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div>
+          <p style="margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#f0c040;">Days 1–3</p>
+          <ul style="margin:0; padding-left:16px; list-style:disc;">
+            ${(groceryLists.days1to3 || []).map(item => `<li style="font-size:12px; color:#ccc; margin-bottom:4px;">${item}</li>`).join('')}
+          </ul>
+        </div>
+        <div>
+          <p style="margin:0 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#60a5fa;">Days 4–7</p>
+          <ul style="margin:0; padding-left:16px; list-style:disc;">
+            ${(groceryLists.days4to7 || []).map(item => `<li style="font-size:12px; color:#ccc; margin-bottom:4px;">${item}</li>`).join('')}
+          </ul>
+        </div>
+      </div>
+    </div>` : ''}
 
     <!-- footer -->
     <div style="padding:16px 28px; border-top:1px solid #2a2a2a; font-size:11px; color:#555;">
@@ -285,7 +448,7 @@ async function sendMealPlanEmail(toEmail, { weekStart, entries }) {
 
   await sendViaResend({
     to: toEmail,
-    subject: `Your meal plan for ${fmtWeekRange(weekStart)} is set ✓`,
+    subject: `${personName ? personName + "'s " : ''}meal plan for ${fmtWeekRange(weekStart)} is set ✓`,
     html,
     text: textLines.join('\n'),
   });
