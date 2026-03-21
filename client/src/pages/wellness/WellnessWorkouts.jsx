@@ -3,12 +3,11 @@ import { NavLink } from 'react-router-dom';
 import {
   CheckSquare, Utensils, Dumbbell,
   ChevronLeft, ChevronRight,
-  Plus, X, Check, Save, Sparkles,
-  Zap, Activity, Wind, Moon, AlertTriangle,
+  Check, Save, Sparkles, AlertTriangle,
+  RotateCcw, Flame, Target, TrendingUp,
 } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
@@ -20,15 +19,7 @@ const SUB_TABS = [
   { to: '/wellness/workouts', label: 'Workouts', icon: Dumbbell    },
 ];
 
-// ─── workout types ────────────────────────────────────────────────────────────
-const WORKOUT_TYPES = [
-  { key: 'cardio',      label: 'Cardio',      icon: Zap,      color: 'text-orange-400', dot: 'bg-orange-400',  ring: 'bg-orange-400/10 border-orange-400/25',  stroke: '#fb923c' },
-  { key: 'strength',    label: 'Strength',    icon: Dumbbell, color: 'text-red-400',    dot: 'bg-red-400',     ring: 'bg-red-400/10 border-red-400/25',        stroke: '#f87171' },
-  { key: 'flexibility', label: 'Flexibility', icon: Wind,     color: 'text-teal-400',   dot: 'bg-teal-400',    ring: 'bg-teal-400/10 border-teal-400/25',      stroke: '#2dd4bf' },
-  { key: 'rest',        label: 'Rest',        icon: Moon,     color: 'text-purple-400', dot: 'bg-purple-400',  ring: 'bg-purple-400/10 border-purple-400/25',  stroke: '#c084fc' },
-];
-const WORKOUT_MAP = Object.fromEntries(WORKOUT_TYPES.map(w => [w.key, w]));
-
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const PERIODS = ['1M', '3M', '1Y'];
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -65,19 +56,6 @@ function fmtWeekRange(ws) {
   return `${s.toLocaleDateString('en-IN', opts)} – ${e.toLocaleDateString('en-IN', { ...opts, year: 'numeric' })}`;
 }
 
-function fmtDayHeader(ds) {
-  const d = parseD(ds);
-  return {
-    wd:  d.toLocaleDateString('en-IN', { weekday: 'short' }),
-    day: d.getDate(),
-    mo:  d.toLocaleDateString('en-IN', { month: 'short' }),
-  };
-}
-
-function eKey(date, workoutType) {
-  return `${String(date).slice(0,10)}_${workoutType}`;
-}
-
 function dateRangeFor(period) {
   const to = todayStr();
   const d  = new Date(to + 'T12:00:00');
@@ -86,47 +64,65 @@ function dateRangeFor(period) {
   return { from: d.toISOString().slice(0, 10), to };
 }
 
+// Parse exercises from notes field (JSON array or plain text fallback)
+function parseExercises(notes) {
+  if (!notes) return [];
+  try {
+    const arr = JSON.parse(notes);
+    if (Array.isArray(arr)) return arr;
+  } catch {}
+  return notes.split('\n').filter(Boolean).map(line => ({ name: line, sets: null, reps: null }));
+}
+
+function countSets(exercises) {
+  return exercises.reduce((sum, ex) => sum + (Number(ex.sets) || 0), 0);
+}
+
 // ─── component ────────────────────────────────────────────────────────────────
 export default function WellnessWorkouts() {
   const { personName, activePerson } = useAuth();
   const currentPerson = activePerson || personName;
 
-  // planner state
-  const [view,      setView]      = useState('planner');
-  const [weekStart, setWeekStart] = useState(() => getMonday(todayStr()));
-  const [plan,      setPlan]      = useState(null);
-  const [entries,   setEntries]   = useState({});
-  const [loading,    setLoading]   = useState(false);
-  const [saving,     setSaving]    = useState(false);
-  const [accepting,  setAccepting] = useState(false);
-  const [generating, setGenerating]= useState(false);
-  const [aiError,    setAiError]   = useState('');
+  const [view,       setView]       = useState('planner');
+  const [weekStart,  setWeekStart]  = useState(() => getMonday(todayStr()));
+  const [plan,       setPlan]       = useState(null);
+  const [gymDays,    setGymDays]    = useState(new Set());
+  const [generated,  setGenerated]  = useState(null);
+  const [loading,    setLoading]    = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [accepting,  setAccepting]  = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [aiError,    setAiError]    = useState('');
   const aiInputRef = useRef(null);
 
-  // cell edit modal
-  const [editCell, setEditCell] = useState(null);
-  const [editData, setEditData] = useState({ title: '', notes: '', duration: '' });
-  const [editMode, setEditMode] = useState(false);
-
-  // analytics state
   const [period,    setPeriod]    = useState('1M');
   const [analytics, setAnalytics] = useState(null);
   const [aLoading,  setALoading]  = useState(false);
 
+  const today    = todayStr();
+  const weekDays = getWeekDays(weekStart);
+  const isAccepted = plan?.status === 'accepted';
+
   // ── load week ──────────────────────────────────────────────────────────────
-  const loadWeek = useCallback(async (ws) => {
+  const loadWeek = useCallback(async (ws, person) => {
     setLoading(true);
     try {
-      const { data } = await api.get(`/workouts/week?week_start=${ws}`);
+      const { data } = await api.get(`/workouts/week?week_start=${ws}&person=${encodeURIComponent(person || '')}`);
       setPlan(data.plan);
-      const map = {};
-      (data.entries || []).forEach(e => {
-        map[eKey(e.entry_date, e.workout_type)] = {
-          title: e.title || '', notes: e.notes || '',
-          duration: e.duration != null ? String(e.duration) : '',
-        };
-      });
-      setEntries(map);
+      const entries = data.entries || [];
+      if (entries.length) {
+        const wDays = getWeekDays(ws);
+        const gymSet = new Set();
+        entries.forEach(e => {
+          const dayIdx = wDays.indexOf(String(e.entry_date).slice(0, 10));
+          if (e.workout_type === 'strength' && dayIdx >= 0) gymSet.add(dayIdx);
+        });
+        setGymDays(gymSet);
+        setGenerated(entries);
+      } else {
+        setGymDays(new Set());
+        setGenerated(null);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -134,16 +130,18 @@ export default function WellnessWorkouts() {
     }
   }, []);
 
-  useEffect(() => { loadWeek(weekStart); }, [weekStart, loadWeek]);
+  useEffect(() => {
+    loadWeek(weekStart, currentPerson);
+  }, [weekStart, currentPerson, loadWeek]);
 
   // ── load analytics ─────────────────────────────────────────────────────────
-  const loadAnalytics = useCallback(async (p) => {
+  const loadAnalytics = useCallback(async (p, person) => {
     setALoading(true);
     try {
       const { from, to } = dateRangeFor(p);
-      const { data } = await api.get(`/workouts/calendar?from=${from}&to=${to}`);
+      const { data } = await api.get(`/workouts/calendar?from=${from}&to=${to}&person=${encodeURIComponent(person || '')}`);
       setAnalytics(data.entries || []);
-    } catch (err) {
+    } catch {
       setAnalytics([]);
     } finally {
       setALoading(false);
@@ -151,51 +149,65 @@ export default function WellnessWorkouts() {
   }, []);
 
   useEffect(() => {
-    if (view === 'analytics') loadAnalytics(period);
-  }, [view, period, loadAnalytics]);
+    if (view === 'analytics') loadAnalytics(period, currentPerson);
+  }, [view, period, currentPerson, loadAnalytics]);
 
-  // ── save entries ───────────────────────────────────────────────────────────
-  async function saveEntries(entriesOverride) {
+  // ── toggle gym day ─────────────────────────────────────────────────────────
+  function toggleGymDay(idx) {
+    if (isAccepted) return;
+    setGymDays(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+    setGenerated(null);
+  }
+
+  // ── generate plan ─────────────────────────────────────────────────────────
+  async function generatePlan() {
+    if (!plan) return;
+    setGenerating(true); setAiError('');
+    try {
+      const selectedDays = weekDays.filter((_, i) => gymDays.has(i));
+      const { data } = await api.post(`/workouts/week/${plan.id}/generate`, {
+        prompt: aiInputRef.current?.value || '',
+        gym_days: selectedDays,
+      });
+      setGenerated(data.entries || []);
+    } catch (err) {
+      setAiError(err.response?.data?.error || 'Generation failed. Check your API key in Settings.');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  // ── save + accept ──────────────────────────────────────────────────────────
+  async function saveEntries(entriesToSave) {
     if (!plan) return;
     setSaving(true);
     try {
-      const src = entriesOverride ?? entries;
-      const toSave = Object.entries(src)
-        .filter(([, v]) => v.title || v.notes)
-        .map(([key, val]) => {
-          const [date, workoutType] = key.split('_');
-          return { entry_date: date, workout_type: workoutType, ...val };
-        });
+      const src = entriesToSave ?? generated ?? [];
+      const toSave = src
+        .filter(e => e.title || e.notes)
+        .map(e => ({
+          entry_date: String(e.entry_date).slice(0, 10),
+          workout_type: e.workout_type || 'rest',
+          title: e.title || null,
+          notes: typeof e.notes === 'string' ? e.notes : (e.notes ? JSON.stringify(e.notes) : null),
+          duration: e.duration != null ? parseInt(e.duration, 10) : null,
+        }));
       await api.put(`/workouts/week/${plan.id}`, { entries: toSave });
     } catch (err) { console.error(err); } finally { setSaving(false); }
   }
 
   async function acceptPlan() {
-    if (!plan) return;
+    if (!plan || !generated?.length) return;
     setAccepting(true);
     try {
-      await saveEntries();
+      await saveEntries(generated);
       const { data } = await api.post(`/workouts/week/${plan.id}/accept`);
       setPlan(data.plan);
     } catch (err) { console.error(err); } finally { setAccepting(false); }
-  }
-
-  async function generatePlan() {
-    if (!plan) return;
-    setGenerating(true); setAiError('');
-    try {
-      const { data } = await api.post(`/workouts/week/${plan.id}/generate`, { prompt: aiInputRef.current?.value || '' });
-      const map = {};
-      (data.entries || []).forEach(e => {
-        map[eKey(e.entry_date, e.workout_type)] = {
-          title: e.title || '', notes: e.notes || '',
-          duration: e.duration != null ? String(e.duration) : '',
-        };
-      });
-      setEntries(map);
-    } catch (err) {
-      setAiError(err.response?.data?.error || 'Generation failed. Check your API key in Settings.');
-    } finally { setGenerating(false); }
   }
 
   function shiftWeek(dir) {
@@ -204,83 +216,39 @@ export default function WellnessWorkouts() {
     setWeekStart(d.toISOString().slice(0, 10));
   }
 
-  function openCell(date, workoutType) {
-    if (plan?.status === 'accepted') return;
-    const existing = entries[eKey(date, workoutType)];
-    setEditCell({ date, workoutType });
-    setEditData(existing || { title: '', notes: '', duration: '' });
-    setEditMode(!existing?.title);
+  // ── plan stats ─────────────────────────────────────────────────────────────
+  function computePlanStats(entries) {
+    if (!entries?.length) return null;
+    const gymEntries = entries.filter(e => e.workout_type === 'strength');
+    let totalSets = 0;
+    let totalExercises = 0;
+    gymEntries.forEach(e => {
+      const exs = parseExercises(typeof e.notes === 'string' ? e.notes : JSON.stringify(e.notes || []));
+      totalSets += countSets(exs);
+      totalExercises += exs.length;
+    });
+    return { gymDays: gymEntries.length, totalSets, totalExercises };
   }
-
-  function saveCell() {
-    if (!editCell) return;
-    const key  = eKey(editCell.date, editCell.workoutType);
-    const next = { ...entries, [key]: { ...editData } };
-    setEntries(next); setEditCell(null);
-  }
-
-  function clearCell() {
-    if (!editCell) return;
-    const key  = eKey(editCell.date, editCell.workoutType);
-    const next = { ...entries }; delete next[key];
-    setEntries(next); setEditCell(null);
-  }
-
-  const today    = todayStr();
-  const weekDays = getWeekDays(weekStart);
-  const isAccepted = plan?.status === 'accepted';
 
   // ── analytics helpers ──────────────────────────────────────────────────────
-  function buildWorkoutAnalytics(entries) {
+  function buildWeeklyData(entries) {
     if (!entries?.length) return null;
-
-    // Type counts + total duration
-    const typeCounts  = {};
-    const typeDuration= {};
-    WORKOUT_TYPES.forEach(wt => { typeCounts[wt.key] = 0; typeDuration[wt.key] = 0; });
-    entries.forEach(e => {
-      typeCounts[e.workout_type]  = (typeCounts[e.workout_type]  || 0) + 1;
-      typeDuration[e.workout_type]= (typeDuration[e.workout_type]|| 0) + (e.duration || 0);
-    });
-
-    // Weekly session counts
     const weekMap = {};
     entries.forEach(e => {
-      const ws = getMonday(e.entry_date);
-      weekMap[ws] = (weekMap[ws] || 0) + 1;
+      if (e.workout_type !== 'strength') return;
+      const ws = getMonday(String(e.entry_date).slice(0, 10));
+      if (!weekMap[ws]) weekMap[ws] = { sessions: 0, sets: 0 };
+      const exs = parseExercises(e.notes);
+      weekMap[ws].sessions += 1;
+      weekMap[ws].sets += countSets(exs);
     });
-    const weekData = Object.entries(weekMap)
+    return Object.entries(weekMap)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([ws, count]) => {
-        const d = parseD(ws);
-        return { week: d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }), Sessions: count };
-      });
-
-    // Pie data
-    const pieData = WORKOUT_TYPES
-      .filter(wt => typeCounts[wt.key] > 0)
-      .map(wt => ({ name: wt.label, value: typeCounts[wt.key], fill: wt.stroke }));
-
-    // Alerts
-    const alerts = [];
-    const thisWeekStart = getMonday(today);
-    const thisWeekEntries = entries.filter(e => getMonday(e.entry_date) === thisWeekStart);
-    const thisWeekTypes = new Set(thisWeekEntries.map(e => e.workout_type));
-    ['cardio', 'strength'].forEach(t => {
-      if (!thisWeekTypes.has(t)) {
-        const wt = WORKOUT_MAP[t];
-        alerts.push({ type: 'warn', msg: `No ${wt.label} logged this week` });
-      }
-    });
-    if (thisWeekEntries.length === 0) {
-      alerts.push({ type: 'warn', msg: 'No workouts logged this week yet' });
-    }
-
-    const totalSessions = entries.length;
-    const totalDuration = Object.values(typeDuration).reduce((a, b) => a + b, 0);
-    const avgDuration   = totalSessions ? Math.round(totalDuration / totalSessions) : 0;
-
-    return { typeCounts, typeDuration, weekData, pieData, alerts, totalSessions, totalDuration, avgDuration };
+      .map(([ws, d]) => ({
+        week: parseD(ws).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        Sessions: d.sessions,
+        Sets: d.sets,
+      }));
   }
 
   function CustomTooltip({ active, payload, label }) {
@@ -298,55 +266,89 @@ export default function WellnessWorkouts() {
     );
   }
 
-  // ── planner ────────────────────────────────────────────────────────────────
+  // ── planner view ───────────────────────────────────────────────────────────
   function Planner() {
+    const planStats = computePlanStats(generated);
+
     return (
-      <div className="card fade-up-1 overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-white/5">
-          <div className="flex items-center gap-2">
-            <button onClick={() => shiftWeek(-1)}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
-              <ChevronLeft size={18} />
-            </button>
-            <div>
-              <p className="text-white text-sm font-semibold font-body">{fmtWeekRange(weekStart)}</p>
-              {isAccepted
-                ? <span className="flex items-center gap-1 text-xs text-emerald-400 font-mono"><Check size={10} /> Accepted</span>
-                : <span className="text-xs text-amber-400/60 font-mono">Draft</span>}
+      <div className="space-y-4 fade-up-1">
+        {/* Week header */}
+        <div className="card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <button onClick={() => shiftWeek(-1)}
+                className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+                <ChevronLeft size={18} />
+              </button>
+              <div>
+                <p className="text-white text-sm font-semibold font-body">{fmtWeekRange(weekStart)}</p>
+                {isAccepted
+                  ? <span className="flex items-center gap-1 text-xs text-emerald-400 font-mono"><Check size={10} /> Accepted</span>
+                  : <span className="text-xs text-amber-400/60 font-mono">Draft</span>}
+              </div>
+              <button onClick={() => shiftWeek(1)}
+                className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+                <ChevronRight size={18} />
+              </button>
             </div>
-            <button onClick={() => shiftWeek(1)}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
-              <ChevronRight size={18} />
-            </button>
-          </div>
-          <div className="flex gap-2">
-            {isAccepted ? (
+            {isAccepted && (
               <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
-                <Check size={13} /> Plan Accepted — saved to calendar
+                <Check size={13} /> Plan Accepted
               </span>
-            ) : (
-              <>
-                <button onClick={() => saveEntries()} disabled={saving}
-                  className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5">
-                  <Save size={13} />{saving ? 'Saving…' : 'Save Draft'}
-                </button>
-                <button onClick={acceptPlan} disabled={accepting || saving}
-                  className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5">
-                  <Check size={13} />{accepting ? 'Saving…' : 'Accept Plan'}
-                </button>
-              </>
             )}
           </div>
         </div>
 
-        {!isAccepted && (
-          <div className="p-3 border-b border-white/5 bg-white/[0.02]">
+        {/* Step 1: Gym Day Picker */}
+        <div className="card p-4">
+          <p className="text-xs text-muted uppercase tracking-widest font-mono mb-3">
+            {isAccepted ? 'Gym Days This Week' : 'Step 1 — Pick Your Gym Days'}
+          </p>
+          <div className="grid grid-cols-7 gap-2">
+            {weekDays.map((ds, i) => {
+              const d     = parseD(ds);
+              const isT   = ds === today;
+              const isGym = gymDays.has(i);
+              return (
+                <button key={ds}
+                  onClick={() => toggleGymDay(i)}
+                  disabled={isAccepted}
+                  className={`flex flex-col items-center gap-1 py-3 px-1 rounded-xl border transition-all
+                    ${isGym
+                      ? 'bg-accent/15 border-accent/40 text-accent'
+                      : isT
+                        ? 'bg-white/5 border-white/15 text-white'
+                        : 'bg-transparent border-white/8 text-soft hover:border-white/20 hover:text-white'}
+                    ${isAccepted ? 'cursor-default' : 'cursor-pointer'}`}>
+                  <span className="text-[10px] font-mono uppercase">{DAY_LABELS[i]}</span>
+                  <span className={`text-lg font-bold font-display ${isT && !isGym ? 'text-accent' : ''}`}>{d.getDate()}</span>
+                  {isGym
+                    ? <Dumbbell size={12} className="text-accent" />
+                    : <span className="h-3 w-3 rounded-full border border-white/15" />}
+                </button>
+              );
+            })}
+          </div>
+          {!isAccepted && gymDays.size === 0 && (
+            <p className="text-xs text-muted/60 mt-3 text-center">Click days above to mark them as gym days</p>
+          )}
+          {!isAccepted && gymDays.size > 0 && !generated && (
+            <p className="text-xs text-soft mt-3 text-center">
+              {gymDays.size} gym {gymDays.size === 1 ? 'day' : 'days'} selected — generate your workout plan below
+            </p>
+          )}
+        </div>
+
+        {/* Step 2: AI Generate */}
+        {!isAccepted && gymDays.size > 0 && (
+          <div className="card p-4">
+            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-3">Step 2 — Generate Workout Plan</p>
             <div className="flex gap-2 items-center">
               <div className="flex items-center gap-1.5 text-xs text-purple-400 font-semibold shrink-0">
                 <Sparkles size={13} />AI
               </div>
               <input ref={aiInputRef} className="input flex-1 text-xs py-1.5"
-                placeholder="e.g. Push Pull Legs, 5-day PPL, home workout, weight loss…"
+                placeholder="e.g. Push Pull Legs, Upper Lower, 4-day split, chest focus…"
                 defaultValue=""
                 onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()} />
               <button onClick={generatePlan} disabled={generating}
@@ -355,242 +357,218 @@ export default function WellnessWorkouts() {
                   hover:bg-purple-500/30 transition-colors disabled:opacity-50">
                 <Sparkles size={12} />{generating ? 'Generating…' : 'Generate'}
               </button>
+              {generated && !generating && (
+                <button onClick={generatePlan} disabled={generating}
+                  title="Regenerate"
+                  className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs
+                    text-muted hover:text-white border border-white/10 hover:border-white/20 transition-colors">
+                  <RotateCcw size={12} />
+                </button>
+              )}
             </div>
-            {aiError && <p className="text-xs text-red-400 mt-1.5">{aiError}</p>}
+            {aiError && <p className="text-xs text-red-400 mt-2">{aiError}</p>}
           </div>
         )}
 
-        <div className="overflow-x-auto">
-          <div className="min-w-[680px]">
-            <div className="grid grid-cols-8 border-b border-white/5">
-              <div className="p-3" />
-              {weekDays.map(ds => {
-                const h = fmtDayHeader(ds);
-                const isT = ds === today;
-                return (
-                  <div key={ds} className={`p-3 text-center border-l border-white/5 ${isT ? 'bg-accent/5' : ''}`}>
-                    <p className={`text-xs font-mono uppercase ${isT ? 'text-accent' : 'text-muted'}`}>{h.wd}</p>
-                    <p className={`text-xl font-bold font-display ${isT ? 'text-accent' : 'text-white'}`}>{h.day}</p>
-                    <p className="text-xs text-muted font-mono">{h.mo}</p>
-                  </div>
-                );
-              })}
+        {/* Step 3: Generated Plan */}
+        {generated && generated.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted uppercase tracking-widest font-mono">
+                {isAccepted ? 'This Week\'s Plan' : 'Step 3 — Review & Accept'}
+              </p>
+              {!isAccepted && (
+                <div className="flex gap-2">
+                  <button onClick={() => saveEntries(generated)} disabled={saving}
+                    className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5">
+                    <Save size={13} />{saving ? 'Saving…' : 'Save Draft'}
+                  </button>
+                  <button onClick={acceptPlan} disabled={accepting || saving}
+                    className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5">
+                    <Check size={13} />{accepting ? 'Accepting…' : 'Accept Plan'}
+                  </button>
+                </div>
+              )}
             </div>
 
-            {WORKOUT_TYPES.map(wt => (
-              <div key={wt.key} className="grid grid-cols-8 border-b border-white/5 last:border-0">
-                <div className={`flex items-center gap-2 p-3 border-r border-white/5 ${wt.ring.split(' ')[0]}`}>
-                  <wt.icon size={14} className={wt.color} />
-                  <span className={`text-xs font-semibold ${wt.color} hidden sm:block`}>{wt.label}</span>
+            {/* Stats banner */}
+            {planStats && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="card px-4 py-3 flex items-center gap-3">
+                  <Dumbbell size={18} className="text-accent shrink-0" />
+                  <div>
+                    <p className="text-[10px] text-muted uppercase tracking-wider">Gym Days</p>
+                    <p className="font-mono text-xl font-bold text-white">{planStats.gymDays}</p>
+                  </div>
                 </div>
-                {weekDays.map(ds => {
-                  const key   = eKey(ds, wt.key);
-                  const entry = entries[key];
-                  const isT   = ds === today;
-                  return (
-                    <div key={ds} onClick={() => openCell(ds, wt.key)}
-                      className={`group relative p-2 border-l border-white/5 min-h-[80px] transition-colors
-                        ${isT ? 'bg-accent/5' : ''}
-                        ${!isAccepted ? 'cursor-pointer hover:bg-white/[0.04]' : 'cursor-default'}`}>
-                      {entry?.title ? (
-                        <div>
-                          <p className="text-white text-xs font-medium leading-snug line-clamp-2">{entry.title}</p>
-                          {entry.duration &&
-                            <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono ${wt.ring} ${wt.color}`}>
-                              {entry.duration} min
-                            </span>}
-                          {entry.notes &&
-                            <p className="text-muted text-[10px] mt-1 line-clamp-3 leading-snug">{entry.notes}</p>}
-                        </div>
-                      ) : (
-                        !isAccepted &&
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Plus size={16} className="text-muted" />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                <div className="card px-4 py-3 flex items-center gap-3">
+                  <Target size={18} className="text-blue-400 shrink-0" />
+                  <div>
+                    <p className="text-[10px] text-muted uppercase tracking-wider">Total Sets</p>
+                    <p className="font-mono text-xl font-bold text-white">{planStats.totalSets}</p>
+                  </div>
+                </div>
+                <div className="card px-4 py-3 flex items-center gap-3">
+                  <Flame size={18} className="text-orange-400 shrink-0" />
+                  <div>
+                    <p className="text-[10px] text-muted uppercase tracking-wider">Exercises</p>
+                    <p className="font-mono text-xl font-bold text-white">{planStats.totalExercises}</p>
+                  </div>
+                </div>
               </div>
-            ))}
+            )}
+
+            {/* Per-day workout cards */}
+            {weekDays.map((ds, i) => {
+              const entry = generated.find(e => String(e.entry_date).slice(0, 10) === ds);
+              if (!entry) return null;
+              const isT   = ds === today;
+              const isGym = entry.workout_type === 'strength';
+              const exs   = isGym ? parseExercises(
+                typeof entry.notes === 'string' ? entry.notes : JSON.stringify(entry.notes || [])
+              ) : [];
+
+              return (
+                <div key={ds} className={`card overflow-hidden ${isT ? 'ring-1 ring-accent/30' : ''}`}>
+                  <div className={`flex items-center justify-between px-4 py-3 border-b border-white/5
+                    ${isGym ? 'bg-accent/5' : 'bg-white/[0.02]'}`}>
+                    <div className="flex items-center gap-3">
+                      <div className="text-center min-w-[42px]">
+                        <p className={`text-[10px] font-mono uppercase ${isT ? 'text-accent' : 'text-muted'}`}>{DAY_LABELS[i]}</p>
+                        <p className={`text-2xl font-bold font-display leading-none ${isT ? 'text-accent' : 'text-white'}`}>
+                          {parseD(ds).getDate()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className={`font-semibold text-sm ${isGym ? 'text-white' : 'text-soft'}`}>{entry.title || 'Rest Day'}</p>
+                        {isGym && (
+                          <p className="text-[10px] text-muted mt-0.5">
+                            {exs.length} exercises · {countSets(exs)} sets
+                            {entry.duration ? ` · ${entry.duration} min` : ''}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {isGym
+                      ? <Dumbbell size={16} className="text-accent/60 shrink-0" />
+                      : <span className="text-[10px] text-muted/50 font-mono">REST</span>}
+                  </div>
+
+                  {isGym && exs.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-white/5">
+                            <th className="text-left px-4 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Exercise</th>
+                            <th className="text-center px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Sets</th>
+                            <th className="text-center px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Reps</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {exs.map((ex, j) => (
+                            <tr key={j} className="border-b border-white/[0.03] last:border-0 hover:bg-white/[0.02]">
+                              <td className="px-4 py-2.5 text-soft">{ex.name}</td>
+                              <td className="px-3 py-2.5 text-center">
+                                <span className="inline-block min-w-[28px] text-center font-mono font-semibold text-accent bg-accent/10 rounded px-1.5 py-0.5">
+                                  {ex.sets ?? '—'}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5 text-center text-soft font-mono">{ex.reps ?? '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </div>
+        )}
+
+        {!generated && !loading && (
+          <div className="card p-8 text-center text-muted text-sm">
+            {gymDays.size === 0
+              ? 'Select your gym days above to get started.'
+              : 'Generate a workout plan to see your schedule.'}
+          </div>
+        )}
       </div>
     );
   }
 
-  // ── analytics ──────────────────────────────────────────────────────────────
+  // ── analytics view ─────────────────────────────────────────────────────────
   function Analytics() {
     if (aLoading) return <div className="text-center py-10 text-muted text-sm">Loading analytics…</div>;
 
-    const data = buildWorkoutAnalytics(analytics);
-    if (!data || data.totalSessions === 0) return (
+    const weekData = buildWeeklyData(analytics);
+    if (!weekData?.length) return (
       <div className="card p-8 text-center text-muted text-sm fade-up-1">
         No accepted workout data for this period. Accept a week plan to see analytics.
       </div>
     );
 
+    const totalSessions = weekData.reduce((s, w) => s + w.Sessions, 0);
+    const totalSets     = weekData.reduce((s, w) => s + w.Sets, 0);
+    const weeksActive   = weekData.length;
+    const avgSets       = weeksActive ? Math.round(totalSets / weeksActive) : 0;
+
+    const thisWeekStart = getMonday(today);
+    const thisWeekGym = (analytics || []).filter(e =>
+      getMonday(String(e.entry_date).slice(0, 10)) === thisWeekStart && e.workout_type === 'strength'
+    );
+    const alerts = thisWeekGym.length === 0 ? ['No gym sessions logged this week yet'] : [];
+
     return (
       <div className="space-y-4 fade-up-1">
-        {/* alerts */}
-        {data.alerts.length > 0 && (
-          <div className="space-y-2">
-            {data.alerts.map((a, i) => (
-              <div key={i} className="flex items-start gap-3 px-4 py-3 rounded-xl border bg-amber-400/5 border-amber-400/20 text-amber-300 text-sm">
-                <AlertTriangle size={14} className="mt-0.5 shrink-0" />{a.msg}
-              </div>
-            ))}
+        {alerts.map((msg, i) => (
+          <div key={i} className="flex items-start gap-3 px-4 py-3 rounded-xl border bg-amber-400/5 border-amber-400/20 text-amber-300 text-sm">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />{msg}
           </div>
-        )}
+        ))}
 
-        {/* stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="card px-4 py-3">
-            <p className="text-[10px] text-muted uppercase tracking-wider">Total Sessions</p>
-            <p className="font-mono text-2xl font-bold text-white">{data.totalSessions}</p>
-          </div>
-          <div className="card px-4 py-3">
-            <p className="text-[10px] text-muted uppercase tracking-wider">Total Duration</p>
-            <p className="font-mono text-2xl font-bold text-white">{data.totalDuration}<span className="text-sm text-muted"> min</span></p>
-          </div>
-          <div className="card px-4 py-3">
-            <p className="text-[10px] text-muted uppercase tracking-wider">Avg Duration</p>
-            <p className="font-mono text-2xl font-bold text-white">{data.avgDuration}<span className="text-sm text-muted"> min</span></p>
-          </div>
-          <div className="card px-4 py-3">
-            <p className="text-[10px] text-muted uppercase tracking-wider">Weeks Active</p>
-            <p className="font-mono text-2xl font-bold text-white">{data.weekData.length}</p>
-          </div>
+          {[
+            { label: 'Total Sessions', value: totalSessions, icon: Dumbbell,    color: 'text-accent'      },
+            { label: 'Total Sets',     value: totalSets,     icon: Target,      color: 'text-blue-400'    },
+            { label: 'Avg Sets/Week',  value: avgSets,       icon: TrendingUp,  color: 'text-teal-400'    },
+            { label: 'Weeks Active',   value: weeksActive,   icon: Flame,       color: 'text-orange-400'  },
+          ].map(({ label, value, icon: Icon, color }) => (
+            <div key={label} className="card px-4 py-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Icon size={11} className={color} />
+                <p className="text-[10px] text-muted uppercase tracking-wider">{label}</p>
+              </div>
+              <p className={`font-mono text-2xl font-bold ${color}`}>{value}</p>
+            </div>
+          ))}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* weekly sessions bar */}
           <div className="card p-4">
             <p className="text-xs text-muted uppercase tracking-widest font-mono mb-4">Sessions per week</p>
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={data.weekData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <BarChart data={weekData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                 <XAxis dataKey="week" tick={{ fontSize: 10, fill: '#6b7280' }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="Sessions" fill="#fb923c" radius={[3,3,0,0]} />
+                <Bar dataKey="Sessions" fill="#f59e0b" radius={[3,3,0,0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-
-          {/* type breakdown pie */}
           <div className="card p-4">
-            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-4">Workout type breakdown</p>
-            {data.pieData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={data.pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80}
-                    dataKey="value" nameKey="name" paddingAngle={3}>
-                    {data.pieData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-                  </Pie>
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : <p className="text-muted text-sm text-center py-8">No data</p>}
+            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-4">Sets per week</p>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={weekData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <XAxis dataKey="week" tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="Sets" fill="#60a5fa" radius={[3,3,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-        </div>
-
-        {/* type session counts */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {WORKOUT_TYPES.map(wt => (
-            <div key={wt.key} className={`card px-4 py-3 border ${wt.ring}`}>
-              <div className="flex items-center gap-1.5 mb-1">
-                <wt.icon size={11} className={wt.color} />
-                <p className={`text-[10px] uppercase tracking-wider ${wt.color}`}>{wt.label}</p>
-              </div>
-              <p className={`font-mono text-xl font-bold ${wt.color}`}>{data.typeCounts[wt.key] || 0} <span className="text-xs font-normal">sessions</span></p>
-              {data.typeDuration[wt.key] > 0 &&
-                <p className="text-[10px] text-muted mt-0.5">{data.typeDuration[wt.key]} min total</p>}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // ── edit modal ─────────────────────────────────────────────────────────────
-  function EditModal() {
-    if (!editCell) return null;
-    const wt = WORKOUT_MAP[editCell.workoutType];
-    const d  = parseD(editCell.date);
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-        style={{ background: 'rgba(9,9,14,0.75)', backdropFilter: 'blur(6px)' }}>
-        <div className="card w-full max-w-sm p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className={`flex items-center gap-2 ${wt.color}`}>
-                <wt.icon size={16} /><span className="font-semibold text-sm">{wt.label}</span>
-              </div>
-              <p className="text-muted text-xs mt-0.5">
-                {d?.toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'short' })}
-              </p>
-            </div>
-            <button onClick={() => setEditCell(null)} className="text-muted hover:text-white transition-colors">
-              <X size={16} />
-            </button>
-          </div>
-
-          {!editMode && editData.title ? (
-            <>
-              <p className="text-white text-base font-bold leading-snug mb-3">{editData.title}</p>
-              {editData.duration && (
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-sm font-mono font-semibold ${wt.ring} ${wt.color} mb-3`}>
-                  {editData.duration} min
-                </span>
-              )}
-              {editData.notes && (
-                <div className="mb-3">
-                  <p className="text-[10px] text-muted uppercase tracking-wider mb-1.5">Exercises / Notes</p>
-                  <div className="space-y-1">
-                    {editData.notes.split('\n').filter(Boolean).map((line, i) => (
-                      <p key={i} className="text-soft text-xs leading-relaxed">{line}</p>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="flex gap-2 mt-2">
-                <button onClick={clearCell} className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">Clear</button>
-                <button onClick={() => setEditMode(true)} className="btn-primary flex-1 text-sm py-2">Edit</button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="space-y-3">
-                <div>
-                  <label className="label">Workout</label>
-                  <input className="input w-full mt-1" placeholder="e.g. Push Day — Chest & Triceps"
-                    value={editData.title} autoFocus
-                    onChange={e => setEditData(p => ({ ...p, title: e.target.value }))}
-                    onKeyDown={e => e.key === 'Enter' && saveCell()} />
-                </div>
-                <div>
-                  <label className="label">Exercises / Notes <span className="text-muted/50">(optional)</span></label>
-                  <textarea className="input w-full mt-1 resize-none h-24 text-xs"
-                    placeholder={'Bench Press: 4x8 @ 80kg\nIncline DB Press: 3x10\nTricep Pushdowns: 3x12'}
-                    value={editData.notes}
-                    onChange={e => setEditData(p => ({ ...p, notes: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="label">Duration (min) <span className="text-muted/50">(optional)</span></label>
-                  <input className="input w-full mt-1" type="number" placeholder="e.g. 60"
-                    value={editData.duration}
-                    onChange={e => setEditData(p => ({ ...p, duration: e.target.value }))} />
-                </div>
-              </div>
-              <div className="flex gap-2 mt-4">
-                <button onClick={clearCell} className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">Clear</button>
-                <button onClick={saveCell} className="btn-primary flex-1 text-sm py-2">Save</button>
-              </div>
-            </>
-          )}
         </div>
       </div>
     );
@@ -617,7 +595,7 @@ export default function WellnessWorkouts() {
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight">
             {currentPerson ? `${currentPerson}'s Workouts` : 'Workouts'}
           </h1>
-          <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Weekly workout planner & analytics</p>
+          <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Weekly gym planner & analytics</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {view === 'analytics' && (
@@ -650,8 +628,6 @@ export default function WellnessWorkouts() {
 
       {!loading && view === 'planner'  && <Planner />}
       {           view === 'analytics' && <Analytics />}
-
-      <EditModal />
     </div>
   );
 }

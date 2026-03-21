@@ -21,28 +21,29 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-// ── GET /api/workouts/week?week_start=YYYY-MM-DD ──────────────────────────────
+// ── GET /api/workouts/week?week_start=YYYY-MM-DD&person=Harsh ────────────────
 // Returns the plan + entries for a week; auto-creates plan if missing.
 router.get('/week', async (req, res) => {
   try {
     const ws = req.query.week_start
       ? getMonday(req.query.week_start)
       : getMonday(todayStr());
+    const person = req.query.person || '';
 
     // Find or create plan
     let { rows } = await pool.query(
-      `SELECT id, user_id, week_start::text AS week_start, status, created_at, updated_at
-       FROM workout_plans WHERE user_id=$1 AND week_start=$2`,
-      [req.user.id, ws]
+      `SELECT id, user_id, person_name, week_start::text AS week_start, status, created_at, updated_at
+       FROM workout_plans WHERE user_id=$1 AND person_name=$2 AND week_start=$3`,
+      [req.user.id, person, ws]
     );
 
     let plan = rows[0];
     if (!plan) {
       const ins = await pool.query(
-        `INSERT INTO workout_plans (user_id, week_start)
-         VALUES ($1,$2)
-         RETURNING id, user_id, week_start::text AS week_start, status, created_at, updated_at`,
-        [req.user.id, ws]
+        `INSERT INTO workout_plans (user_id, person_name, week_start)
+         VALUES ($1,$2,$3)
+         RETURNING id, user_id, person_name, week_start::text AS week_start, status, created_at, updated_at`,
+        [req.user.id, person, ws]
       );
       plan = ins.rows[0];
     }
@@ -122,11 +123,11 @@ router.post('/week/:id/accept', async (req, res) => {
   }
 });
 
-// ── GET /api/workouts/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD ─────────────────
+// ── GET /api/workouts/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD&person=Harsh ────
 // Returns accepted workout entries in date range (for calendar view).
 router.get('/calendar', async (req, res) => {
   try {
-    const { from, to } = req.query;
+    const { from, to, person = '' } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'from and to required' });
 
     const { rows } = await pool.query(
@@ -135,11 +136,12 @@ router.get('/calendar', async (req, res) => {
        FROM workout_entries we
        JOIN workout_plans   wp ON we.workout_plan_id = wp.id
        WHERE we.user_id=$1
+         AND wp.person_name=$2
          AND wp.status='accepted'
-         AND we.entry_date >= $2
-         AND we.entry_date <= $3
+         AND we.entry_date >= $3
+         AND we.entry_date <= $4
        ORDER BY we.entry_date, we.workout_type`,
-      [req.user.id, from, to]
+      [req.user.id, person, from, to]
     );
 
     res.json({ entries: rows });
@@ -169,11 +171,11 @@ function getWeekDays(weekStart) {
 router.post('/week/:id/generate', async (req, res) => {
   try {
     const planId = parseInt(req.params.id, 10);
-    const { prompt: userPrompt = '' } = req.body;
+    const { prompt: userPrompt = '', gym_days = [] } = req.body;
 
     // Ownership + plan details
     const { rows: planRows } = await pool.query(
-      `SELECT id, week_start::text AS week_start, status FROM workout_plans WHERE id=$1 AND user_id=$2`,
+      `SELECT id, week_start::text AS week_start, person_name, status FROM workout_plans WHERE id=$1 AND user_id=$2`,
       [planId, req.user.id]
     );
     if (!planRows[0]) return res.status(404).json({ error: 'Plan not found' });
@@ -181,17 +183,18 @@ router.post('/week/:id/generate', async (req, res) => {
       return res.status(400).json({ error: 'Accepted plans cannot be regenerated' });
 
     const weekStart = planRows[0].week_start;
+    const personName = planRows[0].person_name;
     const days = getWeekDays(weekStart);
 
-    // Fetch last 4 accepted weeks for context
+    // Fetch last 4 accepted weeks for context (same person only)
     const { rows: pastEntries } = await pool.query(
       `SELECT we.entry_date::text AS entry_date, we.workout_type, we.title, we.notes, we.duration
        FROM workout_entries we
        JOIN workout_plans wp ON we.workout_plan_id = wp.id
-       WHERE we.user_id=$1 AND wp.status='accepted' AND wp.id != $2
+       WHERE we.user_id=$1 AND wp.person_name=$2 AND wp.status='accepted' AND wp.id != $3
        ORDER BY we.entry_date DESC
        LIMIT 56`,
-      [req.user.id, planId]
+      [req.user.id, personName, planId]
     );
 
     const pastSummary = pastEntries.length
@@ -200,29 +203,40 @@ router.post('/week/:id/generate', async (req, res) => {
         ).join('\n')
       : 'No past workout history yet.';
 
-    const systemPrompt = `You are a fitness planning assistant helping create effective weekly workout plans.
+    const gymDaysSet = new Set(gym_days);
+    const restDays = days.filter(d => !gymDaysSet.has(d));
+
+    const systemPrompt = `You are a fitness planning assistant creating detailed gym workout plans.
 Return ONLY a valid JSON array with no explanation, no markdown, no code fences.
 Each object must have exactly these fields:
-{ "entry_date": "YYYY-MM-DD", "workout_type": "cardio|strength|flexibility|rest", "title": "string", "notes": "string or null", "duration": number_or_null }`;
+{ "entry_date": "YYYY-MM-DD", "workout_type": "strength|rest", "title": "string", "notes": "JSON_STRING_ARRAY", "duration": number_or_null }
 
-    const userMessage = `Generate a complete 7-day workout plan for the week of ${weekStart}.
+The "notes" field must be a JSON-encoded string of an exercise array, like:
+"[{\\"name\\":\\"Bench Press\\",\\"sets\\":4,\\"reps\\":\\"8\\"},{\\"name\\":\\"Incline DB Press\\",\\"sets\\":3,\\"reps\\":\\"10\\"}]"
+For rest days, notes should be "[]".`;
 
-Days to fill (Monday to Sunday): ${days.join(', ')}
+    const gymDaysList = gym_days.length ? gym_days.join(', ') : 'None selected';
+    const userMessage = `Generate a workout plan for the week of ${weekStart}.
 
-User's goal / feedback: ${userPrompt || 'Balanced fitness routine'}
+All days: ${days.join(', ')}
+Gym days (strength training): ${gymDaysList}
+Rest days: ${restDays.join(', ') || 'None'}
 
-Past workout history for reference (learn from patterns, ensure progressive overload, avoid overtraining):
+User's goal / split preference: ${userPrompt || 'Balanced strength training'}
+
+Past workout history (use for progressive overload, avoid repetition):
 ${pastSummary}
 
 Requirements:
 - One entry per day = 7 entries total
 - entry_date must be one of: ${days.join(', ')}
-- workout_type must be exactly: cardio, strength, flexibility, or rest
-- title: workout name (e.g. "Push Day — Chest & Triceps", "Rest Day")
-- notes: sets/reps/distance/exercises (or null for rest)
-- duration: minutes (or null for rest)
-- Include appropriate rest days (typically 1-2 per week)
-- Align the split with the user's goal above`;
+- workout_type: "strength" for gym days, "rest" for rest days
+- title: workout name for gym days (e.g. "Push Day — Chest & Triceps"), "Rest Day" for rest days
+- notes: JSON-encoded exercise array for gym days (5-8 exercises), empty array "[]" for rest days
+  Each exercise: {"name": "Exercise Name", "sets": 4, "reps": "8"}
+- duration: minutes for gym days (typically 45-75), null for rest days
+- Align with the user's split preference above`;
+
 
     const apiKey = await getApiKey();
     if (!apiKey) return res.status(500).json({ error: 'Anthropic API key not configured in Settings' });
@@ -236,7 +250,7 @@ Requirements:
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 2048,
+        max_tokens: 4096,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
       }),

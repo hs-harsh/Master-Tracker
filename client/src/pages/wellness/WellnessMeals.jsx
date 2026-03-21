@@ -114,10 +114,10 @@ export default function WellnessMeals() {
   const [aLoading,  setALoading]  = useState(false);
 
   // ── load week ──────────────────────────────────────────────────────────────
-  const loadWeek = useCallback(async (ws) => {
+  const loadWeek = useCallback(async (ws, person) => {
     setLoading(true);
     try {
-      const { data } = await api.get(`/meals/week?week_start=${ws}`);
+      const { data } = await api.get(`/meals/week?week_start=${ws}&person=${encodeURIComponent(person || '')}`);
       setPlan(data.plan);
       const map = {};
       (data.entries || []).forEach(e => {
@@ -134,14 +134,14 @@ export default function WellnessMeals() {
     }
   }, []);
 
-  useEffect(() => { loadWeek(weekStart); }, [weekStart, loadWeek]);
+  useEffect(() => { loadWeek(weekStart, currentPerson); }, [weekStart, currentPerson, loadWeek]);
 
   // ── load analytics ─────────────────────────────────────────────────────────
-  const loadAnalytics = useCallback(async (p) => {
+  const loadAnalytics = useCallback(async (p, person) => {
     setALoading(true);
     try {
       const { from, to } = dateRangeFor(p);
-      const { data } = await api.get(`/meals/calendar?from=${from}&to=${to}`);
+      const { data } = await api.get(`/meals/calendar?from=${from}&to=${to}&person=${encodeURIComponent(person || '')}`);
       setAnalytics(data.entries || []);
     } catch (err) {
       setAnalytics([]);
@@ -151,8 +151,8 @@ export default function WellnessMeals() {
   }, []);
 
   useEffect(() => {
-    if (view === 'analytics') loadAnalytics(period);
-  }, [view, period, loadAnalytics]);
+    if (view === 'analytics') loadAnalytics(period, currentPerson);
+  }, [view, period, currentPerson, loadAnalytics]);
 
   // ── save entries ───────────────────────────────────────────────────────────
   async function saveEntries(entriesOverride) {
