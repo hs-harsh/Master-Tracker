@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   CheckSquare, Utensils, Dumbbell,
@@ -134,6 +134,16 @@ export default function WellnessHabits() {
     if (view === 'analytics') loadStats(period, currentPerson);
   }, [view, period, currentPerson, loadStats]);
 
+  // ── scroll today into view on mobile ───────────────────────────────────────
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const todayEl = container.querySelector('[data-today="true"]');
+    if (!todayEl) return;
+    todayEl.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }, [weekStart, loading]);
+
   // ── set habit ──────────────────────────────────────────────────────────────
   async function setHabit(date, habitKey, value) {
     const current = entries[date] || {};
@@ -227,7 +237,7 @@ export default function WellnessHabits() {
           <p className="text-xs text-muted font-mono">Click stars to log — auto-saved</p>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" ref={scrollRef}>
           <div className="min-w-[680px]">
             <div className="grid grid-cols-8 border-b border-white/5">
               <div className="p-3" />
@@ -235,7 +245,7 @@ export default function WellnessHabits() {
                 const h = fmtDayHeader(ds);
                 const isT = ds === today;
                 return (
-                  <div key={ds} className={`p-3 text-center border-l border-white/5 ${isT ? 'bg-accent/5' : ''}`}>
+                  <div key={ds} data-today={isT ? 'true' : undefined} className={`p-3 text-center border-l border-white/5 ${isT ? 'bg-accent/5' : ''}`}>
                     <p className={`text-xs font-mono uppercase ${isT ? 'text-accent' : 'text-muted'}`}>{h.wd}</p>
                     <p className={`text-xl font-bold font-display ${isT ? 'text-accent' : 'text-white'}`}>{h.day}</p>
                     <p className="text-xs text-muted font-mono">{h.mo}</p>
@@ -444,8 +454,8 @@ export default function WellnessHabits() {
 
       {loading && <div className="text-center py-10 text-muted text-sm fade-up-1">Loading…</div>}
 
-      {!loading && view === 'planner'   && <Planner />}
-      {           view === 'analytics'  && <Analytics />}
+      {!loading && view === 'planner'   && Planner()}
+      {           view === 'analytics'  && Analytics()}
     </div>
   );
 }
