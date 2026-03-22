@@ -208,13 +208,6 @@ export default function WellnessWorkouts() {
 
   // ── generate plan ─────────────────────────────────────────────────────────
   async function generatePlan() {
-<<<<<<< HEAD
-    if (!plan) {
-      setAiError('Plan not loaded yet, please wait or refresh.');
-      return;
-    }
-    setGenerating(true); setAiError('');
-=======
     if (!plan) return;
     setGenerating(true); setAiError(''); setReasoning(''); setShowReasoning(false);
     // Save prompt to history
@@ -223,7 +216,6 @@ export default function WellnessWorkouts() {
       setPromptHistory(newHistory);
       saveHistory(newHistory);
     }
->>>>>>> e016175 (Wellness: 7-feature update — reset plans, inline edit, prompt history, reasoning, emails, cron reminders)
     try {
       const selectedDays = weekDays.filter((_, i) => gymDays.has(i));
       const { data } = await api.post(`/workouts/week/${plan.id}/generate`, {
@@ -358,19 +350,6 @@ export default function WellnessWorkouts() {
                 <ChevronRight size={18} />
               </button>
             </div>
-<<<<<<< HEAD
-            <div className="flex items-center gap-2 flex-wrap">
-              {isAccepted && (
-                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
-                  <Check size={13} /> Plan Accepted
-                </span>
-              )}
-              {isAccepted && (
-                <button onClick={resetWeek}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors">
-                  Reset Week
-                </button>
-=======
             <div className="flex items-center gap-2">
               {isAccepted && (
                 <>
@@ -384,7 +363,6 @@ export default function WellnessWorkouts() {
                     <RefreshCw size={12} />{resetting ? 'Resetting…' : 'Reset Plan'}
                   </button>
                 </>
->>>>>>> e016175 (Wellness: 7-feature update — reset plans, inline edit, prompt history, reasoning, emails, cron reminders)
               )}
             </div>
           </div>
