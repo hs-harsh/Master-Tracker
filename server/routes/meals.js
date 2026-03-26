@@ -135,10 +135,14 @@ router.post('/week/:id/accept', async (req, res) => {
     // Send email in background — don't block the response
     (async () => {
       try {
-        const [personRes, entriesRes] = await Promise.all([
+        const [personRes, userRes, entriesRes] = await Promise.all([
           pool.query(
             `SELECT person_name, email FROM user_persons WHERE user_id=$1 AND person_name=$2`,
             [req.user.id, plan.person_name]
+          ),
+          pool.query(
+            `SELECT email FROM users WHERE id=$1`,
+            [req.user.id]
           ),
           pool.query(
             `SELECT entry_date::text AS entry_date, meal_type, title, notes, calories
@@ -146,19 +150,25 @@ router.post('/week/:id/accept', async (req, res) => {
             [planId]
           ),
         ]);
-        const toEmail = personRes.rows[0]?.email;
+        // Fall back to account email if person-specific email not set
+        const toEmail = personRes.rows[0]?.email || userRes.rows[0]?.email;
         const personName = plan.person_name;
+        console.log(`Meal plan email: person=${personName}, toEmail=${toEmail}, entries=${entriesRes.rows.length}`);
         if (toEmail && entriesRes.rows.length) {
           // Generate grocery lists via Claude
           const groceryLists = await generateGroceryLists(entriesRes.rows);
+          console.log('Grocery lists generated:', groceryLists ? 'yes' : 'null');
           await sendMealPlanEmail(toEmail, personName, {
             weekStart: plan.week_start,
             entries:   entriesRes.rows,
             groceryLists,
           });
+          console.log('Meal plan email sent to', toEmail);
+        } else {
+          console.log('Meal plan email skipped: no email or no entries');
         }
       } catch (emailErr) {
-        console.error('Meal plan email failed (non-fatal):', emailErr.message);
+        console.error('Meal plan email failed (non-fatal):', emailErr.message, emailErr.stack);
       }
     })();
 

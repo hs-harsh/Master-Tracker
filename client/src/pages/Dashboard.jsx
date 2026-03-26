@@ -97,6 +97,7 @@ function Leg({ items }) {
 
 // ── Range helpers ─────────────────────────────────────────────────────────────
 const RANGES = ['3M', '6M', '1Y', 'All'];
+const FINANCE_RANGE_KEY = 'finance_chart_range';
 function sliceByRange(data, range) {
   if (range === '3M')  return data.slice(-3);
   if (range === '6M')  return data.slice(-6);
@@ -306,7 +307,8 @@ function RangePills({ range, setRange }) {
 
 // ── Full person panel ─────────────────────────────────────────────────────────
 function PersonPanel({ person, cashflowData, investments }) {
-  const [range, setRange] = useState('1Y');
+  const [range, setRangeRaw] = useState(() => localStorage.getItem(FINANCE_RANGE_KEY) || '1Y');
+  const setRange = (r) => { setRangeRaw(r); localStorage.setItem(FINANCE_RANGE_KEY, r); };
   const color   = colorFor(person);
   const latest  = cashflowData[cashflowData.length - 1];
   const prev    = cashflowData[cashflowData.length - 2];

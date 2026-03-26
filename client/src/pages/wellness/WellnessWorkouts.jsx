@@ -114,7 +114,6 @@ export default function WellnessWorkouts() {
   // Prompt state (top-level — never inside inner functions)
   const [aiPrompt,          setAiPrompt]          = useState('');
   const [preferences,       setPreferences]        = useState(() => loadPreferences(activePerson || personName));
-  const [selectedPref,      setSelectedPref]       = useState(null); // chip selected
 
   const [period, setPeriodRaw] = useState(() => localStorage.getItem(WELLNESS_PERIOD_KEY) || '1M');
   const setPeriod = (p) => { setPeriodRaw(p); localStorage.setItem(WELLNESS_PERIOD_KEY, p); };
@@ -128,7 +127,6 @@ export default function WellnessWorkouts() {
   // Reload preferences when person changes
   useEffect(() => {
     setPreferences(loadPreferences(currentPerson));
-    setSelectedPref(null);
     setAiPrompt('');
   }, [currentPerson]);
 
@@ -216,21 +214,18 @@ export default function WellnessWorkouts() {
     const next = preferences.filter(p => p !== text);
     setPreferences(next);
     savePreferences(currentPerson, next);
-    if (selectedPref === text) setSelectedPref(null);
   }
 
   // ── generate plan ─────────────────────────────────────────────────────────
   async function generatePlan() {
     if (!plan) return;
     setGenerating(true); setAiError(''); setReasoning(''); setShowReasoning(false);
-    // Combine selected preference + typed prompt
-    const combined = [selectedPref, aiPrompt.trim()].filter(Boolean).join(' | ');
-    // Auto-save typed prompt to preferences
-    if (aiPrompt.trim()) addPreference(aiPrompt.trim());
+    const prompt = aiPrompt.trim();
+    if (prompt) addPreference(prompt);
     try {
       const selectedDays = weekDays.filter((_, i) => gymDays.has(i));
       const { data } = await api.post(`/workouts/week/${plan.id}/generate`, {
-        prompt: combined || 'Balanced strength training',
+        prompt: prompt || 'Balanced strength training',
         gym_days: selectedDays,
       });
       setGenerated(data.entries || []);
@@ -473,12 +468,8 @@ export default function WellnessWorkouts() {
                 <div className="flex flex-wrap gap-1.5">
                   {preferences.map((pref, i) => (
                     <div key={i}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs transition-all cursor-pointer ${
-                        selectedPref === pref
-                          ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
-                          : 'border-white/10 text-soft hover:border-purple-500/30 hover:text-white'
-                      }`}
-                      onClick={() => setSelectedPref(prev => prev === pref ? null : pref)}>
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs transition-all cursor-pointer border-white/10 text-soft hover:border-purple-500/30 hover:text-white"
+                      onClick={() => setAiPrompt(prev => prev.trim() ? `${prev.trim()} ${pref}` : pref)}>
                       <span className="truncate max-w-[180px]">{pref}</span>
                       <button
                         onClick={e => { e.stopPropagation(); deletePreference(pref); }}
@@ -488,11 +479,6 @@ export default function WellnessWorkouts() {
                     </div>
                   ))}
                 </div>
-                {selectedPref && (
-                  <p className="text-[10px] text-purple-400/70 mt-1.5 font-mono">
-                    Preference selected — will be combined with your prompt
-                  </p>
-                )}
               </div>
             )}
             {aiError && <p className="text-xs text-red-400">{aiError}</p>}

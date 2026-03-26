@@ -134,6 +134,7 @@ function MonthDrillDown({ month, person, onBack }) {
 
 // ── Time-range selector ────────────────────────────────────────────────────────
 const RANGES = ['3M', '6M', '1Y', '2Y', '3Y', '5Y', 'ALL'];
+const FINANCE_RANGE_KEY = 'finance_chart_range';
 
 function RangeBar({ range, setRange }) {
   return (
@@ -155,8 +156,7 @@ function sliceByRange(data, range) {
 }
 
 // ── Chart 1: Corpus + Cumulative Income ───────────────────────────────────────
-function CorpusChart({ data }) {
-  const [range, setRange] = useState('ALL');
+function CorpusChart({ data, range, setRange }) {
   const sliced = sliceByRange(data, range);
 
   // Normalize so the chart starts from 0 at the beginning of the chosen window.
@@ -218,9 +218,7 @@ function CorpusChart({ data }) {
 // ── Chart 2: Income breakdown (stacked) + Ideal Saving line ──────────────────
 // Stacked bar = Fixed (Regular+EMI) + Special (Major+NonRec+Trips) + Actual Saving
 // The gap between Actual Saving and Ideal Saving = drag from special expenses
-function SavingChart({ data, onBarClick }) {
-  const [range, setRange] = useState('ALL');
-
+function SavingChart({ data, range, setRange, onBarClick }) {
   const cd = sliceByRange(data, range).map(r => {
     const income  = (Number(r.income) || 0) + (Number(r.other_income) || 0);
     const fixed   = (Number(r.regular_expense) || 0) + (Number(r.emi) || 0);
@@ -289,8 +287,7 @@ function SavingChart({ data, onBarClick }) {
 }
 
 // ── Chart 3: Expense Breakdown ────────────────────────────────────────────────
-function ExpenseChart({ data, onBarClick }) {
-  const [range, setRange] = useState('ALL');
+function ExpenseChart({ data, range, setRange, onBarClick }) {
   const EXP = [['Major','#fb7185'],['Non-Recurring','#f97316'],['Regular','#facc15'],['EMI','#a78bfa'],['Trips','#60a5fa']];
   const cd = sliceByRange(data, range).map(r => ({
     monthRaw:        r.month,
@@ -609,6 +606,8 @@ export default function Cashflow() {
   const [loading, setLoading]     = useState(true);
   const [activeTab, setActiveTab] = useState('charts');
   const [modal, setModal]         = useState(null);
+  const [range, setRangeRaw]      = useState(() => localStorage.getItem(FINANCE_RANGE_KEY) || 'ALL');
+  const setRange = (r) => { setRangeRaw(r); localStorage.setItem(FINANCE_RANGE_KEY, r); };
   const [inlineEdit, setInlineEdit] = useState({ rowKey: null, value: '' });
   const [drillMonth, setDrillMonth] = useState(null); // YYYY-MM-01 when drilling into a month
 
@@ -721,9 +720,9 @@ export default function Cashflow() {
       {/* Charts */}
       {!loading && data.length > 0 && activeTab === 'charts' && !drillMonth && (
         <div className="space-y-4">
-          <CorpusChart  data={data} />
-          <SavingChart  data={data} onBarClick={setDrillMonth} />
-          <ExpenseChart data={data} onBarClick={setDrillMonth} />
+          <CorpusChart  data={data} range={range} setRange={setRange} />
+          <SavingChart  data={data} range={range} setRange={setRange} onBarClick={setDrillMonth} />
+          <ExpenseChart data={data} range={range} setRange={setRange} onBarClick={setDrillMonth} />
         </div>
       )}
 

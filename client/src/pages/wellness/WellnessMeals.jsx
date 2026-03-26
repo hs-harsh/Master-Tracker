@@ -120,7 +120,6 @@ export default function WellnessMeals() {
   // Prompt state (top-level — never inside inner functions)
   const [aiPrompt,     setAiPrompt]    = useState('');
   const [preferences,  setPreferences] = useState(() => loadPreferences(activePerson || personName));
-  const [selectedPref, setSelectedPref]= useState(null);
 
   // cell edit modal
   const [editCell, setEditCell] = useState(null);
@@ -136,7 +135,6 @@ export default function WellnessMeals() {
   // Reload preferences when person changes
   useEffect(() => {
     setPreferences(loadPreferences(currentPerson));
-    setSelectedPref(null);
     setAiPrompt('');
   }, [currentPerson]);
 
@@ -217,16 +215,15 @@ export default function WellnessMeals() {
     const next = preferences.filter(p => p !== text);
     setPreferences(next);
     savePreferences(currentPerson, next);
-    if (selectedPref === text) setSelectedPref(null);
   }
 
   async function generatePlan() {
     if (!plan) return;
     setGenerating(true); setAiError(''); setReasoning(''); setShowReasoning(false);
-    const combined = [selectedPref, aiPrompt.trim()].filter(Boolean).join(' | ');
-    if (aiPrompt.trim()) addPreference(aiPrompt.trim());
+    const prompt = aiPrompt.trim();
+    if (prompt) addPreference(prompt);
     try {
-      const { data } = await api.post(`/meals/week/${plan.id}/generate`, { prompt: combined || 'Balanced healthy diet' });
+      const { data } = await api.post(`/meals/week/${plan.id}/generate`, { prompt: prompt || 'Balanced healthy diet' });
       const map = {};
       (data.entries || []).forEach(e => {
         map[eKey(e.entry_date, e.meal_type)] = {
@@ -439,12 +436,8 @@ export default function WellnessMeals() {
                 <div className="flex flex-wrap gap-1.5">
                   {preferences.map((pref, i) => (
                     <div key={i}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs transition-all cursor-pointer ${
-                        selectedPref === pref
-                          ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
-                          : 'border-white/10 text-soft hover:border-purple-500/30 hover:text-white'
-                      }`}
-                      onClick={() => setSelectedPref(prev => prev === pref ? null : pref)}>
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs transition-all cursor-pointer border-white/10 text-soft hover:border-purple-500/30 hover:text-white"
+                      onClick={() => setAiPrompt(prev => prev.trim() ? `${prev.trim()} ${pref}` : pref)}>
                       <span className="truncate max-w-[160px]">{pref}</span>
                       <button
                         onClick={e => { e.stopPropagation(); deletePreference(pref); }}
@@ -454,11 +447,6 @@ export default function WellnessMeals() {
                     </div>
                   ))}
                 </div>
-                {selectedPref && (
-                  <p className="text-[10px] text-purple-400/70 mt-1 font-mono">
-                    Preference selected — will be combined with your prompt
-                  </p>
-                )}
               </div>
             )}
             {aiError && <p className="text-xs text-red-400">{aiError}</p>}
