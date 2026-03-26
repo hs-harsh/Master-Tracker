@@ -23,6 +23,7 @@ const SUB_TABS = [
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const PERIODS = ['1M', '3M', '1Y'];
 const MAX_PREFERENCES = 8;
+const WELLNESS_PERIOD_KEY = 'wellness_analytics_period';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function parseD(d) {
@@ -115,7 +116,8 @@ export default function WellnessWorkouts() {
   const [preferences,       setPreferences]        = useState(() => loadPreferences(activePerson || personName));
   const [selectedPref,      setSelectedPref]       = useState(null); // chip selected
 
-  const [period,    setPeriod]    = useState('1M');
+  const [period, setPeriodRaw] = useState(() => localStorage.getItem(WELLNESS_PERIOD_KEY) || '1M');
+  const setPeriod = (p) => { setPeriodRaw(p); localStorage.setItem(WELLNESS_PERIOD_KEY, p); };
   const [analytics, setAnalytics] = useState(null);
   const [aLoading,  setALoading]  = useState(false);
 

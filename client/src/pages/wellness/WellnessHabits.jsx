@@ -47,8 +47,9 @@ const DEFAULT_HABITS = [
 ];
 const DEFAULT_DAILY_TARGET = 10;
 
-const PERIODS = ['1M', '3M', '1Y', 'Max'];
-const PERIOD_MAP = { '1M': '1M', '3M': '3M', '1Y': '1Y', 'Max': '1Y' };
+const PERIODS = ['1M', '3M', '1Y'];
+const PERIOD_MAP = { '1M': '1M', '3M': '3M', '1Y': '1Y' };
+const WELLNESS_PERIOD_KEY = 'wellness_analytics_period';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function parseD(d) {
@@ -95,6 +96,7 @@ function fmtDayHeader(ds) {
 
 function fmtChartDate(ds) {
   const d = parseD(ds);
+  if (!d || isNaN(d.getTime())) return String(ds).slice(5, 10); // fallback to MM-DD
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
@@ -126,8 +128,9 @@ export default function WellnessHabits() {
   const [newHabitIcon, setNewHabitIcon] = useState('Heart');
   const [targetInput,  setTargetInput]  = useState(String(DEFAULT_DAILY_TARGET));
 
-  // analytics state
-  const [period,  setPeriod]  = useState('1M');
+  // analytics state — shared period across all wellness tabs via localStorage
+  const [period, setPeriodRaw] = useState(() => localStorage.getItem(WELLNESS_PERIOD_KEY) || '1M');
+  const setPeriod = (p) => { setPeriodRaw(p); localStorage.setItem(WELLNESS_PERIOD_KEY, p); };
   const [stats,   setStats]   = useState(null);
   const [aLoading,setALoading]= useState(false);
 
@@ -652,7 +655,7 @@ export default function WellnessHabits() {
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="p-4 sm:p-6 space-y-5">
-      <ManageModal />
+      {ManageModal()}
 
       {/* sub-tab bar */}
       <div className="flex gap-1 p-1 rounded-xl flex-wrap"

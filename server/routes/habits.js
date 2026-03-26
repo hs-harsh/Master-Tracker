@@ -64,7 +64,7 @@ router.put('/config', auth, async (req, res) => {
 router.get('/', auth, async (req, res) => {
   try {
     const { from, to, person = '' } = req.query;
-    let q = `SELECT date, clean_food, walk, gym, sports, scores
+    let q = `SELECT date::text AS date, clean_food, walk, gym, sports, scores
              FROM habit_entries WHERE user_id = $1 AND person_name = $2`;
     const params = [req.user.id, person];
     let i = 3;
@@ -101,7 +101,7 @@ router.get('/stats', auth, async (req, res) => {
     const habitKeys = habits.map(h => h.key);
 
     const { rows } = await pool.query(
-      `SELECT date, clean_food, walk, gym, sports, scores
+      `SELECT date::text AS date, clean_food, walk, gym, sports, scores
        FROM habit_entries
        WHERE user_id = $1 AND person_name = $2 AND date >= $3
        ORDER BY date ASC`,
@@ -195,11 +195,11 @@ router.put('/', auth, async (req, res) => {
          gym        = EXCLUDED.gym,
          sports     = EXCLUDED.sports,
          updated_at = NOW()
-       RETURNING date, clean_food, walk, gym, sports, scores`,
+       RETURNING date::text AS date, clean_food, walk, gym, sports, scores`,
       [req.user.id, person, date, JSON.stringify(scores), cf, wk, gm, sp]
     );
     const r = rows[0];
-    res.json({ date: String(r.date).slice(0, 10), scores: resolveScores(r) });
+    res.json({ date: r.date, scores: resolveScores(r) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -236,11 +236,11 @@ router.post('/', auth, async (req, res) => {
          gym        = COALESCE(EXCLUDED.gym, habit_entries.gym),
          sports     = COALESCE(EXCLUDED.sports, habit_entries.sports),
          updated_at = NOW()
-       RETURNING date, clean_food, walk, gym, sports, scores`,
+       RETURNING date::text AS date, clean_food, walk, gym, sports, scores`,
       [req.user.id, person, date, JSON.stringify(scores), cf, wk, gm, sp]
     );
     const r = rows[0];
-    res.status(201).json({ date: String(r.date).slice(0, 10), scores: resolveScores(r) });
+    res.status(201).json({ date: r.date, scores: resolveScores(r) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

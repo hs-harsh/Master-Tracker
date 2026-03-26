@@ -255,7 +255,12 @@ Group similar ingredients, include approximate quantities.`,
     const aiData = await aiRes.json();
     if (!aiRes.ok) return null;
 
-    const raw = aiData.content?.[0]?.text || '{}';
+    let raw = aiData.content?.[0]?.text || '{}';
+    // Strip markdown code fences if the model wrapped its response
+    raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+    // Extract the first JSON object if there's surrounding text
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) raw = jsonMatch[0];
     return JSON.parse(raw);
   } catch {
     return null;

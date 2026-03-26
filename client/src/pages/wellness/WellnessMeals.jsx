@@ -32,6 +32,7 @@ const MEAL_MAP = Object.fromEntries(MEAL_TYPES.map(m => [m.key, m]));
 
 const PERIODS = ['1M', '3M', '1Y'];
 const MAX_PREFERENCES = 8;
+const WELLNESS_PERIOD_KEY = 'wellness_analytics_period';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function parseD(d) {
@@ -126,8 +127,9 @@ export default function WellnessMeals() {
   const [editData, setEditData] = useState({ title: '', notes: '', calories: '' });
   const [editMode, setEditMode] = useState(false);
 
-  // analytics state
-  const [period,    setPeriod]    = useState('1M');
+  // analytics state — shared period across all wellness tabs via localStorage
+  const [period, setPeriodRaw] = useState(() => localStorage.getItem(WELLNESS_PERIOD_KEY) || '1M');
+  const setPeriod = (p) => { setPeriodRaw(p); localStorage.setItem(WELLNESS_PERIOD_KEY, p); };
   const [analytics, setAnalytics] = useState(null);
   const [aLoading,  setALoading]  = useState(false);
 
