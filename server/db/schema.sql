@@ -459,3 +459,23 @@ BEGIN
     ALTER TABLE user_persons ADD COLUMN email VARCHAR(255);
   END IF;
 END $$;
+
+-- ─── Custom Habit Config ──────────────────────────────────────────────────────
+-- Stores per-user/person habit definitions and daily target
+CREATE TABLE IF NOT EXISTS habit_config (
+  id          SERIAL PRIMARY KEY,
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  person_name VARCHAR(50) NOT NULL DEFAULT '',
+  config      JSONB NOT NULL DEFAULT '{}',
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, person_name)
+);
+CREATE INDEX IF NOT EXISTS idx_habit_config_user_person ON habit_config(user_id, person_name);
+
+-- Add scores JSONB column to habit_entries for dynamic/custom habit values
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'habit_entries' AND column_name = 'scores') THEN
+    ALTER TABLE habit_entries ADD COLUMN scores JSONB DEFAULT '{}';
+  END IF;
+END $$;

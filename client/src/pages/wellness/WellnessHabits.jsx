@@ -4,6 +4,7 @@ import {
   CheckSquare, Utensils, Dumbbell,
   ChevronLeft, ChevronRight,
   Star, Leaf, Activity, Trophy, AlertTriangle, TrendingUp,
+  Settings, Plus, X, Heart, Zap, Moon, Coffee, Book, Music, Apple, Droplets, Sun,
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -19,17 +20,35 @@ const SUB_TABS = [
   { to: '/wellness/workouts', label: 'Workouts', icon: Dumbbell    },
 ];
 
-// ─── habit types ──────────────────────────────────────────────────────────────
-const HABIT_TYPES = [
-  { key: 'clean_food', label: 'Clean Food', shortLabel: 'Food',  icon: Leaf,      color: 'text-amber-400',  dot: 'bg-amber-400',  ring: 'bg-amber-400/10 border-amber-400/25',  stroke: '#fbbf24' },
-  { key: 'walk',       label: 'Walk',       shortLabel: 'Walk',  icon: Activity,  color: 'text-teal-400',   dot: 'bg-teal-400',   ring: 'bg-teal-400/10 border-teal-400/25',    stroke: '#2dd4bf' },
-  { key: 'gym',        label: 'Gym',        shortLabel: 'Gym',   icon: Dumbbell,  color: 'text-blue-400',   dot: 'bg-blue-400',   ring: 'bg-blue-400/10 border-blue-400/25',    stroke: '#60a5fa' },
-  { key: 'sports',     label: 'Sports',     shortLabel: 'Sport', icon: Trophy,    color: 'text-purple-400', dot: 'bg-purple-400', ring: 'bg-purple-400/10 border-purple-400/25', stroke: '#c084fc' },
+// ─── icon map ─────────────────────────────────────────────────────────────────
+const ICON_MAP = {
+  Leaf, Activity, Dumbbell, Trophy, Heart, Zap, Moon, Coffee, Book, Music, Apple, Droplets, Sun,
+};
+
+const PRESET_ICONS = ['Leaf', 'Activity', 'Dumbbell', 'Trophy', 'Heart', 'Zap', 'Moon', 'Coffee', 'Book', 'Music', 'Apple', 'Droplets', 'Sun'];
+
+// ─── color palette rotation ───────────────────────────────────────────────────
+const COLOR_PALETTE = [
+  { color: 'text-amber-400',   dot: 'bg-amber-400',   ring: 'bg-amber-400/10 border-amber-400/25',   stroke: '#fbbf24' },
+  { color: 'text-teal-400',    dot: 'bg-teal-400',    ring: 'bg-teal-400/10 border-teal-400/25',     stroke: '#2dd4bf' },
+  { color: 'text-blue-400',    dot: 'bg-blue-400',    ring: 'bg-blue-400/10 border-blue-400/25',     stroke: '#60a5fa' },
+  { color: 'text-purple-400',  dot: 'bg-purple-400',  ring: 'bg-purple-400/10 border-purple-400/25', stroke: '#c084fc' },
+  { color: 'text-pink-400',    dot: 'bg-pink-400',    ring: 'bg-pink-400/10 border-pink-400/25',     stroke: '#f472b6' },
+  { color: 'text-orange-400',  dot: 'bg-orange-400',  ring: 'bg-orange-400/10 border-orange-400/25', stroke: '#fb923c' },
+  { color: 'text-green-400',   dot: 'bg-green-400',   ring: 'bg-green-400/10 border-green-400/25',   stroke: '#4ade80' },
+  { color: 'text-red-400',     dot: 'bg-red-400',     ring: 'bg-red-400/10 border-red-400/25',       stroke: '#f87171' },
 ];
 
+const DEFAULT_HABITS = [
+  { key: 'clean_food', label: 'Clean Food', icon: 'Leaf',     ...COLOR_PALETTE[0] },
+  { key: 'walk',       label: 'Walk',       icon: 'Activity', ...COLOR_PALETTE[1] },
+  { key: 'gym',        label: 'Gym',        icon: 'Dumbbell', ...COLOR_PALETTE[2] },
+  { key: 'sports',     label: 'Sports',     icon: 'Trophy',   ...COLOR_PALETTE[3] },
+];
+const DEFAULT_DAILY_TARGET = 10;
+
 const PERIODS = ['1M', '3M', '1Y', 'Max'];
-const PERIOD_MAP = { '1M': '1M', '3M': '3M', '1Y': '1Y', 'Max': '1Y' }; // Max uses max period supported
-const DAILY_TARGET = 10; // out of 20 max (4 habits × 5)
+const PERIOD_MAP = { '1M': '1M', '3M': '3M', '1Y': '1Y', 'Max': '1Y' };
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function parseD(d) {
@@ -79,6 +98,10 @@ function fmtChartDate(ds) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
+function generateKey(label) {
+  return label.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') + '_' + Date.now();
+}
+
 // ─── component ────────────────────────────────────────────────────────────────
 export default function WellnessHabits() {
   const { personName, activePerson } = useAuth();
@@ -91,10 +114,44 @@ export default function WellnessHabits() {
   const [saving,    setSaving]    = useState({});
   const [loading,   setLoading]   = useState(false);
 
+  // habit config state
+  const [habitTypes,    setHabitTypes]    = useState(DEFAULT_HABITS);
+  const [dailyTarget,   setDailyTarget]   = useState(DEFAULT_DAILY_TARGET);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configSaving,  setConfigSaving]  = useState(false);
+
+  // manage habits modal
+  const [showManage,   setShowManage]   = useState(false);
+  const [newHabitName, setNewHabitName] = useState('');
+  const [newHabitIcon, setNewHabitIcon] = useState('Heart');
+  const [targetInput,  setTargetInput]  = useState(String(DEFAULT_DAILY_TARGET));
+
   // analytics state
   const [period,  setPeriod]  = useState('1M');
   const [stats,   setStats]   = useState(null);
   const [aLoading,setALoading]= useState(false);
+
+  // ── load habit config ───────────────────────────────────────────────────────
+  const loadConfig = useCallback(async (person) => {
+    setConfigLoading(true);
+    try {
+      const { data } = await api.get(`/habits/config?person=${encodeURIComponent(person || '')}`);
+      const habits = (data.habits || DEFAULT_HABITS).map((h, i) => ({
+        ...COLOR_PALETTE[i % COLOR_PALETTE.length],
+        ...h,
+      }));
+      setHabitTypes(habits);
+      setDailyTarget(data.daily_target ?? DEFAULT_DAILY_TARGET);
+      setTargetInput(String(data.daily_target ?? DEFAULT_DAILY_TARGET));
+    } catch {
+      setHabitTypes(DEFAULT_HABITS);
+      setDailyTarget(DEFAULT_DAILY_TARGET);
+    } finally {
+      setConfigLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadConfig(currentPerson); }, [currentPerson, loadConfig]);
 
   // ── load week ──────────────────────────────────────────────────────────────
   const loadWeek = useCallback(async (ws, person) => {
@@ -104,8 +161,7 @@ export default function WellnessHabits() {
       const { data } = await api.get(`/habits?from=${days[0]}&to=${days[6]}&person=${encodeURIComponent(person || '')}`);
       const map = {};
       (data || []).forEach(e => {
-        const ds = String(e.date).slice(0, 10);
-        map[ds] = { clean_food: e.clean_food ?? null, walk: e.walk ?? null, gym: e.gym ?? null, sports: e.sports ?? null };
+        map[String(e.date).slice(0, 10)] = e.scores || {};
       });
       setEntries(map);
     } catch (err) {
@@ -124,7 +180,7 @@ export default function WellnessHabits() {
       const apiPeriod = PERIOD_MAP[p] || '1Y';
       const { data } = await api.get(`/habits/stats?period=${apiPeriod}&person=${encodeURIComponent(person || '')}`);
       setStats(data);
-    } catch (err) {
+    } catch {
       setStats(null);
     } finally {
       setALoading(false);
@@ -142,7 +198,6 @@ export default function WellnessHabits() {
     if (!container) return;
     const todayEl = container.querySelector('[data-today-col="true"]');
     if (!todayEl) return;
-    // Scroll so today is the first visible day (leftmost after sticky label column)
     const labelCol = container.querySelector('[data-label-col="true"]');
     const labelWidth = labelCol ? labelCol.offsetWidth : 0;
     const containerLeft = container.getBoundingClientRect().left;
@@ -159,7 +214,7 @@ export default function WellnessHabits() {
     setEntries(e => ({ ...e, [date]: next }));
     setSaving(s => ({ ...s, [date]: true }));
     try {
-      await api.put('/habits', { date, ...next, person: currentPerson || '' });
+      await api.put('/habits', { date, scores: next, person: currentPerson || '' });
     } catch (err) {
       console.error(err);
     } finally {
@@ -173,39 +228,80 @@ export default function WellnessHabits() {
     setWeekStart(d.toISOString().slice(0, 10));
   }
 
+  // ── manage habits ──────────────────────────────────────────────────────────
+  function openManage() {
+    setTargetInput(String(dailyTarget));
+    setNewHabitName('');
+    setNewHabitIcon('Heart');
+    setShowManage(true);
+  }
+
+  function addHabit() {
+    const label = newHabitName.trim();
+    if (!label) return;
+    const idx    = habitTypes.length;
+    const colors = COLOR_PALETTE[idx % COLOR_PALETTE.length];
+    const key    = generateKey(label);
+    setHabitTypes(prev => [...prev, { key, label, icon: newHabitIcon, ...colors }]);
+    setNewHabitName('');
+    setNewHabitIcon('Heart');
+  }
+
+  function deleteHabit(key) {
+    setHabitTypes(prev => prev.filter(h => h.key !== key));
+  }
+
+  async function saveConfig() {
+    const target = Math.max(1, Math.min(habitTypes.length * 5, parseInt(targetInput, 10) || DEFAULT_DAILY_TARGET));
+    setConfigSaving(true);
+    try {
+      await api.put('/habits/config', {
+        person:       currentPerson || '',
+        habits:       habitTypes.map(({ key, label, icon, color, dot, ring, stroke }) => ({ key, label, icon, color, dot, ring, stroke })),
+        daily_target: target,
+      });
+      setDailyTarget(target);
+      setTargetInput(String(target));
+      setShowManage(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setConfigSaving(false);
+    }
+  }
+
   const today    = todayStr();
   const weekDays = getWeekDays(weekStart);
+  const maxTarget = habitTypes.length * 5;
 
-  // ── build alerts from stats ────────────────────────────────────────────────
+  // ── build alerts ──────────────────────────────────────────────────────────
   function buildAlerts(statsData) {
     if (!statsData?.chartData?.length) return [];
     const alerts = [];
-    const cd = statsData.chartData;
-    const last7 = cd.slice(-7);
+    const cd     = statsData.chartData;
+    const last7  = cd.slice(-7);
+    const ht     = statsData.habits || habitTypes;
 
-    // Per-habit: if avg in last 7 days is 0 or null → not active
-    HABIT_TYPES.forEach(ht => {
-      const vals = last7.map(d => d[ht.key]).filter(v => v != null && v > 0);
+    ht.forEach(h => {
+      const vals = last7.map(d => d[h.key]).filter(v => v != null && v > 0);
       if (vals.length === 0) {
-        alerts.push({ type: 'warn', msg: `${ht.label} not logged in the last 7 days` });
+        alerts.push({ type: 'warn', msg: `${h.label} not logged in the last 7 days` });
       } else {
         const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-        if (avg < 2) alerts.push({ type: 'warn', msg: `${ht.label} average is very low (${avg.toFixed(1)}/5) this week` });
+        if (avg < 2) alerts.push({ type: 'warn', msg: `${h.label} average is very low (${avg.toFixed(1)}/5) this week` });
       }
     });
 
-    // Daily total score vs target
     const recentScores = last7.map(d => {
-      const vals = HABIT_TYPES.map(ht => d[ht.key]).filter(v => v != null);
+      const vals = ht.map(h => d[h.key]).filter(v => v != null && v > 0);
       return vals.reduce((a, b) => a + b, 0);
     });
     const avgScore = recentScores.reduce((a, b) => a + b, 0) / (recentScores.length || 1);
-    if (avgScore < DAILY_TARGET) {
-      alerts.push({ type: 'warn', msg: `7-day avg daily score is ${avgScore.toFixed(1)}/20 — below the ${DAILY_TARGET} target` });
+    if (avgScore < dailyTarget) {
+      alerts.push({ type: 'warn', msg: `7-day avg daily score is ${avgScore.toFixed(1)}/${maxTarget} — below the ${dailyTarget} target` });
     } else {
-      alerts.push({ type: 'good', msg: `On track! Avg daily score ${avgScore.toFixed(1)}/20 this week` });
+      alerts.push({ type: 'good', msg: `On track! Avg daily score ${avgScore.toFixed(1)}/${maxTarget} this week` });
     }
-
     return alerts;
   }
 
@@ -221,6 +317,109 @@ export default function WellnessHabits() {
             <span className="text-white font-mono">{p.value ?? '—'}</span>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  // ── manage habits modal ────────────────────────────────────────────────────
+  function ManageModal() {
+    if (!showManage) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ background: 'rgba(9,9,14,0.80)', backdropFilter: 'blur(6px)' }}>
+        <div className="card w-full max-w-md p-5 space-y-5 overflow-y-auto max-h-[90vh]">
+          <div className="flex items-center justify-between">
+            <h2 className="text-white font-semibold font-display text-lg">Manage Habits</h2>
+            <button onClick={() => setShowManage(false)} className="text-muted hover:text-white transition-colors">
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* Current habits list */}
+          <div>
+            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-2">Current Habits</p>
+            <div className="space-y-2">
+              {habitTypes.map((ht, idx) => {
+                const Icon = ICON_MAP[ht.icon] || Leaf;
+                return (
+                  <div key={ht.key} className="flex items-center gap-3 px-3 py-2 rounded-xl border border-white/8 bg-white/[0.02]">
+                    <Icon size={14} className={ht.color} />
+                    <span className={`text-sm flex-1 ${ht.color}`}>{ht.label}</span>
+                    <button
+                      onClick={() => deleteHabit(ht.key)}
+                      className="text-muted/60 hover:text-red-400 transition-colors p-1">
+                      <X size={13} />
+                    </button>
+                  </div>
+                );
+              })}
+              {habitTypes.length === 0 && (
+                <p className="text-xs text-muted/60 text-center py-4">No habits — add one below</p>
+              )}
+            </div>
+          </div>
+
+          {/* Add new habit */}
+          <div>
+            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-2">Add Habit</p>
+            <div className="space-y-2">
+              <input
+                className="input w-full text-sm"
+                placeholder="Habit name (e.g. Meditation)"
+                value={newHabitName}
+                onChange={e => setNewHabitName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addHabit()}
+              />
+              <div className="flex flex-wrap gap-2">
+                {PRESET_ICONS.map(iconName => {
+                  const Icon = ICON_MAP[iconName];
+                  return (
+                    <button key={iconName} onClick={() => setNewHabitIcon(iconName)}
+                      className={`p-2 rounded-lg border transition-all ${
+                        newHabitIcon === iconName
+                          ? 'border-accent/50 bg-accent/10 text-accent'
+                          : 'border-white/10 text-muted hover:text-white hover:border-white/20'
+                      }`}>
+                      <Icon size={14} />
+                    </button>
+                  );
+                })}
+              </div>
+              <button onClick={addHabit} disabled={!newHabitName.trim()}
+                className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-40">
+                <Plus size={13} /> Add Habit
+              </button>
+            </div>
+          </div>
+
+          {/* Daily target */}
+          <div>
+            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-2">
+              Daily Target (max: {habitTypes.length * 5})
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min="1"
+                max={habitTypes.length * 5 || 1}
+                className="input w-24 text-sm font-mono"
+                value={targetInput}
+                onChange={e => setTargetInput(e.target.value)}
+              />
+              <span className="text-xs text-muted">out of {habitTypes.length * 5} max</span>
+            </div>
+          </div>
+
+          {/* Save */}
+          <div className="flex gap-3 pt-1">
+            <button onClick={() => setShowManage(false)}
+              className="btn-ghost flex-1 text-sm py-2">Cancel</button>
+            <button onClick={saveConfig} disabled={configSaving}
+              className="btn-primary flex-1 text-sm py-2 disabled:opacity-50">
+              {configSaving ? 'Saving…' : 'Save Config'}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -249,63 +448,81 @@ export default function WellnessHabits() {
               </button>
             )}
           </div>
-          <div className="text-right">
-            <p className="text-xs text-muted font-mono">Click stars to log — auto-saved</p>
-            <p className="text-[10px] text-muted/50 font-mono">1 = low effort · 5 = excellent</p>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-xs text-muted font-mono">Click stars to log — auto-saved</p>
+              <p className="text-[10px] text-muted/50 font-mono">1 = low effort · 5 = excellent</p>
+            </div>
+            <button onClick={openManage}
+              title="Manage habits"
+              className="p-1.5 rounded-lg border border-white/10 text-muted hover:text-white hover:border-white/25 transition-colors">
+              <Settings size={15} />
+            </button>
           </div>
         </div>
 
-        <div className="overflow-x-auto" ref={scrollRef}>
-          <div className="min-w-[680px]">
-            <div className="grid grid-cols-8 border-b border-white/5">
-              <div className="p-3" data-label-col="true"
-                style={{ position: 'sticky', left: 0, zIndex: 2, background: 'var(--surface, #1a1a1a)' }} />
-              {weekDays.map(ds => {
-                const h = fmtDayHeader(ds);
-                const isT = ds === today;
-                return (
-                  <div key={ds} data-today-col={isT ? 'true' : undefined} className={`p-3 text-center border-l border-white/5 ${isT ? 'bg-accent/5' : ''}`}>
-                    <p className={`text-xs font-mono uppercase ${isT ? 'text-accent' : 'text-muted'}`}>{h.wd}</p>
-                    <p className={`text-xl font-bold font-display ${isT ? 'text-accent' : 'text-white'}`}>{h.day}</p>
-                    <p className="text-xs text-muted font-mono">{h.mo}</p>
-                  </div>
-                );
-              })}
-            </div>
-
-            {HABIT_TYPES.map(ht => (
-              <div key={ht.key} className="grid grid-cols-8 border-b border-white/5 last:border-0">
-                <div className={`flex items-center gap-2 p-3 border-r border-white/5 ${ht.ring.split(' ')[0]}`}
-                  style={{ position: 'sticky', left: 0, zIndex: 2, background: 'var(--surface, #1a1a1a)' }}>
-                  <ht.icon size={14} className={ht.color} />
-                  <span className={`text-xs font-semibold ${ht.color} hidden sm:inline`}>{ht.label}</span>
-                  <span className={`text-xs font-semibold ${ht.color} sm:hidden`}>{ht.shortLabel}</span>
-                </div>
+        {configLoading ? (
+          <div className="p-8 text-center text-muted text-sm">Loading habit config…</div>
+        ) : habitTypes.length === 0 ? (
+          <div className="p-8 text-center text-muted text-sm">
+            No habits configured. <button onClick={openManage} className="text-accent underline ml-1">Add habits →</button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto" ref={scrollRef}>
+            <div className="min-w-[680px]">
+              <div className="grid border-b border-white/5" style={{ gridTemplateColumns: `minmax(100px,140px) repeat(7, 1fr)` }}>
+                <div className="p-3" data-label-col="true"
+                  style={{ position: 'sticky', left: 0, zIndex: 2, background: 'var(--surface, #1a1a1a)' }} />
                 {weekDays.map(ds => {
-                  const val  = entries[ds]?.[ht.key] ?? 0;
-                  const isT  = ds === today;
-                  const isSav= saving[ds];
+                  const h = fmtDayHeader(ds);
+                  const isT = ds === today;
                   return (
-                    <div key={ds}
-                      className={`px-1 py-2 border-l border-white/5 min-h-[72px] flex flex-col justify-center ${isT ? 'bg-accent/5' : ''}`}>
-                      <div className="flex gap-px flex-wrap">
-                        {[1,2,3,4,5].map(n => (
-                          <button key={n} onClick={() => setHabit(ds, ht.key, n)}
-                            className="p-1 transition-transform hover:scale-110 active:scale-95">
-                            <Star size={12} className={n <= val
-                              ? `fill-current ${ht.color} ${isSav ? 'opacity-60' : ''}`
-                              : 'text-white/15 hover:text-white/30 transition-colors'} />
-                          </button>
-                        ))}
-                      </div>
-                      {val > 0 && <p className={`text-[9px] font-mono mt-0.5 ${ht.color} opacity-70`}>{val}/5</p>}
+                    <div key={ds} data-today-col={isT ? 'true' : undefined} className={`p-3 text-center border-l border-white/5 ${isT ? 'bg-accent/5' : ''}`}>
+                      <p className={`text-xs font-mono uppercase ${isT ? 'text-accent' : 'text-muted'}`}>{h.wd}</p>
+                      <p className={`text-xl font-bold font-display ${isT ? 'text-accent' : 'text-white'}`}>{h.day}</p>
+                      <p className="text-xs text-muted font-mono">{h.mo}</p>
                     </div>
                   );
                 })}
               </div>
-            ))}
+
+              {habitTypes.map(ht => {
+                const Icon = ICON_MAP[ht.icon] || Leaf;
+                return (
+                  <div key={ht.key} className="grid border-b border-white/5 last:border-0"
+                    style={{ gridTemplateColumns: `minmax(100px,140px) repeat(7, 1fr)` }}>
+                    <div className={`flex items-center gap-2 p-3 border-r border-white/5 ${ht.ring.split(' ')[0]}`}
+                      style={{ position: 'sticky', left: 0, zIndex: 2, background: 'var(--surface, #1a1a1a)' }}>
+                      <Icon size={14} className={ht.color} />
+                      <span className={`text-xs font-semibold ${ht.color} truncate max-w-[80px]`}>{ht.label}</span>
+                    </div>
+                    {weekDays.map(ds => {
+                      const val  = entries[ds]?.[ht.key] ?? 0;
+                      const isT  = ds === today;
+                      const isSav= saving[ds];
+                      return (
+                        <div key={ds}
+                          className={`px-1 py-2 border-l border-white/5 min-h-[72px] flex flex-col justify-center ${isT ? 'bg-accent/5' : ''}`}>
+                          <div className="flex gap-px flex-wrap">
+                            {[1,2,3,4,5].map(n => (
+                              <button key={n} onClick={() => setHabit(ds, ht.key, n)}
+                                className="p-1 transition-transform hover:scale-110 active:scale-95">
+                                <Star size={12} className={n <= val
+                                  ? `fill-current ${ht.color} ${isSav ? 'opacity-60' : ''}`
+                                  : 'text-white/15 hover:text-white/30 transition-colors'} />
+                              </button>
+                            ))}
+                          </div>
+                          {val > 0 && <p className={`text-[9px] font-mono mt-0.5 ${ht.color} opacity-70`}>{val}/5</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -331,19 +548,20 @@ export default function WellnessHabits() {
     );
 
     const alerts = buildAlerts(stats);
+    const ht     = stats.habits || habitTypes;
 
-    // Chart data: daily score (sum of all habits) + per habit
-    const chartData = stats.chartData.map(d => ({
-      date: fmtChartDate(d.date),
-      Score: [d.clean_food, d.walk, d.gym, d.sports].filter(v => v != null).reduce((a, b) => a + b, 0),
-      'Clean Food': d.clean_food,
-      Walk: d.walk,
-      Gym: d.gym,
-      Sports: d.sports,
-    }));
+    // Chart data: per habit values + daily score
+    const chartData = stats.chartData.map(d => {
+      const entry = { date: fmtChartDate(d.date) };
+      ht.forEach(h => { entry[h.label] = d[h.key]; });
+      entry.Score = ht.map(h => d[h.key]).filter(v => v != null && v > 0).reduce((a, b) => a + b, 0) || null;
+      return entry;
+    });
 
-    const s = stats.stats;
-    const healthPct = s.avgOverall != null ? Math.round((s.avgOverall / 5) * 100) : null;
+    const s           = stats.stats;
+    const habitsAvg   = s.habitsAvg || {};
+    const healthPct   = s.avgOverall != null ? Math.round((s.avgOverall / 5) * 100) : null;
+    const statMaxScore= ht.length * 5;
 
     return (
       <div className="space-y-4 fade-up-1">
@@ -376,16 +594,16 @@ export default function WellnessHabits() {
             <p className="text-[10px] text-muted uppercase tracking-wider">Days Logged</p>
             <p className="font-mono text-2xl font-bold text-white">{s.daysLogged}</p>
           </div>
-          {HABIT_TYPES.map(ht => {
-            const statKey = { clean_food: 'avgCleanFood', walk: 'avgWalk', gym: 'avgGym', sports: 'avgSports' }[ht.key];
-            const val = s[statKey];
+          {ht.slice(0, 4).map(h => {
+            const Icon = ICON_MAP[h.icon] || Leaf;
+            const val  = habitsAvg[h.key];
             return (
-              <div key={ht.key} className={`card px-4 py-3 border ${ht.ring}`}>
+              <div key={h.key} className={`card px-4 py-3 border ${h.ring}`}>
                 <div className="flex items-center gap-1.5 mb-1">
-                  <ht.icon size={11} className={ht.color} />
-                  <p className={`text-[10px] uppercase tracking-wider ${ht.color}`}>{ht.label}</p>
+                  <Icon size={11} className={h.color} />
+                  <p className={`text-[10px] uppercase tracking-wider ${h.color} truncate`}>{h.label}</p>
                 </div>
-                <p className={`font-mono text-xl font-bold ${ht.color}`}>{val != null ? `${val}/5` : '—'}</p>
+                <p className={`font-mono text-xl font-bold ${h.color}`}>{val != null ? `${val}/5` : '—'}</p>
               </div>
             );
           })}
@@ -401,9 +619,9 @@ export default function WellnessHabits() {
               <YAxis domain={[0, 5]} ticks={[0,1,2,3,4,5]} tick={{ fontSize: 10, fill: '#6b7280' }} />
               <Tooltip content={<HabitTooltip />} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              {HABIT_TYPES.map(ht => (
-                <Line key={ht.key} type="monotone" dataKey={ht.label === 'Clean Food' ? 'Clean Food' : ht.label}
-                  stroke={ht.stroke} strokeWidth={1.5} dot={false} connectNulls />
+              {ht.map(h => (
+                <Line key={h.key} type="monotone" dataKey={h.label}
+                  stroke={h.stroke} strokeWidth={1.5} dot={false} connectNulls />
               ))}
             </LineChart>
           </ResponsiveContainer>
@@ -413,16 +631,16 @@ export default function WellnessHabits() {
         <div className="card p-4">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp size={14} className="text-accent" />
-            <p className="text-xs text-muted uppercase tracking-widest font-mono">Daily total score vs target ({DAILY_TARGET}/20)</p>
+            <p className="text-xs text-muted uppercase tracking-widest font-mono">Daily total score vs target ({dailyTarget}/{statMaxScore})</p>
           </div>
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
-              <YAxis domain={[0, 20]} ticks={[0, 5, 10, 15, 20]} tick={{ fontSize: 10, fill: '#6b7280' }} />
+              <YAxis domain={[0, statMaxScore]} tick={{ fontSize: 10, fill: '#6b7280' }} />
               <Tooltip content={<HabitTooltip />} />
-              <ReferenceLine y={DAILY_TARGET} stroke="#f59e0b" strokeDasharray="4 4"
-                label={{ value: `Target ${DAILY_TARGET}`, position: 'right', fontSize: 10, fill: '#f59e0b' }} />
+              <ReferenceLine y={dailyTarget} stroke="#f59e0b" strokeDasharray="4 4"
+                label={{ value: `Target ${dailyTarget}`, position: 'right', fontSize: 10, fill: '#f59e0b' }} />
               <Line type="monotone" dataKey="Score" stroke="#a78bfa" strokeWidth={2} dot={false} connectNulls />
             </LineChart>
           </ResponsiveContainer>
@@ -434,6 +652,8 @@ export default function WellnessHabits() {
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="p-4 sm:p-6 space-y-5">
+      <ManageModal />
+
       {/* sub-tab bar */}
       <div className="flex gap-1 p-1 rounded-xl flex-wrap"
         style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -501,8 +721,8 @@ export default function WellnessHabits() {
         </div>
       )}
 
-      {!loading && view === 'planner'   && Planner()}
-      {           view === 'analytics'  && Analytics()}
+      {!loading && view === 'planner'  && Planner()}
+      {           view === 'analytics' && Analytics()}
     </div>
   );
 }

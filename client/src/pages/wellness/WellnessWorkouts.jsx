@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   CheckSquare, Utensils, Dumbbell,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, X,
   Check, Save, Sparkles, AlertTriangle,
   RotateCcw, Flame, Target, TrendingUp,
-  Clock, ChevronDown, ChevronUp, RefreshCw,
+  ChevronDown, ChevronUp, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -22,7 +22,7 @@ const SUB_TABS = [
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const PERIODS = ['1M', '3M', '1Y'];
-const PROMPT_HISTORY_KEY = 'workout_prompt_history';
+const MAX_PREFERENCES = 8;
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function parseD(d) {
@@ -80,12 +80,14 @@ function countSets(exercises) {
   return exercises.reduce((sum, ex) => sum + (Number(ex.sets) || 0), 0);
 }
 
-// localStorage prompt history helpers
-function loadHistory() {
-  try { return JSON.parse(localStorage.getItem(PROMPT_HISTORY_KEY) || '[]'); } catch { return []; }
+// localStorage preference helpers (per-person)
+function loadPreferences(person) {
+  const key = `workout_prompts_${person || 'default'}`;
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
 }
-function saveHistory(history) {
-  try { localStorage.setItem(PROMPT_HISTORY_KEY, JSON.stringify(history)); } catch {}
+function savePreferences(person, prefs) {
+  const key = `workout_prompts_${person || 'default'}`;
+  try { localStorage.setItem(key, JSON.stringify(prefs)); } catch {}
 }
 
 // ─── component ────────────────────────────────────────────────────────────────
@@ -108,11 +110,10 @@ export default function WellnessWorkouts() {
   const [reasoning,  setReasoning]  = useState('');
   const [showReasoning, setShowReasoning] = useState(false);
 
-  // Prompt state (controlled, persists across generate clicks)
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [promptHistory, setPromptHistory] = useState(loadHistory);
-  const [showHistory, setShowHistory] = useState(false);
-  const historyRef = useRef(null);
+  // Prompt state (top-level — never inside inner functions)
+  const [aiPrompt,          setAiPrompt]          = useState('');
+  const [preferences,       setPreferences]        = useState(() => loadPreferences(activePerson || personName));
+  const [selectedPref,      setSelectedPref]       = useState(null); // chip selected
 
   const [period,    setPeriod]    = useState('1M');
   const [analytics, setAnalytics] = useState(null);
@@ -122,16 +123,12 @@ export default function WellnessWorkouts() {
   const weekDays = getWeekDays(weekStart);
   const isAccepted = plan?.status === 'accepted';
 
-  // Close history dropdown on outside click
+  // Reload preferences when person changes
   useEffect(() => {
-    function handleClick(e) {
-      if (historyRef.current && !historyRef.current.contains(e.target)) {
-        setShowHistory(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+    setPreferences(loadPreferences(currentPerson));
+    setSelectedPref(null);
+    setAiPrompt('');
+  }, [currentPerson]);
 
   // ── load week ──────────────────────────────────────────────────────────────
   const loadWeek = useCallback(async (ws, person) => {
@@ -206,20 +203,32 @@ export default function WellnessWorkouts() {
     }));
   }
 
+  // ── preference helpers ─────────────────────────────────────────────────────
+  function addPreference(text) {
+    if (!text.trim()) return;
+    const next = [text, ...preferences.filter(p => p !== text)].slice(0, MAX_PREFERENCES);
+    setPreferences(next);
+    savePreferences(currentPerson, next);
+  }
+  function deletePreference(text) {
+    const next = preferences.filter(p => p !== text);
+    setPreferences(next);
+    savePreferences(currentPerson, next);
+    if (selectedPref === text) setSelectedPref(null);
+  }
+
   // ── generate plan ─────────────────────────────────────────────────────────
   async function generatePlan() {
     if (!plan) return;
     setGenerating(true); setAiError(''); setReasoning(''); setShowReasoning(false);
-    // Save prompt to history
-    if (aiPrompt.trim()) {
-      const newHistory = [aiPrompt, ...promptHistory.filter(h => h !== aiPrompt)].slice(0, 5);
-      setPromptHistory(newHistory);
-      saveHistory(newHistory);
-    }
+    // Combine selected preference + typed prompt
+    const combined = [selectedPref, aiPrompt.trim()].filter(Boolean).join(' | ');
+    // Auto-save typed prompt to preferences
+    if (aiPrompt.trim()) addPreference(aiPrompt.trim());
     try {
       const selectedDays = weekDays.filter((_, i) => gymDays.has(i));
       const { data } = await api.post(`/workouts/week/${plan.id}/generate`, {
-        prompt: aiPrompt,
+        prompt: combined || 'Balanced strength training',
         gym_days: selectedDays,
       });
       setGenerated(data.entries || []);
@@ -426,42 +435,19 @@ export default function WellnessWorkouts() {
 
         {/* Step 2: AI Generate */}
         {!isAccepted && gymDays.size > 0 && (
-          <div className="card p-4">
-            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-3">Step 2 — Generate Workout Plan</p>
+          <div className="card p-4 space-y-3">
+            <p className="text-xs text-muted uppercase tracking-widest font-mono">Step 2 — Generate Workout Plan</p>
             <div className="flex gap-2 items-center">
               <div className="flex items-center gap-1.5 text-xs text-purple-400 font-semibold shrink-0">
                 <Sparkles size={13} />AI
               </div>
-              <div className="flex-1 relative" ref={historyRef}>
-                <div className="flex items-center gap-1">
-                  <input
-                    className="input flex-1 text-xs py-1.5"
-                    placeholder="e.g. Push Pull Legs, Upper Lower, 4-day split, chest focus…"
-                    value={aiPrompt}
-                    onChange={e => setAiPrompt(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()}
-                  />
-                  {promptHistory.length > 0 && (
-                    <button
-                      onClick={() => setShowHistory(h => !h)}
-                      title="Prompt history"
-                      className="flex items-center px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/20 text-muted hover:text-white transition-colors">
-                      <Clock size={13} />
-                    </button>
-                  )}
-                </div>
-                {showHistory && promptHistory.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-white/10 rounded-lg py-1 z-10 shadow-xl">
-                    {promptHistory.map((h, i) => (
-                      <button key={i}
-                        onClick={() => { setAiPrompt(h); setShowHistory(false); }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-soft hover:text-white hover:bg-white/5 transition-colors truncate">
-                        {h}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <input
+                className="input flex-1 text-xs py-1.5"
+                placeholder="e.g. Push Pull Legs, Upper Lower, 4-day split, chest focus…"
+                value={aiPrompt}
+                onChange={e => setAiPrompt(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()}
+              />
               <button onClick={generatePlan} disabled={generating}
                 className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
                   bg-purple-500/20 text-purple-300 border border-purple-500/30
@@ -478,7 +464,36 @@ export default function WellnessWorkouts() {
                 </button>
               )}
             </div>
-            {aiError && <p className="text-xs text-red-400 mt-2">{aiError}</p>}
+            {/* Saved Preferences chips */}
+            {preferences.length > 0 && (
+              <div>
+                <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-2">Saved Preferences</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {preferences.map((pref, i) => (
+                    <div key={i}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs transition-all cursor-pointer ${
+                        selectedPref === pref
+                          ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
+                          : 'border-white/10 text-soft hover:border-purple-500/30 hover:text-white'
+                      }`}
+                      onClick={() => setSelectedPref(prev => prev === pref ? null : pref)}>
+                      <span className="truncate max-w-[180px]">{pref}</span>
+                      <button
+                        onClick={e => { e.stopPropagation(); deletePreference(pref); }}
+                        className="text-muted hover:text-red-400 transition-colors ml-0.5 flex-shrink-0">
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {selectedPref && (
+                  <p className="text-[10px] text-purple-400/70 mt-1.5 font-mono">
+                    Preference selected — will be combined with your prompt
+                  </p>
+                )}
+              </div>
+            )}
+            {aiError && <p className="text-xs text-red-400">{aiError}</p>}
           </div>
         )}
 
@@ -798,8 +813,8 @@ export default function WellnessWorkouts() {
         </div>
       )}
 
-      {!loading && view === 'planner'  && <Planner />}
-      {           view === 'analytics' && <Analytics />}
+      {!loading && view === 'planner'  && Planner()}
+      {           view === 'analytics' && Analytics()}
     </div>
   );
 }

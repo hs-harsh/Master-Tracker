@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   CheckSquare, Utensils, Dumbbell,
   ChevronLeft, ChevronRight,
   Plus, X, Check, Save, Sparkles,
   Coffee, Sun, Moon, Apple, AlertTriangle,
-  Clock, ChevronDown, ChevronUp, RefreshCw,
+  ChevronDown, ChevronUp, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -31,6 +31,7 @@ const MEAL_TYPES = [
 const MEAL_MAP = Object.fromEntries(MEAL_TYPES.map(m => [m.key, m]));
 
 const PERIODS = ['1M', '3M', '1Y'];
+const MAX_PREFERENCES = 8;
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function parseD(d) {
@@ -75,17 +76,17 @@ function fmtDayHeader(ds) {
   };
 }
 
-const PROMPT_HISTORY_KEY = 'meal_prompt_history';
-
 function eKey(date, mealType) {
   return `${String(date).slice(0,10)}_${mealType}`;
 }
 
-function loadHistory() {
-  try { return JSON.parse(localStorage.getItem(PROMPT_HISTORY_KEY) || '[]'); } catch { return []; }
+function loadPreferences(person) {
+  const key = `meal_prompts_${person || 'default'}`;
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
 }
-function saveHistory(history) {
-  try { localStorage.setItem(PROMPT_HISTORY_KEY, JSON.stringify(history)); } catch {}
+function savePreferences(person, prefs) {
+  const key = `meal_prompts_${person || 'default'}`;
+  try { localStorage.setItem(key, JSON.stringify(prefs)); } catch {}
 }
 
 function dateRangeFor(period) {
@@ -115,11 +116,10 @@ export default function WellnessMeals() {
   const [reasoning,  setReasoning] = useState('');
   const [showReasoning, setShowReasoning] = useState(false);
 
-  // Prompt state: controlled + history
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [promptHistory, setPromptHistory] = useState(loadHistory);
-  const [showHistory, setShowHistory] = useState(false);
-  const historyRef = useRef(null);
+  // Prompt state (top-level — never inside inner functions)
+  const [aiPrompt,     setAiPrompt]    = useState('');
+  const [preferences,  setPreferences] = useState(() => loadPreferences(activePerson || personName));
+  const [selectedPref, setSelectedPref]= useState(null);
 
   // cell edit modal
   const [editCell, setEditCell] = useState(null);
@@ -131,16 +131,12 @@ export default function WellnessMeals() {
   const [analytics, setAnalytics] = useState(null);
   const [aLoading,  setALoading]  = useState(false);
 
-  // Close history dropdown on outside click
+  // Reload preferences when person changes
   useEffect(() => {
-    function handleClick(e) {
-      if (historyRef.current && !historyRef.current.contains(e.target)) {
-        setShowHistory(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+    setPreferences(loadPreferences(currentPerson));
+    setSelectedPref(null);
+    setAiPrompt('');
+  }, [currentPerson]);
 
   // ── load week ──────────────────────────────────────────────────────────────
   const loadWeek = useCallback(async (ws, person) => {
@@ -209,17 +205,26 @@ export default function WellnessMeals() {
     } catch (err) { console.error(err); } finally { setAccepting(false); }
   }
 
+  function addPreference(text) {
+    if (!text.trim()) return;
+    const next = [text, ...preferences.filter(p => p !== text)].slice(0, MAX_PREFERENCES);
+    setPreferences(next);
+    savePreferences(currentPerson, next);
+  }
+  function deletePreference(text) {
+    const next = preferences.filter(p => p !== text);
+    setPreferences(next);
+    savePreferences(currentPerson, next);
+    if (selectedPref === text) setSelectedPref(null);
+  }
+
   async function generatePlan() {
     if (!plan) return;
     setGenerating(true); setAiError(''); setReasoning(''); setShowReasoning(false);
-    // Save prompt to history
-    if (aiPrompt.trim()) {
-      const newHistory = [aiPrompt, ...promptHistory.filter(h => h !== aiPrompt)].slice(0, 5);
-      setPromptHistory(newHistory);
-      saveHistory(newHistory);
-    }
+    const combined = [selectedPref, aiPrompt.trim()].filter(Boolean).join(' | ');
+    if (aiPrompt.trim()) addPreference(aiPrompt.trim());
     try {
-      const { data } = await api.post(`/meals/week/${plan.id}/generate`, { prompt: aiPrompt });
+      const { data } = await api.post(`/meals/week/${plan.id}/generate`, { prompt: combined || 'Balanced healthy diet' });
       const map = {};
       (data.entries || []).forEach(e => {
         map[eKey(e.entry_date, e.meal_type)] = {
@@ -406,41 +411,18 @@ export default function WellnessMeals() {
         </div>
 
         {!isAccepted && (
-          <div className="p-3 border-b border-white/5 bg-white/[0.02]">
+          <div className="p-3 border-b border-white/5 bg-white/[0.02] space-y-2">
             <div className="flex gap-2 items-center">
               <div className="flex items-center gap-1.5 text-xs text-purple-400 font-semibold shrink-0">
                 <Sparkles size={13} />AI
               </div>
-              <div className="flex-1 relative" ref={historyRef}>
-                <div className="flex items-center gap-1">
-                  <input
-                    className="input flex-1 text-xs py-1.5"
-                    placeholder="e.g. High protein Indian diet, low carb, vegetarian…"
-                    value={aiPrompt}
-                    onChange={e => setAiPrompt(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()}
-                  />
-                  {promptHistory.length > 0 && (
-                    <button
-                      onClick={() => setShowHistory(h => !h)}
-                      title="Prompt history"
-                      className="flex items-center px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/20 text-muted hover:text-white transition-colors">
-                      <Clock size={13} />
-                    </button>
-                  )}
-                </div>
-                {showHistory && promptHistory.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-white/10 rounded-lg py-1 z-10 shadow-xl">
-                    {promptHistory.map((h, i) => (
-                      <button key={i}
-                        onClick={() => { setAiPrompt(h); setShowHistory(false); }}
-                        className="w-full text-left px-3 py-1.5 text-xs text-soft hover:text-white hover:bg-white/5 transition-colors truncate">
-                        {h}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <input
+                className="input flex-1 text-xs py-1.5"
+                placeholder="e.g. High protein Indian diet, low carb, vegetarian…"
+                value={aiPrompt}
+                onChange={e => setAiPrompt(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()}
+              />
               <button onClick={generatePlan} disabled={generating}
                 className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
                   bg-purple-500/20 text-purple-300 border border-purple-500/30
@@ -448,10 +430,39 @@ export default function WellnessMeals() {
                 <Sparkles size={12} />{generating ? 'Generating…' : 'Generate'}
               </button>
             </div>
-            {aiError && <p className="text-xs text-red-400 mt-1.5">{aiError}</p>}
+            {/* Saved Preferences chips */}
+            {preferences.length > 0 && (
+              <div>
+                <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5">Saved Preferences</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {preferences.map((pref, i) => (
+                    <div key={i}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs transition-all cursor-pointer ${
+                        selectedPref === pref
+                          ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
+                          : 'border-white/10 text-soft hover:border-purple-500/30 hover:text-white'
+                      }`}
+                      onClick={() => setSelectedPref(prev => prev === pref ? null : pref)}>
+                      <span className="truncate max-w-[160px]">{pref}</span>
+                      <button
+                        onClick={e => { e.stopPropagation(); deletePreference(pref); }}
+                        className="text-muted hover:text-red-400 transition-colors ml-0.5 flex-shrink-0">
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {selectedPref && (
+                  <p className="text-[10px] text-purple-400/70 mt-1 font-mono">
+                    Preference selected — will be combined with your prompt
+                  </p>
+                )}
+              </div>
+            )}
+            {aiError && <p className="text-xs text-red-400">{aiError}</p>}
             {/* Reasoning panel */}
             {reasoning && (
-              <div className="mt-2 rounded-lg overflow-hidden border border-white/8">
+              <div className="rounded-lg overflow-hidden border border-white/8">
                 <button
                   onClick={() => setShowReasoning(r => !r)}
                   className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-white/[0.02] transition-colors">
@@ -800,10 +811,10 @@ export default function WellnessMeals() {
 
       {loading && <div className="text-center py-10 text-muted text-sm fade-up-1">Loading…</div>}
 
-      {!loading && view === 'planner'  && <Planner />}
-      {           view === 'analytics' && <Analytics />}
+      {!loading && view === 'planner'  && Planner()}
+      {           view === 'analytics' && Analytics()}
 
-      <EditModal />
+      {EditModal()}
     </div>
   );
 }
