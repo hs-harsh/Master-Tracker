@@ -187,9 +187,9 @@ router.post('/ai/parse-rules', async (req, res) => {
   const { dataPrompt, strategyPrompt, entryPrompt, exitPrompt } = req.body;
   try {
     const { rows } = await pool.query(
-      `SELECT value FROM settings WHERE key='claude_api_key' LIMIT 1`
+      `SELECT value FROM settings WHERE key='anthropic_api_key' LIMIT 1`
     );
-    const apiKey = rows[0]?.value || process.env.ANTHROPIC_API_KEY;
+    const apiKey = (rows[0]?.value ?? '').trim() || process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return res.status(400).json({
         error: 'Claude API key not configured. Add it in Settings → AI Configuration.',
