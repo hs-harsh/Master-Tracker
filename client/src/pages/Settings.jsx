@@ -37,6 +37,8 @@ export default function Settings() {
   const [anthropicApiKeySet,       setAnthropicApiKeySet]       = useState(false);
   const [anthropicApiKeyInput,     setAnthropicApiKeyInput]     = useState('');
   const [anthropicApiKeyTouched,   setAnthropicApiKeyTouched]   = useState(false);
+  const [sidebarFinanceEnabled,   setSidebarFinanceEnabled]   = useState(true);
+  const [sidebarWellnessEnabled,  setSidebarWellnessEnabled]  = useState(true);
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(null);
 
@@ -50,6 +52,8 @@ export default function Settings() {
       setCurrencyDisplay(d.currencyDisplay   || 'INR');
       setDashboardDefaultProfile(d.dashboardDefaultProfile || 'Both');
       setAnthropicApiKeySet(!!d.anthropicApiKeySet);
+      setSidebarFinanceEnabled(d.sidebarFinanceEnabled !== false);
+      setSidebarWellnessEnabled(d.sidebarWellnessEnabled !== false);
       applyTheme(d.themeMode || 'dark', d.accent || 'gold');
     }).catch(() => {});
   };
@@ -112,6 +116,8 @@ export default function Settings() {
         accent,
         currencyDisplay,
         dashboardDefaultProfile,
+        sidebarFinanceEnabled,
+        sidebarWellnessEnabled,
       };
       if (anthropicApiKeyTouched) body.anthropicApiKey = anthropicApiKeyInput.trim();
       await api.put('/settings', body);
@@ -119,6 +125,7 @@ export default function Settings() {
       setAnthropicApiKeyInput('');
       applyTheme(themeMode, accent);
       load();
+      window.dispatchEvent(new Event('investtrack-settings'));
     } catch (e) {
       alert(e.response?.data?.error || 'Failed to save');
     } finally {
@@ -228,6 +235,33 @@ export default function Settings() {
             </select>
           </div>
         </div>
+        <div className="mt-6 space-y-4 border-t border-border pt-6">
+          <p className="text-sm text-soft">Sidebar: show or hide whole sections. Off = tab group hidden from the menu.</p>
+          <label className="flex items-center justify-between gap-4 cursor-pointer">
+            <span className="text-sm text-white">Show Finance (Dashboard, Portfolio, …)</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={sidebarFinanceEnabled}
+              onClick={() => setSidebarFinanceEnabled(v => !v)}
+              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${sidebarFinanceEnabled ? 'bg-accent' : 'bg-muted/40'}`}
+            >
+              <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-ink transition-transform ${sidebarFinanceEnabled ? 'translate-x-5' : ''}`} />
+            </button>
+          </label>
+          <label className="flex items-center justify-between gap-4 cursor-pointer">
+            <span className="text-sm text-white">Show Wellness (Habits, Meals, Workouts)</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={sidebarWellnessEnabled}
+              onClick={() => setSidebarWellnessEnabled(v => !v)}
+              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${sidebarWellnessEnabled ? 'bg-accent' : 'bg-muted/40'}`}
+            >
+              <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-ink transition-transform ${sidebarWellnessEnabled ? 'translate-x-5' : ''}`} />
+            </button>
+          </label>
+        </div>
       </div>
 
       {/* ── 4. AI ── */}
@@ -250,14 +284,7 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* ── Save all ── */}
-      <div className="flex gap-2">
-        <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">
-          <Save size={14} /> {saving ? 'Saving…' : 'Save all'}
-        </button>
-      </div>
-
-      {/* ── 5. Theme ── */}
+      {/* ── Theme ── */}
       <div className="card max-w-2xl">
         <h2 className="font-display font-bold text-white mb-4">Theme</h2>
         <div className="space-y-4">
@@ -285,6 +312,13 @@ export default function Settings() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── Save all (after theme) ── */}
+      <div className="flex gap-2 max-w-2xl">
+        <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">
+          <Save size={14} /> {saving ? 'Saving…' : 'Save all'}
+        </button>
       </div>
 
       {/* ── 6. Clear data ── */}

@@ -141,7 +141,7 @@ router.post('/week/:id/accept', async (req, res) => {
             [req.user.id, plan.person_name]
           ),
           pool.query(
-            `SELECT email FROM users WHERE id=$1`,
+            `SELECT username FROM users WHERE id=$1`,
             [req.user.id]
           ),
           pool.query(
@@ -150,13 +150,14 @@ router.post('/week/:id/accept', async (req, res) => {
             [planId]
           ),
         ]);
-        // Fall back to account email if person-specific email not set
-        const toEmail = personRes.rows[0]?.email || userRes.rows[0]?.email;
+        // Person profile email, else login email (stored as users.username)
+        const toEmail = (personRes.rows[0]?.email || '').trim() || (userRes.rows[0]?.username || '').trim();
         const personName = plan.person_name;
-        console.log(`Meal plan email: person=${personName}, toEmail=${toEmail}, entries=${entriesRes.rows.length}`);
-        if (toEmail && entriesRes.rows.length) {
-          // Generate grocery lists via Claude
-          const groceryLists = await generateGroceryLists(entriesRes.rows);
+        console.log(`Meal plan email: person=${personName}, toEmail=${toEmail ? '(set)' : '(missing)'}, entries=${entriesRes.rows.length}`);
+        if (toEmail) {
+          const groceryLists = entriesRes.rows.length
+            ? await generateGroceryLists(entriesRes.rows)
+            : null;
           console.log('Grocery lists generated:', groceryLists ? 'yes' : 'null');
           await sendMealPlanEmail(toEmail, personName, {
             weekStart: plan.week_start,
@@ -165,7 +166,7 @@ router.post('/week/:id/accept', async (req, res) => {
           });
           console.log('Meal plan email sent to', toEmail);
         } else {
-          console.log('Meal plan email skipped: no email or no entries');
+          console.log('Meal plan email skipped: no recipient (add profile email in Settings or use login email)');
         }
       } catch (emailErr) {
         console.error('Meal plan email failed (non-fatal):', emailErr.message, emailErr.stack);

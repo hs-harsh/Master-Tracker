@@ -1,17 +1,17 @@
-// Email sending via nodemailer + Gmail SMTP
-// Requires: SMTP_USER and SMTP_PASS env vars (Gmail App Password)
-// Optional: RESEND_API_KEY + RESEND_FROM — falls back to Resend if SMTP not configured
+// Transactional email: Resend HTTP API (Railway-friendly) when RESEND_API_KEY + RESEND_FROM are set;
+// otherwise Gmail SMTP via nodemailer (SMTP_USER + SMTP_PASS).
 
 const nodemailer = require('nodemailer');
 
-// Lazy-create a single reusable transport
+const RESEND_API = 'https://api.resend.com/emails';
+
 let _transport = null;
 function getTransport() {
   if (_transport) return _transport;
   const user = process.env.SMTP_USER;
-  const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, ''); // strip spaces from app password
+  const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, '');
   if (!user || !pass) {
-    throw new Error('SMTP_USER / SMTP_PASS not set in environment. Add Gmail SMTP credentials.');
+    throw new Error('No email provider: set RESEND_API_KEY+RESEND_FROM or SMTP_USER+SMTP_PASS');
   }
   _transport = nodemailer.createTransport({
     service: 'gmail',
@@ -20,15 +20,44 @@ function getTransport() {
   return _transport;
 }
 
-async function sendViaResend({ to, subject, html, text }) {
-  const from = process.env.SMTP_USER;
+/**
+ * Send one email. Prefers Resend when configured (works on hosts that block SMTP).
+ */
+async function sendMail({ to, subject, html, text }) {
+  if (!to || !String(to).trim()) throw new Error('Recipient email is required');
+
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM;
+  if (apiKey && from) {
+    const resp = await fetch(RESEND_API, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: [String(to).trim()],
+        subject,
+        html,
+        text: text || subject,
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw new Error(data.message || data.error || `Resend HTTP ${resp.status}`);
+    }
+    return;
+  }
+
+  const smtpFrom = process.env.SMTP_USER;
   const transport = getTransport();
   await transport.sendMail({
-    from: `InvestTrack <${from}>`,
-    to,
+    from: `InvestTrack <${smtpFrom}>`,
+    to: String(to).trim(),
     subject,
     html,
-    text,
+    text: text || subject,
   });
 }
 
@@ -83,7 +112,7 @@ async function sendAdminOtp(toEmail, otp) {
 </body>
 </html>`.trim();
 
-  await sendViaResend({
+  await sendMail({
     to: toEmail,
     subject: `${otp} — Your InvestTrack Admin Code`,
     html,
@@ -145,7 +174,7 @@ async function sendLoginOtp(toEmail, otp, isNewUser = false) {
 </body>
 </html>`.trim();
 
-  await sendViaResend({
+  await sendMail({
     to: toEmail,
     subject: `${otp} is your InvestTrack${isNewUser ? ' verification' : ' sign-in'} code`,
     html,
@@ -153,11 +182,8 @@ async function sendLoginOtp(toEmail, otp, isNewUser = false) {
   });
 }
 
-module.exports = { sendAdminOtp, sendLoginOtp, sendMealPlanEmail, sendWorkoutPlanEmail, sendEmail };
-
-// ── Generic sendEmail helper ──────────────────────────────────────────────────
 async function sendEmail(to, subject, htmlBody) {
-  await sendViaResend({ to, subject, html: htmlBody, text: subject });
+  await sendMail({ to, subject, html: htmlBody, text: subject });
 }
 
 // ── Workout plan accepted email ───────────────────────────────────────────────
@@ -180,7 +206,6 @@ async function sendWorkoutPlanEmail(toEmail, personName, { weekStart, entries })
     return `${s.toLocaleDateString('en-IN', o)} – ${e.toLocaleDateString('en-IN', { ...o, year: 'numeric' })}`;
   }
 
-  // Group entries by date
   const byDate = {};
   for (const e of entries) {
     const ds = String(e.entry_date).slice(0, 10);
@@ -282,7 +307,7 @@ async function sendWorkoutPlanEmail(toEmail, personName, { weekStart, entries })
     textLines.push('');
   }
 
-  await sendViaResend({
+  await sendMail({
     to: toEmail,
     subject: `${personName ? personName + "'s " : ''}workout plan for ${fmtWeekRange(weekStart)} is set ✓`,
     html,
@@ -292,7 +317,6 @@ async function sendWorkoutPlanEmail(toEmail, personName, { weekStart, entries })
 
 // ── Meal plan accepted email ──────────────────────────────────────────────────
 async function sendMealPlanEmail(toEmail, personName, { weekStart, entries, groceryLists }) {
-  // Support old call signature: sendMealPlanEmail(toEmail, { weekStart, entries })
   if (personName && typeof personName === 'object') {
     const opts = personName;
     personName = '';
@@ -300,7 +324,6 @@ async function sendMealPlanEmail(toEmail, personName, { weekStart, entries, groc
     entries = opts.entries;
     groceryLists = opts.groceryLists;
   }
-  // Build day -> mealType -> entry map
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart + 'T12:00:00');
     d.setDate(d.getDate() + i);
@@ -323,22 +346,18 @@ async function sendMealPlanEmail(toEmail, personName, { weekStart, entries, groc
     return `${s.toLocaleDateString('en-IN', o)} – ${e.toLocaleDateString('en-IN', { ...o, year: 'numeric' })}`;
   }
 
-  // Build a lookup: entry_date_mealtype -> entry
   const lookup = {};
   for (const e of entries) {
     lookup[`${String(e.entry_date).slice(0,10)}_${e.meal_type}`] = e;
   }
 
-  // Calculate total calories
   const totalCal = entries.reduce((s, e) => s + (e.calories || 0), 0);
 
-  // Build day rows HTML
   const dayRows = days.map(ds => {
     const mealsHtml = MEAL_TYPES.map(mt => {
       const e = lookup[`${ds}_${mt}`];
       if (!e?.title) return '';
 
-      // Parse macros from first line of notes
       const notesLines = (e.notes || '').split('\n');
       const firstLine  = notesLines[0] || '';
       const hasMacros  = /protein|carbs|fat/i.test(firstLine);
@@ -377,7 +396,6 @@ async function sendMealPlanEmail(toEmail, personName, { weekStart, entries, groc
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#0a0a0a; margin:0; padding:32px 16px;">
   <div style="max-width:540px; margin:0 auto; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:16px; overflow:hidden;">
 
-    <!-- header -->
     <div style="padding:28px 28px 20px; border-bottom:1px solid #2a2a2a;">
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
         <div style="width:34px;height:34px;background:#f0c040;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;color:#0f0f0f;">IT</div>
@@ -387,19 +405,16 @@ async function sendMealPlanEmail(toEmail, personName, { weekStart, entries, groc
       <p style="margin:6px 0 0;font-size:13px;color:#888;">${personName ? `Hey ${personName}! ` : ''}Week of ${fmtWeekRange(weekStart)}</p>
     </div>
 
-    <!-- total calories strip -->
     ${totalCal > 0 ? `
     <div style="padding:14px 28px; background:#0f0f0f; border-bottom:1px solid #2a2a2a;">
       <span style="font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:#888;">Total week calories: </span>
       <span style="font-size:14px; font-weight:700; color:#f0c040; font-family:'Courier New',monospace;">${totalCal.toLocaleString()} kcal</span>
     </div>` : ''}
 
-    <!-- meal plan body -->
     <div style="padding:24px 28px;">
       ${dayRows || '<p style="color:#666;font-size:14px;">No meals planned for this week.</p>'}
     </div>
 
-    <!-- grocery lists -->
     ${groceryLists ? `
     <div style="padding:20px 28px; border-top:1px solid #2a2a2a; background:#0d0d0d;">
       <h2 style="margin:0 0 16px; font-size:16px; font-weight:700; color:#fff;">🛒 Grocery Lists</h2>
@@ -419,7 +434,6 @@ async function sendMealPlanEmail(toEmail, personName, { weekStart, entries, groc
       </div>
     </div>` : ''}
 
-    <!-- footer -->
     <div style="padding:16px 28px; border-top:1px solid #2a2a2a; font-size:11px; color:#555;">
       Sent to ${toEmail} · InvestTrack Wellness
     </div>
@@ -442,10 +456,12 @@ async function sendMealPlanEmail(toEmail, personName, { weekStart, entries, groc
   }
   if (totalCal > 0) textLines.push(`Total week: ${totalCal.toLocaleString()} kcal`);
 
-  await sendViaResend({
+  await sendMail({
     to: toEmail,
     subject: `${personName ? personName + "'s " : ''}meal plan for ${fmtWeekRange(weekStart)} is set ✓`,
     html,
     text: textLines.join('\n'),
   });
 }
+
+module.exports = { sendAdminOtp, sendLoginOtp, sendMealPlanEmail, sendWorkoutPlanEmail, sendEmail };

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import {
@@ -47,6 +47,8 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(true);
   const [wellnessOpen, setWellnessOpen] = useState(false);
+  const [sidebarFinanceEnabled, setSidebarFinanceEnabled] = useState(true);
+  const [sidebarWellnessEnabled, setSidebarWellnessEnabled] = useState(true);
 
   const isFinanceRoute = ['/', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser'].includes(location.pathname);
   useEffect(() => {
@@ -57,14 +59,28 @@ export default function Layout() {
     if (location.pathname.startsWith('/wellness')) setWellnessOpen(true);
   }, [location.pathname]);
 
-  useEffect(() => {
+  const refreshSettings = useCallback(() => {
     if (!isAuth) return;
     api.get('/settings').then(r => {
       const d = r.data;
       applyTheme(d?.themeMode ?? d?.theme ?? 'dark', d?.accent ?? 'gold');
       if (d?.currencyDisplay) setCurrencySymbol(d.currencyDisplay);
+      setSidebarFinanceEnabled(d?.sidebarFinanceEnabled !== false);
+      setSidebarWellnessEnabled(d?.sidebarWellnessEnabled !== false);
     }).catch(() => {});
   }, [isAuth]);
+
+  useEffect(() => {
+    if (!isAuth) {
+      setSidebarFinanceEnabled(true);
+      setSidebarWellnessEnabled(true);
+      return;
+    }
+    refreshSettings();
+    const on = () => refreshSettings();
+    window.addEventListener('investtrack-settings', on);
+    return () => window.removeEventListener('investtrack-settings', on);
+  }, [isAuth, refreshSettings]);
 
   const handleLogout  = () => { logout(); setSidebarOpen(false); };
   const closeSidebar  = () => setSidebarOpen(false);
@@ -185,6 +201,7 @@ export default function Layout() {
           </div>
 
           {/* Finance (collapsible) */}
+          {sidebarFinanceEnabled && (
           <div className="space-y-0.5">
             <button
               type="button"
@@ -242,8 +259,10 @@ export default function Layout() {
               </div>
             )}
           </div>
+          )}
 
           {/* Wellness (collapsible) — visible when logged out; sub-items show lock */}
+          {sidebarWellnessEnabled && (
           <div className="space-y-0.5">
             <button
               type="button"
@@ -300,6 +319,7 @@ export default function Layout() {
               </div>
             )}
           </div>
+          )}
 
           {/* Settings */}
           <NavLink

@@ -13,6 +13,7 @@ const USER_KEYS = [
   'default_account',
   'theme_mode', 'accent', 'currency_display', 'dashboard_default_profile',
   'onboarding_completed',
+  'sidebar_finance_enabled', 'sidebar_wellness_enabled',
 ];
 
 async function getUserSetting(userId, key) {
@@ -64,6 +65,7 @@ async function buildSettingsResponse(userId) {
     defaultAccount,
     themeMode, accent, currencyDisplay, dashboardDefaultProfile,
     onboardingCompleted,
+    sidebarFinanceEnabled, sidebarWellnessEnabled,
   ] = await Promise.all(USER_KEYS.map(get));
   const anthropicApiKey = await getGlobalSetting('anthropic_api_key');
   const effectiveTheme = themeMode || 'dark';
@@ -79,6 +81,9 @@ async function buildSettingsResponse(userId) {
     dashboardDefaultProfile: dashboardDefaultProfile || '',
     anthropicApiKeySet: !!anthropicApiKey.trim(),
     onboardingCompleted: onboardingCompleted === '1',
+    // '1' or empty = show tab; '0' = hide
+    sidebarFinanceEnabled: sidebarFinanceEnabled !== '0',
+    sidebarWellnessEnabled: sidebarWellnessEnabled !== '0',
   };
 }
 
@@ -134,6 +139,12 @@ router.put('/', auth, async (req, res) => {
     }
     if (body.onboardingCompleted !== undefined) {
       await setUserSetting(uid, 'onboarding_completed', body.onboardingCompleted ? '1' : '0');
+    }
+    if (body.sidebarFinanceEnabled !== undefined) {
+      await setUserSetting(uid, 'sidebar_finance_enabled', body.sidebarFinanceEnabled ? '1' : '0');
+    }
+    if (body.sidebarWellnessEnabled !== undefined) {
+      await setUserSetting(uid, 'sidebar_wellness_enabled', body.sidebarWellnessEnabled ? '1' : '0');
     }
 
     res.json(await buildSettingsResponse(uid));

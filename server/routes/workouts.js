@@ -122,18 +122,19 @@ router.post('/week/:id/accept', async (req, res) => {
     // Send email in background — don't block the response
     (async () => {
       try {
-        const [personRes, entriesRes] = await Promise.all([
+        const [personRes, userRes, entriesRes] = await Promise.all([
           pool.query(
             `SELECT person_name, email FROM user_persons WHERE user_id=$1 AND person_name=$2`,
             [req.user.id, plan.person_name]
           ),
+          pool.query(`SELECT username FROM users WHERE id=$1`, [req.user.id]),
           pool.query(
             `SELECT entry_date::text AS entry_date, workout_type, title, notes, duration
              FROM workout_entries WHERE workout_plan_id=$1 ORDER BY entry_date, workout_type`,
             [planId]
           ),
         ]);
-        const toEmail = personRes.rows[0]?.email;
+        const toEmail = (personRes.rows[0]?.email || '').trim() || (userRes.rows[0]?.username || '').trim();
         const personName = plan.person_name;
         if (toEmail) {
           await sendWorkoutPlanEmail(toEmail, personName, {
