@@ -4,7 +4,7 @@ import {
   TrendingUp, BarChart2, Plus, X, Trash2, Play, Sparkles,
   Loader2, AlertCircle, RefreshCw, ArrowRight, ArrowLeft, Check,
   Download, Search, ChevronDown, ChevronRight, Wand2, MessageSquare,
-  Lightbulb, Save, RotateCcw,
+  Lightbulb, Save, RotateCcw, Copy, Pencil,
 } from 'lucide-react';
 import {
   ComposedChart, Area, Bar, Line, Scatter, XAxis, YAxis, Tooltip,
@@ -37,6 +37,28 @@ function todayStr() { return new Date().toISOString().slice(0, 10); }
 function twoYearsAgo() {
   const d = new Date(); d.setFullYear(d.getFullYear() - 2);
   return d.toISOString().slice(0, 10);
+}
+
+/** Normalize API/DB date values for <input type="date" /> (YYYY-MM-DD). */
+function formatDateForInput(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'string') {
+    const d = v.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  }
+  if (v instanceof Date && !Number.isNaN(+v)) return v.toISOString().slice(0, 10);
+  return null;
+}
+
+function buildOhlcvMapFromMultiResponse(instruments, raw, rawErr) {
+  const mapped = {};
+  const mappedErr = {};
+  (instruments || []).forEach((sym) => {
+    const u = sym.trim().toUpperCase();
+    if (raw[u]?.length) mapped[sym] = raw[u];
+    if (rawErr[u]) mappedErr[sym] = rawErr[u];
+  });
+  return { mapped, mappedErr };
 }
 function fmtPct(v) {
   if (v == null) return '—';
@@ -421,13 +443,15 @@ export default function BacktestPage() {
   function populateForm(s, draft) {
     const d = draft || {};
     const f = d.form1 || {};
+    const df = formatDateForInput(s.date_from);
+    const dt = formatDateForInput(s.date_to);
     setForm1({
-      name:       f.name       ?? (s.name || ''),
+      name:        f.name        ?? (s.name || ''),
       instruments: f.instruments ?? (s.instruments || []),
-      frequency:  f.frequency  ?? (s.frequency || '1d'),
-      date_from:  f.date_from  ?? (s.date_from || twoYearsAgo()),
-      date_to:    f.date_to    ?? (s.date_to || todayStr()),
-      capital:    f.capital    ?? String(s.capital || 10000),
+      frequency:   f.frequency   ?? (s.frequency || '1d'),
+      date_from:   f.date_from   ?? df ?? twoYearsAgo(),
+      date_to:     f.date_to     ?? dt ?? todayStr(),
+      capital:     f.capital     ?? String(s.capital ?? 10000),
     });
     setStrategyPrompt(d.strategyPrompt ?? (s.strategy_prompt || ''));
     setStopLoss(d.stopLoss ?? (s.rules?.stopLoss ? String(+(s.rules.stopLoss * 100).toFixed(1)) : '3'));
@@ -516,15 +540,7 @@ export default function BacktestPage() {
         symbols: form1.instruments,
         from: form1.date_from, to: form1.date_to, interval: form1.frequency,
       });
-      const raw = data.data || {};
-      const rawErr = data.errors || {};
-      const mapped = {};
-      const mappedErr = {};
-      form1.instruments.forEach((sym) => {
-        const u = sym.trim().toUpperCase();
-        if (raw[u]?.length) mapped[sym] = raw[u];
-        if (rawErr[u]) mappedErr[sym] = rawErr[u];
-      });
+      const { mapped, mappedErr } = buildOhlcvMapFromMultiResponse(form1.instruments, data.data || {}, data.errors || {});
       setOhlcvMap(mapped);
       setOhlcvErrors(mappedErr);
       const first = form1.instruments.find((s) => mapped[s]?.length);
@@ -621,9 +637,56 @@ export default function BacktestPage() {
   async function reloadStrategy(id) {
     try {
       const { data } = await api.get(`/backtest/strategies/${id}`);
-      setStrategies(prev => prev.map(s => s.id === data.id ? data : s));
+      setStrategies(prev => prev.map(s => s.id === data.id ? { ...s, ...data } : s));
       return data;
     } catch { return null; }
+  }
+
+  /** Leave results: reload strategy from server, restore form + OHLCV (fixes date range + prompts). */
+  async function handleEditFromResults() {
+    if (!selectedId) return;
+    const row = await reloadStrategy(selectedId);
+    if (!row) return;
+    clearDraft(selectedId);
+    setHasDraft(false);
+    populateForm(row, null);
+    setShowResults(false);
+    setStep(1);
+    setRunError('');
+
+    const instruments = row.instruments || [];
+    const from = formatDateForInput(row.date_from);
+    const to = formatDateForInput(row.date_to);
+    const frequency = row.frequency || '1d';
+    if (instruments.length && from && to) {
+      setOhlcvLoading(true);
+      setOhlcvErrors({});
+      try {
+        const { data } = await api.post('/backtest/ohlcv/multi', {
+          symbols: instruments,
+          from,
+          to,
+          interval: frequency,
+        });
+        const { mapped, mappedErr } = buildOhlcvMapFromMultiResponse(
+          instruments,
+          data.data || {},
+          data.errors || {}
+        );
+        setOhlcvMap(mapped);
+        setOhlcvErrors(mappedErr);
+        const first = instruments.find((s) => mapped[s]?.length);
+        if (first) setOhlcvTab(first);
+      } catch (e) {
+        setOhlcvErrors({ _: e.response?.data?.error || 'Failed to refresh OHLCV' });
+        setOhlcvMap({});
+      } finally {
+        setOhlcvLoading(false);
+      }
+    } else {
+      setOhlcvMap({});
+      setOhlcvTab('');
+    }
   }
 
   return (
@@ -703,7 +766,7 @@ export default function BacktestPage() {
             <ResultsPanel
               strategyId={selectedId}
               strategies={strategies}
-              onEdit={() => { setShowResults(false); setStep(2); }}
+              onEdit={handleEditFromResults}
               onReload={reloadStrategy}
             />
           ) : (
@@ -1138,6 +1201,7 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
   const [loading, setLoading]   = useState(true);
   const [tradeTab, setTradeTab] = useState('trades');
   const [instTab, setInstTab]   = useState('all');
+  const [rulesCopied, setRulesCopied] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -1165,6 +1229,16 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
     exitMark: p.exit ? p.close : null,
   }));
 
+  const rulesJson = fullData.rules != null ? JSON.stringify(fullData.rules, null, 2) : '';
+  async function copyRulesJson() {
+    if (!rulesJson) return;
+    try {
+      await navigator.clipboard.writeText(rulesJson);
+      setRulesCopied(true);
+      setTimeout(() => setRulesCopied(false), 2000);
+    } catch { /* ignore */ }
+  }
+
   const statCards = [
     { label: 'Total Return',  value: fmtPct(rView.totalReturn),    color: rView.totalReturn >= 0 ? 'text-emerald-400' : 'text-red-400' },
     { label: 'CAGR',          value: fmtPct(rView.cagr),           color: rView.cagr >= 0 ? 'text-emerald-400' : 'text-red-400' },
@@ -1182,20 +1256,59 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
         <div>
           <h2 className="text-white font-display font-bold text-lg">{fullData.name}</h2>
           <p className="text-muted text-sm font-mono mt-0.5">
-            {fullData.date_from} → {fullData.date_to} · {fullData.instruments?.join(', ')} · {fullData.frequency}
+            {formatDateForInput(fullData.date_from) || fullData.date_from} → {formatDateForInput(fullData.date_to) || fullData.date_to} · {fullData.instruments?.join(', ')} · {fullData.frequency}
           </p>
           <p className="text-[11px] text-muted mt-1">
             Capital is split equally across instruments; each sleeve is backtested independently on the same Step 1 OHLCV.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <button onClick={() => downloadCsv(trades, `${fullData.name}_trades.csv`)}
             className="btn-ghost text-sm flex items-center gap-1.5 shrink-0">
             <Download size={13} /> Trades CSV
           </button>
-          <button onClick={onEdit} className="btn-ghost text-sm shrink-0">Edit Strategy</button>
+          <button
+            type="button"
+            onClick={() => { void onEdit(); }}
+            className="btn-primary text-sm shrink-0 flex items-center gap-1.5">
+            <Pencil size={13} /> Edit strategy
+          </button>
         </div>
       </div>
+
+      {(fullData.strategy_prompt || rulesJson) && (
+        <div className="card p-4 space-y-3 border border-violet-500/15 bg-violet-500/[0.03]">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold text-violet-200 uppercase tracking-wider font-mono">AI implementation</p>
+              <p className="text-[11px] text-muted mt-0.5">Structured rules JSON the simulator runs (indicators, entry/exit, risk).</p>
+            </div>
+            {rulesJson && (
+              <button
+                type="button"
+                onClick={() => void copyRulesJson()}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-white/10 text-soft hover:bg-white/[0.06] transition-colors shrink-0"
+              >
+                {rulesCopied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                {rulesCopied ? 'Copied' : 'Copy JSON'}
+              </button>
+            )}
+          </div>
+          {fullData.strategy_prompt ? (
+            <div className="rounded-lg bg-black/30 border border-white/8 p-3">
+              <p className="text-[10px] text-muted uppercase tracking-wider font-mono mb-1">Saved strategy text</p>
+              <p className="text-xs text-soft whitespace-pre-wrap leading-relaxed">{fullData.strategy_prompt}</p>
+            </div>
+          ) : null}
+          {rulesJson ? (
+            <pre className="text-[11px] font-mono text-emerald-200/90 bg-black/40 border border-white/8 rounded-lg p-3 overflow-x-auto max-h-[min(420px,50vh)] overflow-y-auto leading-relaxed">
+              {rulesJson}
+            </pre>
+          ) : (
+            <p className="text-xs text-muted">No rules JSON stored for this run.</p>
+          )}
+        </div>
+      )}
 
       {symKeys.length > 0 && (
         <div className="flex flex-wrap gap-1.5 items-center">
