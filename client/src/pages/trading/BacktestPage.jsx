@@ -1,18 +1,29 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   TrendingUp, BarChart2, Plus, X, Trash2, Play, Sparkles,
   Loader2, AlertCircle, RefreshCw, ArrowRight, ArrowLeft, Check,
+  Download, Search, ChevronDown, ChevronRight, Wand2, MessageSquare,
+  Lightbulb, Save, RotateCcw,
 } from 'lucide-react';
 import {
   ComposedChart, Area, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import api from '../../lib/api';
+import { SECTORS, NIFTY_INDICES } from '../../lib/indianStocks';
 
 const SUB_TABS = [
   { to: '/live-trading/backtest',   label: 'Backtest',   icon: TrendingUp },
   { to: '/live-trading/post-trade', label: 'Post-Trade', icon: BarChart2  },
+];
+
+const AI_STEPS = [
+  'Analyzing prompts…',
+  'Identifying indicators…',
+  'Structuring entry/exit rules…',
+  'Reviewing risk parameters…',
+  'Generating suggestions…',
 ];
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -26,6 +37,17 @@ function fmtPct(v) {
 }
 function fmtNum(v, d = 2) { return v == null ? '—' : (+v).toFixed(d); }
 function fmtCurrency(v) { return v == null ? '—' : `₹${Math.round(v).toLocaleString('en-IN')}`; }
+
+function downloadCsv(rows, filename) {
+  if (!rows?.length) return;
+  const header = Object.keys(rows[0]).join(',');
+  const body = rows.map(r => Object.values(r).join(',')).join('\n');
+  const blob = new Blob([header + '\n' + body], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
 
 function StatusBadge({ status }) {
   const map = {
@@ -41,44 +63,236 @@ function StatusBadge({ status }) {
   );
 }
 
+// ─── Stock Picker Modal ───────────────────────────────────────────────────────
+function StockPickerModal({ current, onConfirm, onClose }) {
+  const [selected, setSelected] = useState(new Set(current));
+  const [search, setSearch] = useState('');
+  const [expanded, setExpanded] = useState({});
+
+  const toggle = sym => {
+    setSelected(prev => {
+      const n = new Set(prev);
+      if (n.has(sym)) n.delete(sym); else n.add(sym);
+      return n;
+    });
+  };
+
+  const toggleSector = (sector) => {
+    const syms = SECTORS[sector].map(s => s.sym);
+    const allIn = syms.every(s => selected.has(s));
+    setSelected(prev => {
+      const n = new Set(prev);
+      if (allIn) syms.forEach(s => n.delete(s));
+      else syms.forEach(s => n.add(s));
+      return n;
+    });
+  };
+
+  const selectIndex = (idx) => {
+    setSelected(prev => {
+      const n = new Set(prev);
+      idx.symbols.forEach(s => n.add(s));
+      return n;
+    });
+  };
+
+  const query = search.toLowerCase();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-[#0d0f1a] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 shrink-0">
+          <div>
+            <p className="text-white font-display font-bold">Stock Picker</p>
+            <p className="text-muted text-xs mt-0.5">{selected.size} selected</p>
+          </div>
+          <button onClick={onClose} className="text-muted hover:text-white transition-colors p-1">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 py-3 border-b border-white/8 shrink-0">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              className="input pl-8 py-2 text-sm"
+              placeholder="Search stocks…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              autoFocus
+            />
+          </div>
+        </div>
+
+        {/* Index presets */}
+        {!search && (
+          <div className="px-4 py-3 border-b border-white/8 shrink-0">
+            <p className="text-[10px] text-muted uppercase tracking-wider mb-2 font-mono">Index Presets</p>
+            <div className="flex flex-wrap gap-1.5">
+              {NIFTY_INDICES.map(idx => (
+                <button key={idx.label} onClick={() => selectIndex(idx)}
+                  className="px-2.5 py-1 rounded-lg text-xs font-mono bg-accent/10 border border-accent/20 text-accent hover:bg-accent/20 transition-colors">
+                  {idx.label}
+                </button>
+              ))}
+              <button onClick={() => setSelected(new Set())}
+                className="px-2.5 py-1 rounded-lg text-xs font-mono bg-white/5 border border-white/10 text-muted hover:text-soft transition-colors">
+                Clear all
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Sectors / search results */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+          {search ? (
+            // Flat search results
+            Object.entries(SECTORS).flatMap(([, stocks]) => stocks)
+              .filter(s => s.label.toLowerCase().includes(query) || s.sym.toLowerCase().includes(query))
+              .map(s => (
+                <label key={s.sym} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/[0.04] cursor-pointer transition-colors">
+                  <input type="checkbox" checked={selected.has(s.sym)} onChange={() => toggle(s.sym)}
+                    className="accent-violet-500 w-3.5 h-3.5 shrink-0" />
+                  <span className="text-sm text-soft flex-1">{s.label}</span>
+                  <span className="text-xs font-mono text-muted">{s.sym}</span>
+                </label>
+              ))
+          ) : (
+            // Grouped by sector
+            Object.entries(SECTORS).map(([sector, stocks]) => {
+              const isOpen = expanded[sector] !== false; // default open
+              const allIn = stocks.every(s => selected.has(s.sym));
+              const someIn = stocks.some(s => selected.has(s.sym));
+              return (
+                <div key={sector} className="rounded-xl border border-white/8 overflow-hidden">
+                  <div className="flex items-center gap-3 px-3 py-2.5 bg-white/[0.03] cursor-pointer hover:bg-white/[0.05] transition-colors"
+                    onClick={() => setExpanded(p => ({ ...p, [sector]: !isOpen }))}>
+                    <input type="checkbox" checked={allIn} ref={el => { if (el) el.indeterminate = !allIn && someIn; }}
+                      onChange={() => toggleSector(sector)}
+                      onClick={e => e.stopPropagation()}
+                      className="accent-violet-500 w-3.5 h-3.5 shrink-0" />
+                    <span className="text-sm text-soft font-medium flex-1">{sector}</span>
+                    <span className="text-[10px] font-mono text-muted">{stocks.filter(s => selected.has(s.sym)).length}/{stocks.length}</span>
+                    {isOpen ? <ChevronDown size={13} className="text-muted" /> : <ChevronRight size={13} className="text-muted" />}
+                  </div>
+                  {isOpen && (
+                    <div className="divide-y divide-white/5">
+                      {stocks.map(s => (
+                        <label key={s.sym} className="flex items-center gap-3 px-4 py-2 hover:bg-white/[0.02] cursor-pointer transition-colors">
+                          <input type="checkbox" checked={selected.has(s.sym)} onChange={() => toggle(s.sym)}
+                            className="accent-violet-500 w-3.5 h-3.5 shrink-0" />
+                          <span className="text-sm text-soft flex-1">{s.label}</span>
+                          <span className="text-xs font-mono text-muted">{s.sym}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-white/8 flex items-center justify-between shrink-0">
+          <p className="text-muted text-sm">{selected.size} stocks selected</p>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="btn-ghost text-sm px-4 py-2">Cancel</button>
+            <button onClick={() => onConfirm([...selected])} className="btn-primary text-sm px-4 py-2">
+              Add to Strategy
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Instrument Input with Picker ─────────────────────────────────────────────
 function InstrumentInput({ value, onChange }) {
   const [input, setInput] = useState('');
+  const [showPicker, setShowPicker] = useState(false);
+
   const add = () => {
     const sym = input.trim().toUpperCase();
     if (!sym || value.includes(sym)) { setInput(''); return; }
     onChange([...value, sym]);
     setInput('');
   };
+
   return (
-    <div className="flex flex-wrap gap-1.5 p-2 rounded-xl border border-white/10 bg-surface min-h-[42px] items-center focus-within:border-accent/40 transition-colors">
-      {value.map(sym => (
-        <span key={sym} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/15 text-accent text-xs font-mono">
-          {sym}
-          <button type="button" onClick={() => onChange(value.filter(s => s !== sym))} className="hover:text-white transition-colors">
-            <X size={10} />
-          </button>
-        </span>
-      ))}
-      <input
-        className="bg-transparent text-white text-sm outline-none placeholder:text-muted/50 flex-1 min-w-[120px] px-1"
-        placeholder="RELIANCE.NS, AAPL… (Enter to add)"
-        value={input}
-        onChange={e => setInput(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(); } }}
-        onBlur={add}
-      />
+    <>
+      <div className="flex flex-wrap gap-1.5 p-2 rounded-xl border border-white/10 bg-surface min-h-[42px] items-center focus-within:border-accent/40 transition-colors">
+        {value.map(sym => (
+          <span key={sym} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/15 text-accent text-xs font-mono">
+            {sym}
+            <button type="button" onClick={() => onChange(value.filter(s => s !== sym))} className="hover:text-white transition-colors">
+              <X size={10} />
+            </button>
+          </span>
+        ))}
+        <input
+          className="bg-transparent text-white text-sm outline-none placeholder:text-muted/50 flex-1 min-w-[80px] px-1"
+          placeholder="RELIANCE.NS… (Enter)"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(); } }}
+          onBlur={add}
+        />
+        <button type="button" onClick={() => setShowPicker(true)}
+          className="shrink-0 px-2 py-1 rounded-lg text-xs font-mono bg-accent/10 border border-accent/20 text-accent hover:bg-accent/20 transition-colors flex items-center gap-1">
+          <Search size={11} /> Indian Stocks
+        </button>
+      </div>
+      {showPicker && (
+        <StockPickerModal
+          current={value}
+          onConfirm={syms => { onChange(syms); setShowPicker(false); }}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
+    </>
+  );
+}
+
+// ─── AI Status Overlay ────────────────────────────────────────────────────────
+function AiStatusBar({ active, step }) {
+  if (!active) return null;
+  return (
+    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-sm text-purple-300">
+      <Loader2 size={13} className="animate-spin shrink-0" />
+      <span>{AI_STEPS[Math.min(step, AI_STEPS.length - 1)]}</span>
+      <span className="ml-auto text-[10px] font-mono text-purple-400/60">{step + 1}/{AI_STEPS.length}</span>
     </div>
   );
 }
 
+// ─── Draft key helper ─────────────────────────────────────────────────────────
+const draftKey = id => `bt_draft_${id}`;
+
+function loadDraft(id) {
+  try { return JSON.parse(localStorage.getItem(draftKey(id)) || 'null'); }
+  catch { return null; }
+}
+function saveDraft(id, state) {
+  try { localStorage.setItem(draftKey(id), JSON.stringify(state)); } catch {}
+}
+function clearDraft(id) {
+  try { localStorage.removeItem(draftKey(id)); } catch {}
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function BacktestPage() {
-  const [strategies, setStrategies]     = useState([]);
-  const [loading, setLoading]           = useState(true);
-  const [selectedId, setSelectedId]     = useState(null);
-  const [step, setStep]                 = useState(1);
-  const [showResults, setShowResults]   = useState(false);
+  const [strategies, setStrategies]       = useState([]);
+  const [loading, setLoading]             = useState(true);
+  const [selectedId, setSelectedId]       = useState(null);
+  const [step, setStep]                   = useState(1);
+  const [showResults, setShowResults]     = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [saving, setSaving]             = useState(false);
+  const [saving, setSaving]               = useState(false);
+  const [hasDraft, setHasDraft]           = useState(false);
 
   // Step 1
   const [form1, setForm1] = useState({
@@ -88,24 +302,44 @@ export default function BacktestPage() {
   // Step 2
   const [strategyPrompt, setStrategyPrompt] = useState('');
   const [aiInterpretation, setAiInterpretation] = useState(null);
-  const [parsing2, setParsing2] = useState(false);
+  const [aiSuggestions, setAiSuggestions]   = useState([]);
+  const [aiQuestions, setAiQuestions]       = useState([]);
   // Step 3
   const [entryPrompt, setEntryPrompt]   = useState('');
   const [exitPrompt, setExitPrompt]     = useState('');
   const [stopLoss, setStopLoss]         = useState('3');
   const [takeProfit, setTakeProfit]     = useState('8');
   const [rules, setRules]               = useState(null);
-  const [parsing3, setParsing3]         = useState(false);
-  // OHLCV
-  const [ohlcv, setOhlcv]               = useState(null);
+  // AI state
+  const [aiActive, setAiActive]         = useState(false);
+  const [aiStep, setAiStep]             = useState(0);
+  const aiIntervalRef                   = useRef(null);
+  // OHLCV multi
+  const [ohlcvMap, setOhlcvMap]         = useState({});  // { SYM: rows[] }
+  const [ohlcvTab, setOhlcvTab]         = useState('');
   const [ohlcvLoading, setOhlcvLoading] = useState(false);
-  const [ohlcvError, setOhlcvError]     = useState('');
+  const [ohlcvErrors, setOhlcvErrors]   = useState({});
   // Run
   const [running, setRunning]           = useState(false);
   const [runError, setRunError]         = useState('');
 
   const selected = strategies.find(s => s.id === selectedId) || null;
 
+  // ── Draft auto-save ──────────────────────────────────────────────────────────
+  const draftState = useCallback(() => ({
+    form1, strategyPrompt, entryPrompt, exitPrompt, stopLoss, takeProfit, rules,
+  }), [form1, strategyPrompt, entryPrompt, exitPrompt, stopLoss, takeProfit, rules]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const id = setTimeout(() => {
+      saveDraft(selectedId, draftState());
+      setHasDraft(true);
+    }, 800);
+    return () => clearTimeout(id);
+  }, [selectedId, draftState]);
+
+  // ── Load strategies ──────────────────────────────────────────────────────────
   const loadStrategies = useCallback(async () => {
     try {
       const { data } = await api.get('/backtest/strategies');
@@ -116,34 +350,56 @@ export default function BacktestPage() {
 
   useEffect(() => { loadStrategies(); }, [loadStrategies]);
 
-  // Poll running strategies
+  // Poll running
   useEffect(() => {
     if (!strategies.some(s => s.status === 'running')) return;
     const t = setTimeout(() => loadStrategies(), 2500);
     return () => clearTimeout(t);
   }, [strategies, loadStrategies]);
 
-  function populateForm(s) {
+  // ── AI step animation ────────────────────────────────────────────────────────
+  function startAiAnim() {
+    setAiActive(true); setAiStep(0);
+    aiIntervalRef.current = setInterval(() => {
+      setAiStep(s => (s < AI_STEPS.length - 1 ? s + 1 : s));
+    }, 1200);
+  }
+  function stopAiAnim() {
+    clearInterval(aiIntervalRef.current);
+    setAiActive(false); setAiStep(0);
+  }
+
+  // ── Form population ──────────────────────────────────────────────────────────
+  function populateForm(s, draft) {
+    const d = draft || {};
+    const f = d.form1 || {};
     setForm1({
-      name: s.name || '', instruments: s.instruments || [],
-      frequency: s.frequency || '1d',
-      date_from: s.date_from || twoYearsAgo(),
-      date_to: s.date_to || todayStr(),
-      capital: String(s.capital || 10000),
+      name:       f.name       ?? (s.name || ''),
+      instruments: f.instruments ?? (s.instruments || []),
+      frequency:  f.frequency  ?? (s.frequency || '1d'),
+      date_from:  f.date_from  ?? (s.date_from || twoYearsAgo()),
+      date_to:    f.date_to    ?? (s.date_to || todayStr()),
+      capital:    f.capital    ?? String(s.capital || 10000),
     });
-    setStrategyPrompt(s.strategy_prompt || '');
-    setEntryPrompt(s.entry_prompt || '');
-    setExitPrompt(s.exit_prompt || '');
-    setRules(s.rules || null);
-    setAiInterpretation(s.rules?.interpretation ? s.rules : null);
-    setOhlcv(null); setRunError('');
+    setStrategyPrompt(d.strategyPrompt ?? (s.strategy_prompt || ''));
+    setEntryPrompt(d.entryPrompt ?? (s.entry_prompt || ''));
+    setExitPrompt(d.exitPrompt ?? (s.exit_prompt || ''));
+    setStopLoss(d.stopLoss ?? (s.rules?.stopLoss ? String(+(s.rules.stopLoss * 100).toFixed(1)) : '3'));
+    setTakeProfit(d.takeProfit ?? (s.rules?.takeProfit ? String(+(s.rules.takeProfit * 100).toFixed(1)) : '8'));
+    setRules(d.rules ?? s.rules ?? null);
+    setAiInterpretation(d.rules?.interpretation ? d.rules : s.rules?.interpretation ? s.rules : null);
+    setAiSuggestions([]); setAiQuestions([]);
+    setOhlcvMap({}); setOhlcvTab(''); setOhlcvErrors({});
+    setRunError('');
   }
 
   function selectStrategy(s) {
     setSelectedId(s.id);
-    populateForm(s);
+    const draft = loadDraft(s.id);
+    setHasDraft(!!draft);
+    populateForm(s, draft);
     setStep(1);
-    setShowResults(s.status === 'done');
+    setShowResults(s.status === 'done' && !draft);
   }
 
   async function createNew() {
@@ -157,31 +413,47 @@ export default function BacktestPage() {
       setSelectedId(data.id);
       setForm1({ name: 'Untitled Strategy', instruments: [], frequency: '1d', date_from: twoYearsAgo(), date_to: todayStr(), capital: '10000' });
       setStrategyPrompt(''); setEntryPrompt(''); setExitPrompt('');
-      setRules(null); setAiInterpretation(null); setOhlcv(null); setRunError('');
-      setStep(1); setShowResults(false);
+      setRules(null); setAiInterpretation(null);
+      setAiSuggestions([]); setAiQuestions([]);
+      setOhlcvMap({}); setOhlcvTab(''); setRunError('');
+      setStep(1); setShowResults(false); setHasDraft(false);
     } finally { setSaving(false); }
   }
 
   async function deleteStrategy(id) {
     await api.delete(`/backtest/strategies/${id}`);
+    clearDraft(id);
     setStrategies(prev => prev.filter(s => s.id !== id));
-    if (selectedId === id) { setSelectedId(null); setShowResults(false); }
+    if (selectedId === id) { setSelectedId(null); setShowResults(false); setHasDraft(false); }
     setConfirmDelete(null);
   }
 
-  async function fetchOhlcv() {
-    const sym = form1.instruments[0];
-    if (!sym) { setOhlcvError('Add at least one instrument first'); return; }
-    setOhlcvLoading(true); setOhlcvError('');
-    try {
-      const { data } = await api.get('/backtest/ohlcv', {
-        params: { symbol: sym, from: form1.date_from, to: form1.date_to, interval: form1.frequency },
-      });
-      setOhlcv(data);
-    } catch (e) { setOhlcvError(e.response?.data?.error || 'Failed to fetch data'); }
-    finally { setOhlcvLoading(false); }
+  function handleDiscard() {
+    if (!selectedId || !selected) return;
+    clearDraft(selectedId);
+    setHasDraft(false);
+    populateForm(selected, null);
   }
 
+  // ── OHLCV multi-fetch ────────────────────────────────────────────────────────
+  async function fetchOhlcvAll() {
+    if (!form1.instruments.length) return;
+    setOhlcvLoading(true); setOhlcvErrors({});
+    try {
+      const { data } = await api.post('/backtest/ohlcv/multi', {
+        symbols: form1.instruments,
+        from: form1.date_from, to: form1.date_to, interval: form1.frequency,
+      });
+      setOhlcvMap(data.data || {});
+      setOhlcvErrors(data.errors || {});
+      const syms = Object.keys(data.data || {});
+      if (syms.length > 0) setOhlcvTab(syms[0]);
+    } catch (e) {
+      setOhlcvErrors({ _: e.response?.data?.error || 'Failed to fetch data' });
+    } finally { setOhlcvLoading(false); }
+  }
+
+  // ── Step navigation ──────────────────────────────────────────────────────────
   async function goStep2() {
     if (!selectedId) return;
     setSaving(true);
@@ -197,19 +469,6 @@ export default function BacktestPage() {
     } finally { setSaving(false); }
   }
 
-  async function parseStrategy() {
-    setParsing2(true);
-    try {
-      const { data } = await api.post('/backtest/ai/parse-rules', {
-        dataPrompt: form1.instruments.join(', '),
-        strategyPrompt, entryPrompt: '', exitPrompt: '',
-      });
-      setRules(data.rules);
-      setAiInterpretation(data.rules);
-    } catch (e) { console.error(e); }
-    finally { setParsing2(false); }
-  }
-
   async function goStep3() {
     if (!selectedId) return;
     setSaving(true);
@@ -220,23 +479,35 @@ export default function BacktestPage() {
     } finally { setSaving(false); }
   }
 
-  async function parseRules() {
-    setParsing3(true);
+  // ── AI calls ─────────────────────────────────────────────────────────────────
+  async function callAI(letAiDecide = false) {
+    startAiAnim();
     try {
       const { data } = await api.post('/backtest/ai/parse-rules', {
-        dataPrompt: form1.instruments.join(', '),
-        strategyPrompt, entryPrompt, exitPrompt,
+        dataPrompt: form1.instruments.join(', ') || 'Indian NSE stocks',
+        strategyPrompt, entryPrompt, exitPrompt, letAiDecide,
       });
       const r = {
         ...data.rules,
-        stopLoss: parseFloat(stopLoss) / 100 || data.rules.stopLoss,
-        takeProfit: parseFloat(takeProfit) / 100 || data.rules.takeProfit,
+        stopLoss:   parseFloat(stopLoss)   / 100 || data.rules?.stopLoss   || 0.03,
+        takeProfit: parseFloat(takeProfit) / 100 || data.rules?.takeProfit || 0.08,
       };
-      setRules(r); setAiInterpretation(r);
+      setRules(r);
+      setAiInterpretation(r);
+      setAiSuggestions(data.suggestions || []);
+      setAiQuestions(data.questions || []);
+      if (letAiDecide || data.enhancedStrategyPrompt) {
+        if (data.enhancedStrategyPrompt) setStrategyPrompt(data.enhancedStrategyPrompt);
+        if (data.enhancedEntryPrompt)    setEntryPrompt(data.enhancedEntryPrompt);
+        if (data.enhancedExitPrompt)     setExitPrompt(data.enhancedExitPrompt);
+        if (r.stopLoss)   setStopLoss(String(+(r.stopLoss * 100).toFixed(1)));
+        if (r.takeProfit) setTakeProfit(String(+(r.takeProfit * 100).toFixed(1)));
+      }
     } catch (e) { console.error(e); }
-    finally { setParsing3(false); }
+    finally { stopAiAnim(); }
   }
 
+  // ── Run backtest ─────────────────────────────────────────────────────────────
   async function runBacktest() {
     if (!selectedId || !rules) return;
     setRunning(true); setRunError('');
@@ -247,6 +518,8 @@ export default function BacktestPage() {
       });
       const { data } = await api.post(`/backtest/strategies/${selectedId}/run`);
       setStrategies(prev => prev.map(s => s.id === data.id ? data : s));
+      clearDraft(selectedId);
+      setHasDraft(false);
       setShowResults(true);
     } catch (e) {
       setRunError(e.response?.data?.error || 'Backtest failed');
@@ -312,6 +585,9 @@ export default function BacktestPage() {
                       {fmtPct(s.stats.totalReturn)}
                     </span>
                   )}
+                  {loadDraft(s.id) && (
+                    <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-amber-500/15 text-amber-400">draft</span>
+                  )}
                 </div>
                 {s.instruments?.length > 0 && (
                   <p className="text-[10px] text-muted mt-1 truncate font-mono">{s.instruments.join(', ')}</p>
@@ -347,16 +623,21 @@ export default function BacktestPage() {
               exitPrompt={exitPrompt} setExitPrompt={setExitPrompt}
               stopLoss={stopLoss} setStopLoss={setStopLoss}
               takeProfit={takeProfit} setTakeProfit={setTakeProfit}
-              rules={rules} aiInterpretation={aiInterpretation}
-              ohlcv={ohlcv} ohlcvLoading={ohlcvLoading} ohlcvError={ohlcvError}
-              parsing2={parsing2} parsing3={parsing3}
+              rules={rules}
+              aiInterpretation={aiInterpretation}
+              aiSuggestions={aiSuggestions}
+              aiQuestions={aiQuestions}
+              aiActive={aiActive} aiStep={aiStep}
+              ohlcvMap={ohlcvMap} ohlcvTab={ohlcvTab} setOhlcvTab={setOhlcvTab}
+              ohlcvLoading={ohlcvLoading} ohlcvErrors={ohlcvErrors}
               saving={saving} running={running} runError={runError}
-              onFetchOhlcv={fetchOhlcv}
-              onParseStrategy={parseStrategy}
-              onParseRules={parseRules}
+              hasDraft={hasDraft}
+              onFetchOhlcv={fetchOhlcvAll}
+              onCallAI={callAI}
               onGoStep2={goStep2}
               onGoStep3={goStep3}
               onRun={runBacktest}
+              onDiscard={handleDiscard}
             />
           )}
         </div>
@@ -388,13 +669,28 @@ function WizardPanel({
   strategyPrompt, setStrategyPrompt,
   entryPrompt, setEntryPrompt, exitPrompt, setExitPrompt,
   stopLoss, setStopLoss, takeProfit, setTakeProfit,
-  rules, aiInterpretation, ohlcv, ohlcvLoading, ohlcvError,
-  parsing2, parsing3, saving, running, runError,
-  onFetchOhlcv, onParseStrategy, onParseRules, onGoStep2, onGoStep3, onRun,
+  rules, aiInterpretation, aiSuggestions, aiQuestions,
+  aiActive, aiStep,
+  ohlcvMap, ohlcvTab, setOhlcvTab, ohlcvLoading, ohlcvErrors,
+  saving, running, runError, hasDraft,
+  onFetchOhlcv, onCallAI, onGoStep2, onGoStep3, onRun, onDiscard,
 }) {
   const STEPS = ['Data Setup', 'Strategy', 'Entry / Exit'];
+  const ohlcvSymbols = Object.keys(ohlcvMap);
+
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-6">
+      {/* Draft banner */}
+      {hasDraft && (
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+          <Save size={13} className="text-amber-400 shrink-0" />
+          <span className="text-amber-300 text-xs flex-1">Unsaved draft — auto-saved locally</span>
+          <button onClick={onDiscard} className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors">
+            <RotateCcw size={11} /> Discard
+          </button>
+        </div>
+      )}
+
       {/* Stepper */}
       <div className="flex items-start">
         {STEPS.map((label, i) => {
@@ -426,7 +722,7 @@ function WizardPanel({
               onChange={e => setForm1(f => ({ ...f, name: e.target.value }))} placeholder="My RSI Strategy" />
           </div>
           <div className="space-y-1.5">
-            <label className="label">Instruments <span className="text-muted font-normal">(Enter to add)</span></label>
+            <label className="label">Instruments</label>
             <InstrumentInput value={form1.instruments} onChange={v => setForm1(f => ({ ...f, instruments: v }))} />
           </div>
           <div className="space-y-1.5">
@@ -459,40 +755,80 @@ function WizardPanel({
             <input type="number" className="input" value={form1.capital}
               onChange={e => setForm1(f => ({ ...f, capital: e.target.value }))} placeholder="10000" />
           </div>
-          <button onClick={onFetchOhlcv} disabled={ohlcvLoading || !form1.instruments.length}
-            className="btn-ghost flex items-center gap-2 text-sm">
-            {ohlcvLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Fetch & Preview Data
-          </button>
-          {ohlcvError && <p className="text-red-400 text-sm">{ohlcvError}</p>}
-          {ohlcv && (
-            <div className="space-y-2">
-              <p className="text-xs text-muted font-mono">{ohlcv.symbol} — {ohlcv.rows.length.toLocaleString()} candles</p>
-              <div className="overflow-x-auto rounded-xl border border-white/8">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-white/8">
-                      {['Date','Open','High','Low','Close','Volume'].map(h => (
-                        <th key={h} className="text-left px-3 py-2 text-muted font-mono font-normal">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ohlcv.rows.slice(-10).map((r, i) => (
-                      <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02]">
-                        <td className="px-3 py-1.5 font-mono text-muted">{r.date}</td>
-                        <td className="px-3 py-1.5 font-mono text-soft">{r.open}</td>
-                        <td className="px-3 py-1.5 font-mono text-emerald-400">{r.high}</td>
-                        <td className="px-3 py-1.5 font-mono text-red-400">{r.low}</td>
-                        <td className="px-3 py-1.5 font-mono text-white font-medium">{r.close}</td>
-                        <td className="px-3 py-1.5 font-mono text-muted">{r.volume.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <div className="flex items-center gap-3">
+            <button onClick={onFetchOhlcv} disabled={ohlcvLoading || !form1.instruments.length}
+              className="btn-ghost flex items-center gap-2 text-sm">
+              {ohlcvLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              Fetch & Preview Data
+            </button>
+            {ohlcvSymbols.length > 0 && (
+              <span className="text-xs text-emerald-400 font-mono">
+                {ohlcvSymbols.length} symbol{ohlcvSymbols.length > 1 ? 's' : ''} loaded
+              </span>
+            )}
+          </div>
+          {Object.keys(ohlcvErrors).length > 0 && (
+            <div className="space-y-1">
+              {Object.entries(ohlcvErrors).map(([sym, err]) => (
+                <p key={sym} className="text-red-400 text-xs font-mono">{sym === '_' ? err : `${sym}: ${err}`}</p>
+              ))}
             </div>
           )}
+
+          {/* Multi-symbol OHLCV tabs */}
+          {ohlcvSymbols.length > 0 && (
+            <div className="space-y-2">
+              {/* Tab bar */}
+              <div className="flex items-center gap-1 flex-wrap">
+                {ohlcvSymbols.map(sym => (
+                  <button key={sym} onClick={() => setOhlcvTab(sym)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all ${
+                      ohlcvTab === sym
+                        ? 'bg-accent/20 border border-accent/40 text-accent'
+                        : 'bg-white/5 border border-white/10 text-muted hover:text-soft'
+                    }`}>{sym}</button>
+                ))}
+              </div>
+
+              {ohlcvTab && ohlcvMap[ohlcvTab] && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted font-mono">
+                      {ohlcvTab} — {ohlcvMap[ohlcvTab].length.toLocaleString()} candles
+                    </p>
+                    <button onClick={() => downloadCsv(ohlcvMap[ohlcvTab], `${ohlcvTab}.csv`)}
+                      className="flex items-center gap-1.5 text-xs text-muted hover:text-soft transition-colors font-mono px-2 py-1 rounded-lg hover:bg-white/5">
+                      <Download size={12} /> CSV
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto rounded-xl border border-white/8">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-white/8">
+                          {['Date','Open','High','Low','Close','Volume'].map(h => (
+                            <th key={h} className="text-left px-3 py-2 text-muted font-mono font-normal">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ohlcvMap[ohlcvTab].slice(-10).map((r, i) => (
+                          <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02]">
+                            <td className="px-3 py-1.5 font-mono text-muted">{r.date}</td>
+                            <td className="px-3 py-1.5 font-mono text-soft">{r.open}</td>
+                            <td className="px-3 py-1.5 font-mono text-emerald-400">{r.high}</td>
+                            <td className="px-3 py-1.5 font-mono text-red-400">{r.low}</td>
+                            <td className="px-3 py-1.5 font-mono text-white font-medium">{r.close}</td>
+                            <td className="px-3 py-1.5 font-mono text-muted">{(r.volume||0).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end pt-2">
             <button onClick={onGoStep2} disabled={saving || !form1.instruments.length}
               className="btn-primary flex items-center gap-2">
@@ -512,11 +848,23 @@ function WizardPanel({
               onChange={e => setStrategyPrompt(e.target.value)}
               placeholder="e.g. Buy when RSI drops below 30 and price is above the 50-day moving average. Mean reversion on trending stocks." />
           </div>
-          <button onClick={onParseStrategy} disabled={parsing2 || !strategyPrompt.trim()}
-            className="btn-ghost flex items-center gap-2 text-sm">
-            {parsing2 ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} className="text-purple-400" />}
-            Let AI Parse My Strategy
-          </button>
+
+          <AiStatusBar active={aiActive} step={aiStep} />
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => onCallAI(false)} disabled={aiActive || !strategyPrompt.trim()}
+              className="btn-ghost flex items-center gap-2 text-sm">
+              <Sparkles size={14} className="text-purple-400" />
+              Parse &amp; Improve
+            </button>
+            <button onClick={() => onCallAI(true)} disabled={aiActive}
+              className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 transition-colors">
+              <Wand2 size={14} />
+              Let AI Decide
+            </button>
+          </div>
+
+          {/* AI interpretation panel */}
           {aiInterpretation?.interpretation && (
             <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
               <div className="flex items-center gap-2">
@@ -535,6 +883,33 @@ function WizardPanel({
               )}
             </div>
           )}
+
+          {/* Suggestions */}
+          {aiSuggestions.length > 0 && (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-2">
+              <div className="flex items-center gap-2 mb-2">
+                <Lightbulb size={13} className="text-amber-400" />
+                <span className="text-xs text-amber-300 font-semibold uppercase tracking-wider">Suggestions</span>
+              </div>
+              {aiSuggestions.map((s, i) => (
+                <p key={i} className="text-sm text-soft flex gap-2"><span className="text-amber-400 shrink-0">•</span>{s}</p>
+              ))}
+            </div>
+          )}
+
+          {/* Questions */}
+          {aiQuestions.length > 0 && (
+            <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-2">
+              <div className="flex items-center gap-2 mb-2">
+                <MessageSquare size={13} className="text-blue-400" />
+                <span className="text-xs text-blue-300 font-semibold uppercase tracking-wider">AI needs more info</span>
+              </div>
+              {aiQuestions.map((q, i) => (
+                <p key={i} className="text-sm text-soft flex gap-2"><span className="text-blue-400 shrink-0">?</span>{q}</p>
+              ))}
+            </div>
+          )}
+
           <div className="flex justify-between pt-2">
             <button onClick={() => setStep(1)} className="btn-ghost flex items-center gap-2 text-sm">
               <ArrowLeft size={14} /> Back
@@ -574,15 +949,53 @@ function WizardPanel({
                 onChange={e => setTakeProfit(e.target.value)} placeholder="8" />
             </div>
           </div>
-          <button onClick={onParseRules}
-            disabled={parsing3 || (!entryPrompt.trim() && !exitPrompt.trim() && !strategyPrompt.trim())}
-            className="btn-ghost flex items-center gap-2 text-sm">
-            {parsing3 ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} className="text-purple-400" />}
-            AI Parse Rules
-          </button>
+
+          <AiStatusBar active={aiActive} step={aiStep} />
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => onCallAI(false)}
+              disabled={aiActive || (!entryPrompt.trim() && !exitPrompt.trim() && !strategyPrompt.trim())}
+              className="btn-ghost flex items-center gap-2 text-sm">
+              <Sparkles size={14} className="text-purple-400" />
+              AI Parse Rules
+            </button>
+            <button onClick={() => onCallAI(true)} disabled={aiActive}
+              className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 transition-colors">
+              <Wand2 size={14} />
+              Let AI Decide
+            </button>
+          </div>
+
+          {/* AI improvements */}
+          {aiSuggestions.length > 0 && (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-2">
+              <div className="flex items-center gap-2 mb-2">
+                <Lightbulb size={13} className="text-amber-400" />
+                <span className="text-xs text-amber-300 font-semibold uppercase tracking-wider">Suggestions</span>
+              </div>
+              {aiSuggestions.map((s, i) => (
+                <p key={i} className="text-sm text-soft flex gap-2"><span className="text-amber-400 shrink-0">•</span>{s}</p>
+              ))}
+            </div>
+          )}
+          {aiQuestions.length > 0 && (
+            <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-2">
+              <div className="flex items-center gap-2 mb-2">
+                <MessageSquare size={13} className="text-blue-400" />
+                <span className="text-xs text-blue-300 font-semibold uppercase tracking-wider">AI needs more info</span>
+              </div>
+              {aiQuestions.map((q, i) => (
+                <p key={i} className="text-sm text-soft flex gap-2"><span className="text-blue-400 shrink-0">?</span>{q}</p>
+              ))}
+            </div>
+          )}
+
           {rules && (
             <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-2 font-mono text-xs">
               <p className="text-[10px] text-muted uppercase tracking-wider mb-2">Parsed Rules Preview</p>
+              {rules.interpretation && (
+                <p className="text-soft italic text-xs mb-2">{rules.interpretation}</p>
+              )}
               <p className="text-muted">ENTRY: <span className="text-emerald-400">
                 {rules.entry?.long?.map(r => `${r.left} ${r.op} ${r.right}`).join(' AND ') || '—'}
               </span></p>
@@ -623,9 +1036,9 @@ function WizardPanel({
 
 // ─── Results ──────────────────────────────────────────────────────────────────
 function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
-  const [fullData, setFullData]   = useState(null);
-  const [loading, setLoading]     = useState(true);
-  const [tradeTab, setTradeTab]   = useState('trades');
+  const [fullData, setFullData] = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [tradeTab, setTradeTab] = useState('trades');
 
   useEffect(() => {
     setLoading(true);
@@ -661,7 +1074,13 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
             {fullData.date_from} → {fullData.date_to} · {fullData.instruments?.join(', ')} · {fullData.frequency}
           </p>
         </div>
-        <button onClick={onEdit} className="btn-ghost text-sm shrink-0">Edit Strategy</button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => downloadCsv(trades, `${fullData.name}_trades.csv`)}
+            className="btn-ghost text-sm flex items-center gap-1.5 shrink-0">
+            <Download size={13} /> Trades CSV
+          </button>
+          <button onClick={onEdit} className="btn-ghost text-sm shrink-0">Edit Strategy</button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -715,13 +1134,13 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-white/8">
-                  {['Symbol','Side','Entry Date','Entry ₹','Exit Date','Exit ₹','P&L','Return'].map(h => (
+                  {['Symbol','Side','Entry Date','Entry ₹','Exit Date','Exit ₹','P&L','Return','Exit Reason'].map(h => (
                     <th key={h} className="text-left px-3 py-2.5 text-muted font-mono font-normal whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {!trades?.length && <tr><td colSpan={8} className="px-3 py-8 text-center text-muted">No trades executed</td></tr>}
+                {!trades?.length && <tr><td colSpan={9} className="px-3 py-8 text-center text-muted">No trades executed</td></tr>}
                 {trades?.map((t, i) => (
                   <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02]">
                     <td className="px-3 py-2 font-mono text-white">{t.symbol}</td>
@@ -736,6 +1155,7 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
                     <td className={`px-3 py-2 font-mono ${(t.pnlPct||0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                       {(t.pnlPct||0) >= 0 ? '+' : ''}{(t.pnlPct||0).toFixed(2)}%
                     </td>
+                    <td className="px-3 py-2 font-mono text-muted text-[10px]">{t.exitReason || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -746,20 +1166,22 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
         {tradeTab === 'stats' && (
           <div className="p-4 grid grid-cols-2 gap-0">
             {[
-              ['Total Return', fmtPct(r.totalReturn)],
-              ['CAGR', fmtPct(r.cagr)],
-              ['Sharpe Ratio', fmtNum(r.sharpe)],
-              ['Max Drawdown', fmtPct(r.maxDrawdown)],
-              ['Win Rate', fmtPct(r.winRate)],
-              ['Profit Factor', fmtNum(r.profitFactor)],
-              ['Total Trades', r.totalTrades],
-              ['Avg Hold Days', fmtNum(r.avgTradeDays, 1)],
-              ['Initial Capital', fmtCurrency(r.initialCapital)],
-              ['Final Capital', fmtCurrency(r.finalCapital)],
-            ].map(([label, value]) => (
-              <div key={label} className="flex justify-between items-center py-2.5 px-1 border-b border-white/5">
-                <span className="text-muted text-xs font-mono">{label}</span>
-                <span className="text-soft text-xs font-mono font-medium">{value}</span>
+              ['Initial Capital',  fmtCurrency(r.initialCapital)],
+              ['Final Capital',    fmtCurrency(r.finalCapital)],
+              ['Total Return',     fmtPct(r.totalReturn)],
+              ['CAGR',             fmtPct(r.cagr)],
+              ['Max Drawdown',     fmtPct(r.maxDrawdown)],
+              ['Sharpe Ratio',     fmtNum(r.sharpe)],
+              ['Win Rate',         fmtPct(r.winRate)],
+              ['Profit Factor',    fmtNum(r.profitFactor)],
+              ['Total Trades',     r.totalTrades],
+              ['Avg Hold Days',    r.avgTradeDays],
+              ['Gross Profit',     fmtCurrency(r.grossProfit)],
+              ['Gross Loss',       fmtCurrency(r.grossLoss)],
+            ].map(([k, v]) => (
+              <div key={k} className="flex justify-between items-center px-3 py-2.5 border-b border-white/5 last:border-0">
+                <span className="text-xs text-muted font-mono">{k}</span>
+                <span className="text-xs text-soft font-mono font-medium">{v}</span>
               </div>
             ))}
           </div>

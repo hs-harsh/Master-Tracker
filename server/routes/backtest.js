@@ -33,6 +33,41 @@ router.get('/ohlcv', async (req, res) => {
   }
 });
 
+// ── POST /api/backtest/ohlcv/multi ────────────────────────────────────────────
+// Fetch OHLCV for multiple symbols in parallel
+router.post('/ohlcv/multi', async (req, res) => {
+  const { symbols, from, to, interval } = req.body;
+  if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
+    return res.status(400).json({ error: 'symbols array is required' });
+  }
+  const results = await Promise.allSettled(
+    symbols.map(async sym => {
+      const data = await yf.historical(sym.trim().toUpperCase(), {
+        period1:  from     || '2023-01-01',
+        period2:  to       || new Date().toISOString().slice(0, 10),
+        interval: interval || '1d',
+      });
+      const rows = data.map(r => ({
+        date:   r.date.toISOString().slice(0, 10),
+        open:   +r.open.toFixed(2),
+        high:   +r.high.toFixed(2),
+        low:    +r.low.toFixed(2),
+        close:  +r.close.toFixed(2),
+        volume: r.volume || 0,
+      }));
+      return { symbol: sym.trim().toUpperCase(), rows };
+    })
+  );
+  const data = {};
+  const errors = {};
+  results.forEach((r, i) => {
+    const sym = symbols[i].trim().toUpperCase();
+    if (r.status === 'fulfilled') data[sym] = r.value.rows;
+    else errors[sym] = r.reason?.message || 'Failed';
+  });
+  res.json({ data, errors });
+});
+
 // ── GET /api/backtest/strategies ──────────────────────────────────────────────
 router.get('/strategies', async (req, res) => {
   try {
@@ -161,38 +196,56 @@ router.post('/ai/parse-rules', async (req, res) => {
       });
     }
 
-    const systemPrompt = `You are a systematic trading strategy rule parser for retail investors.
-Convert natural language strategy descriptions into structured JSON trading rules.
-Use simple, common technical indicators. Return ONLY valid JSON — no markdown fences, no explanation.`;
+    const letAiDecide = req.body.letAiDecide === true;
 
-    const userMessage = `Convert this trading strategy into structured JSON rules:
+    const systemPrompt = `You are a systematic trading strategy advisor and rule parser for retail investors.
+Your job is to convert natural language strategy descriptions into structured JSON, AND to improve/enhance the user's prompts.
+Return ONLY valid JSON — no markdown fences, no explanation.`;
 
-Data context: "${dataPrompt || 'General stock data'}"
+    const userMessage = letAiDecide
+      ? `Design a complete, well-tested trading strategy suitable for Indian equity markets (NSE stocks).
+Pick any proven strategy (momentum, mean-reversion, trend-following, etc.) and fill all fields.
+
+Return ONLY this JSON:
+{
+  "rules": {
+    "indicators": [{"name": "rsi", "period": 14, "source": "close"}, {"name": "sma", "period": 50, "source": "close"}],
+    "entry": {"long": [{"left": "rsi_14", "op": "<", "right": 30}, {"left": "close", "op": ">", "right": "sma_50"}]},
+    "exit": {"long": [{"left": "rsi_14", "op": ">", "right": 65}]},
+    "stopLoss": 0.04,
+    "takeProfit": 0.10,
+    "maxPositions": 3,
+    "interpretation": "One sentence summary"
+  },
+  "enhancedStrategyPrompt": "Full strategy description AI chose",
+  "enhancedEntryPrompt": "Entry conditions in plain English",
+  "enhancedExitPrompt": "Exit conditions in plain English",
+  "suggestions": ["suggestion 1", "suggestion 2", "suggestion 3"],
+  "questions": []
+}`
+      : `Parse this trading strategy into structured JSON rules AND improve the user's prompts:
+
+Data context: "${dataPrompt || 'Indian NSE stocks'}"
 Core strategy idea: "${strategyPrompt || ''}"
 Entry conditions (when to BUY): "${entryPrompt || ''}"
 Exit conditions (when to SELL): "${exitPrompt || ''}"
 
-Return ONLY this JSON (fill in sensible defaults if info is missing):
+Return ONLY this JSON:
 {
-  "indicators": [
-    { "name": "rsi", "period": 14, "source": "close" },
-    { "name": "sma", "period": 50, "source": "close" }
-  ],
-  "entry": {
-    "long": [
-      { "left": "rsi_14", "op": "<", "right": 30 },
-      { "left": "close",  "op": ">", "right": "sma_50" }
-    ]
+  "rules": {
+    "indicators": [{"name": "rsi", "period": 14, "source": "close"}, {"name": "sma", "period": 50, "source": "close"}],
+    "entry": {"long": [{"left": "rsi_14", "op": "<", "right": 30}, {"left": "close", "op": ">", "right": "sma_50"}]},
+    "exit": {"long": [{"left": "rsi_14", "op": ">", "right": 65}]},
+    "stopLoss": 0.03,
+    "takeProfit": 0.08,
+    "maxPositions": 3,
+    "interpretation": "Plain English summary in one sentence"
   },
-  "exit": {
-    "long": [
-      { "left": "rsi_14", "op": ">", "right": 65 }
-    ]
-  },
-  "stopLoss": 0.03,
-  "takeProfit": 0.08,
-  "maxPositions": 3,
-  "interpretation": "Plain English summary of the strategy in one sentence"
+  "enhancedStrategyPrompt": "Improved version of the user's strategy description",
+  "enhancedEntryPrompt": "Improved entry conditions prompt",
+  "enhancedExitPrompt": "Improved exit conditions prompt",
+  "suggestions": ["Actionable improvement 1", "Actionable improvement 2"],
+  "questions": ["Question about missing param if any, e.g. What holding period do you prefer?"]
 }
 
 Field name rules:
@@ -201,7 +254,8 @@ Field name rules:
 - MACD line → "macd" | signal → "macd_signal"
 - indicator "name" must be one of: rsi, sma, ema, macd, bollinger, atr, volume_ma
 - "source" must be: close, high, or low
-- stopLoss and takeProfit are decimal fractions (0.03 = 3%)`;
+- stopLoss and takeProfit are decimal fractions (0.03 = 3%)
+- questions array should be empty [] if all info is provided`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method:  'POST',
@@ -212,7 +266,7 @@ Field name rules:
       },
       body: JSON.stringify({
         model:      'claude-sonnet-4-20250514',
-        max_tokens: 1024,
+        max_tokens: 2048,
         system:     systemPrompt,
         messages:   [{ role: 'user', content: userMessage }],
       }),
@@ -227,8 +281,15 @@ Field name rules:
     // Strip markdown fences if Claude added them
     text = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim();
 
-    const rules = JSON.parse(text);
-    res.json({ rules });
+    const parsed = JSON.parse(text);
+    res.json({
+      rules:                parsed.rules,
+      enhancedStrategyPrompt: parsed.enhancedStrategyPrompt || null,
+      enhancedEntryPrompt:    parsed.enhancedEntryPrompt   || null,
+      enhancedExitPrompt:     parsed.enhancedExitPrompt    || null,
+      suggestions:            parsed.suggestions           || [],
+      questions:              parsed.questions             || [],
+    });
   } catch (e) {
     console.error('POST /backtest/ai/parse-rules', e);
     res.status(500).json({ error: e.message });
