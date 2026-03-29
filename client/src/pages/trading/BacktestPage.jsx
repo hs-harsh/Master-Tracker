@@ -469,16 +469,6 @@ export default function BacktestPage() {
     } finally { setSaving(false); }
   }
 
-  async function goStep3() {
-    if (!selectedId) return;
-    setSaving(true);
-    try {
-      const { data } = await api.patch(`/backtest/strategies/${selectedId}`, { strategy_prompt: strategyPrompt });
-      setStrategies(prev => prev.map(s => s.id === data.id ? { ...s, ...data } : s));
-      setStep(3);
-    } finally { setSaving(false); }
-  }
-
   // ── AI calls ─────────────────────────────────────────────────────────────────
   async function callAI(letAiDecide = false) {
     startAiAnim();
@@ -635,7 +625,6 @@ export default function BacktestPage() {
               onFetchOhlcv={fetchOhlcvAll}
               onCallAI={callAI}
               onGoStep2={goStep2}
-              onGoStep3={goStep3}
               onRun={runBacktest}
               onDiscard={handleDiscard}
             />
@@ -673,9 +662,9 @@ function WizardPanel({
   aiActive, aiStep,
   ohlcvMap, ohlcvTab, setOhlcvTab, ohlcvLoading, ohlcvErrors,
   saving, running, runError, hasDraft,
-  onFetchOhlcv, onCallAI, onGoStep2, onGoStep3, onRun, onDiscard,
+  onFetchOhlcv, onCallAI, onGoStep2, onRun, onDiscard,
 }) {
-  const STEPS = ['Data Setup', 'Strategy', 'Entry / Exit'];
+  const STEPS = ['Data Setup', 'Strategy'];
   const ohlcvSymbols = Object.keys(ohlcvMap);
 
   return (
@@ -839,32 +828,72 @@ function WizardPanel({
         </div>
       )}
 
-      {/* ── Step 2 ── */}
+      {/* ── Step 2: Strategy + Entry/Exit ── */}
       {step === 2 && (
         <div className="space-y-5">
-          <div className="space-y-1.5">
-            <label className="label">Describe your core strategy idea</label>
-            <textarea className="input min-h-[110px] resize-none" value={strategyPrompt}
-              onChange={e => setStrategyPrompt(e.target.value)}
-              placeholder="e.g. Buy when RSI drops below 30 and price is above the 50-day moving average. Mean reversion on trending stocks." />
-          </div>
-
-          <AiStatusBar active={aiActive} step={aiStep} />
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={() => onCallAI(false)} disabled={aiActive || !strategyPrompt.trim()}
-              className="btn-ghost flex items-center gap-2 text-sm">
-              <Sparkles size={14} className="text-purple-400" />
-              Parse &amp; Improve
-            </button>
+          {/* Let AI Decide — prominent at top */}
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-violet-500/8 border border-violet-500/20">
+            <Wand2 size={16} className="text-violet-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-violet-200 font-medium">Let AI build your strategy</p>
+              <p className="text-xs text-violet-400/70 mt-0.5">AI will fill all fields — you can edit before running</p>
+            </div>
             <button onClick={() => onCallAI(true)} disabled={aiActive}
-              className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 transition-colors">
-              <Wand2 size={14} />
+              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-500/20 border border-violet-500/40 text-violet-200 text-sm font-medium hover:bg-violet-500/30 transition-colors disabled:opacity-50">
+              {aiActive ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
               Let AI Decide
             </button>
           </div>
 
-          {/* AI interpretation panel */}
+          <AiStatusBar active={aiActive} step={aiStep} />
+
+          {/* Strategy prompt */}
+          <div className="space-y-1.5">
+            <label className="label">Strategy idea</label>
+            <textarea className="input min-h-[90px] resize-none" value={strategyPrompt}
+              onChange={e => setStrategyPrompt(e.target.value)}
+              placeholder="e.g. Buy when RSI drops below 30 and price is above the 50-day moving average…" />
+          </div>
+
+          {/* Entry / Exit inline */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="label">Entry <span className="text-muted font-normal text-xs">(when to BUY)</span></label>
+              <textarea className="input min-h-[72px] resize-none text-sm" value={entryPrompt}
+                onChange={e => setEntryPrompt(e.target.value)}
+                placeholder="RSI crosses below 30 AND price above SMA 50" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="label">Exit <span className="text-muted font-normal text-xs">(when to SELL)</span></label>
+              <textarea className="input min-h-[72px] resize-none text-sm" value={exitPrompt}
+                onChange={e => setExitPrompt(e.target.value)}
+                placeholder="RSI crosses above 65 OR max 10 days" />
+            </div>
+          </div>
+
+          {/* Risk params */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="label">Stop Loss (%)</label>
+              <input type="number" className="input" value={stopLoss}
+                onChange={e => setStopLoss(e.target.value)} placeholder="3" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="label">Take Profit (%)</label>
+              <input type="number" className="input" value={takeProfit}
+                onChange={e => setTakeProfit(e.target.value)} placeholder="8" />
+            </div>
+          </div>
+
+          {/* AI Parse button */}
+          <button onClick={() => onCallAI(false)}
+            disabled={aiActive || (!strategyPrompt.trim() && !entryPrompt.trim() && !exitPrompt.trim())}
+            className="btn-ghost flex items-center gap-2 text-sm">
+            <Sparkles size={14} className="text-purple-400" />
+            AI Parse Strategy
+          </button>
+
+          {/* AI interpretation */}
           {aiInterpretation?.interpretation && (
             <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
               <div className="flex items-center gap-2">
@@ -887,7 +916,7 @@ function WizardPanel({
           {/* Suggestions */}
           {aiSuggestions.length > 0 && (
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-2">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1">
                 <Lightbulb size={13} className="text-amber-400" />
                 <span className="text-xs text-amber-300 font-semibold uppercase tracking-wider">Suggestions</span>
               </div>
@@ -900,7 +929,7 @@ function WizardPanel({
           {/* Questions */}
           {aiQuestions.length > 0 && (
             <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-2">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1">
                 <MessageSquare size={13} className="text-blue-400" />
                 <span className="text-xs text-blue-300 font-semibold uppercase tracking-wider">AI needs more info</span>
               </div>
@@ -910,89 +939,10 @@ function WizardPanel({
             </div>
           )}
 
-          <div className="flex justify-between pt-2">
-            <button onClick={() => setStep(1)} className="btn-ghost flex items-center gap-2 text-sm">
-              <ArrowLeft size={14} /> Back
-            </button>
-            <button onClick={onGoStep3} disabled={saving} className="btn-primary flex items-center gap-2">
-              {saving && <Loader2 size={14} className="animate-spin" />}
-              Next: Entry/Exit <ArrowRight size={14} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Step 3 ── */}
-      {step === 3 && (
-        <div className="space-y-5">
-          <div className="space-y-1.5">
-            <label className="label">Entry Conditions <span className="text-muted font-normal text-xs">(when to BUY)</span></label>
-            <textarea className="input min-h-[80px] resize-none" value={entryPrompt}
-              onChange={e => setEntryPrompt(e.target.value)}
-              placeholder="e.g. RSI crosses below 30 AND price is above SMA 50" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="label">Exit Conditions <span className="text-muted font-normal text-xs">(when to SELL)</span></label>
-            <textarea className="input min-h-[80px] resize-none" value={exitPrompt}
-              onChange={e => setExitPrompt(e.target.value)}
-              placeholder="e.g. RSI crosses above 65 OR hold for max 10 days" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="label">Stop Loss (%)</label>
-              <input type="number" className="input" value={stopLoss}
-                onChange={e => setStopLoss(e.target.value)} placeholder="3" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="label">Take Profit (%)</label>
-              <input type="number" className="input" value={takeProfit}
-                onChange={e => setTakeProfit(e.target.value)} placeholder="8" />
-            </div>
-          </div>
-
-          <AiStatusBar active={aiActive} step={aiStep} />
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={() => onCallAI(false)}
-              disabled={aiActive || (!entryPrompt.trim() && !exitPrompt.trim() && !strategyPrompt.trim())}
-              className="btn-ghost flex items-center gap-2 text-sm">
-              <Sparkles size={14} className="text-purple-400" />
-              AI Parse Rules
-            </button>
-            <button onClick={() => onCallAI(true)} disabled={aiActive}
-              className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 transition-colors">
-              <Wand2 size={14} />
-              Let AI Decide
-            </button>
-          </div>
-
-          {/* AI improvements */}
-          {aiSuggestions.length > 0 && (
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-2">
-              <div className="flex items-center gap-2 mb-2">
-                <Lightbulb size={13} className="text-amber-400" />
-                <span className="text-xs text-amber-300 font-semibold uppercase tracking-wider">Suggestions</span>
-              </div>
-              {aiSuggestions.map((s, i) => (
-                <p key={i} className="text-sm text-soft flex gap-2"><span className="text-amber-400 shrink-0">•</span>{s}</p>
-              ))}
-            </div>
-          )}
-          {aiQuestions.length > 0 && (
-            <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-2">
-              <div className="flex items-center gap-2 mb-2">
-                <MessageSquare size={13} className="text-blue-400" />
-                <span className="text-xs text-blue-300 font-semibold uppercase tracking-wider">AI needs more info</span>
-              </div>
-              {aiQuestions.map((q, i) => (
-                <p key={i} className="text-sm text-soft flex gap-2"><span className="text-blue-400 shrink-0">?</span>{q}</p>
-              ))}
-            </div>
-          )}
-
+          {/* Parsed rules preview */}
           {rules && (
             <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-2 font-mono text-xs">
-              <p className="text-[10px] text-muted uppercase tracking-wider mb-2">Parsed Rules Preview</p>
+              <p className="text-[10px] text-muted uppercase tracking-wider mb-2">Parsed Rules</p>
               {rules.interpretation && (
                 <p className="text-soft italic text-xs mb-2">{rules.interpretation}</p>
               )}
@@ -1008,19 +958,21 @@ function WizardPanel({
               </p>
               {rules.indicators?.length > 0 && (
                 <p className="text-muted">INDICATORS: <span className="text-soft">
-                  {rules.indicators.map(i => `${i.name.toUpperCase()}(${i.period})`).join(', ')}
+                  {rules.indicators.map(ind => `${ind.name.toUpperCase()}(${ind.period})`).join(', ')}
                 </span></p>
               )}
             </div>
           )}
+
           {runError && (
             <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
               <AlertCircle size={14} className="text-red-400 shrink-0 mt-0.5" />
               <p className="text-red-400 text-sm">{runError}</p>
             </div>
           )}
+
           <div className="flex justify-between pt-2">
-            <button onClick={() => setStep(2)} className="btn-ghost flex items-center gap-2 text-sm">
+            <button onClick={() => setStep(1)} className="btn-ghost flex items-center gap-2 text-sm">
               <ArrowLeft size={14} /> Back
             </button>
             <button onClick={onRun} disabled={running || !rules} className="btn-primary flex items-center gap-2">
