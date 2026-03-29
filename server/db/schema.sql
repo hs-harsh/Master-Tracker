@@ -479,3 +479,26 @@ BEGIN
     ALTER TABLE habit_entries ADD COLUMN scores JSONB DEFAULT '{}';
   END IF;
 END $$;
+
+-- ─── Backtest Strategies ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS bt_strategies (
+  id               SERIAL PRIMARY KEY,
+  user_id          INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name             VARCHAR(255) NOT NULL DEFAULT 'Untitled Strategy',
+  instruments      TEXT[]   NOT NULL DEFAULT '{}',
+  frequency        VARCHAR(10) NOT NULL DEFAULT '1d',
+  date_from        DATE NOT NULL DEFAULT (CURRENT_DATE - INTERVAL '2 years'),
+  date_to          DATE NOT NULL DEFAULT CURRENT_DATE,
+  data_prompt      TEXT,
+  strategy_prompt  TEXT,
+  entry_prompt     TEXT,
+  exit_prompt      TEXT,
+  rules            JSONB,
+  capital          NUMERIC NOT NULL DEFAULT 10000,
+  status           VARCHAR(20) DEFAULT 'draft',
+  results          JSONB,
+  error_msg        TEXT,
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_bt_strategies_user ON bt_strategies(user_id, created_at DESC);

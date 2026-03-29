@@ -30,6 +30,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/habits', require('./routes/habits'));
 app.use('/api/meals',    require('./routes/meals'));
 app.use('/api/workouts', require('./routes/workouts'));
+app.use('/api/backtest', require('./routes/backtest'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
