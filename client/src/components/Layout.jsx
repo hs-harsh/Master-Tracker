@@ -55,6 +55,7 @@ export default function Layout() {
   const [tradingOpen, setTradingOpen] = useState(false);
   const [sidebarFinanceEnabled, setSidebarFinanceEnabled] = useState(true);
   const [sidebarWellnessEnabled, setSidebarWellnessEnabled] = useState(true);
+  const [sidebarLiveTradingEnabled, setSidebarLiveTradingEnabled] = useState(true);
 
   const isFinanceRoute = ['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser'].includes(location.pathname);
   useEffect(() => {
@@ -76,6 +77,7 @@ export default function Layout() {
       if (d?.currencyDisplay) setCurrencySymbol(d.currencyDisplay);
       setSidebarFinanceEnabled(d?.sidebarFinanceEnabled !== false);
       setSidebarWellnessEnabled(d?.sidebarWellnessEnabled !== false);
+      setSidebarLiveTradingEnabled(d?.sidebarLiveTradingEnabled !== false);
     }).catch(() => {});
   }, [isAuth]);
 
@@ -83,6 +85,7 @@ export default function Layout() {
     if (!isAuth) {
       setSidebarFinanceEnabled(true);
       setSidebarWellnessEnabled(true);
+      setSidebarLiveTradingEnabled(true);
       return;
     }
     refreshSettings();
@@ -331,7 +334,7 @@ export default function Layout() {
           )}
 
           {/* Live Trading (collapsible) */}
-          {isAuth && (
+          {isAuth && sidebarLiveTradingEnabled && (
           <div className="space-y-0.5">
             <button
               type="button"

@@ -37,8 +37,9 @@ export default function Settings() {
   const [anthropicApiKeySet,       setAnthropicApiKeySet]       = useState(false);
   const [anthropicApiKeyInput,     setAnthropicApiKeyInput]     = useState('');
   const [anthropicApiKeyTouched,   setAnthropicApiKeyTouched]   = useState(false);
-  const [sidebarFinanceEnabled,   setSidebarFinanceEnabled]   = useState(true);
-  const [sidebarWellnessEnabled,  setSidebarWellnessEnabled]  = useState(true);
+  const [sidebarFinanceEnabled,     setSidebarFinanceEnabled]     = useState(true);
+  const [sidebarWellnessEnabled,    setSidebarWellnessEnabled]    = useState(true);
+  const [sidebarLiveTradingEnabled, setSidebarLiveTradingEnabled] = useState(true);
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(null);
 
@@ -54,6 +55,7 @@ export default function Settings() {
       setAnthropicApiKeySet(!!d.anthropicApiKeySet);
       setSidebarFinanceEnabled(d.sidebarFinanceEnabled !== false);
       setSidebarWellnessEnabled(d.sidebarWellnessEnabled !== false);
+      setSidebarLiveTradingEnabled(d.sidebarLiveTradingEnabled !== false);
       applyTheme(d.themeMode || 'dark', d.accent || 'gold');
     }).catch(() => {});
   };
@@ -118,6 +120,7 @@ export default function Settings() {
         dashboardDefaultProfile,
         sidebarFinanceEnabled,
         sidebarWellnessEnabled,
+        sidebarLiveTradingEnabled,
       };
       if (anthropicApiKeyTouched) body.anthropicApiKey = anthropicApiKeyInput.trim();
       await api.put('/settings', body);
@@ -259,6 +262,18 @@ export default function Settings() {
               className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${sidebarWellnessEnabled ? 'bg-accent' : 'bg-muted/40'}`}
             >
               <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-ink transition-transform ${sidebarWellnessEnabled ? 'translate-x-5' : ''}`} />
+            </button>
+          </label>
+          <label className="flex items-center justify-between gap-4 cursor-pointer">
+            <span className="text-sm text-white">Show Live Trading (Backtest, Post-Trade)</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={sidebarLiveTradingEnabled}
+              onClick={() => setSidebarLiveTradingEnabled(v => !v)}
+              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${sidebarLiveTradingEnabled ? 'bg-accent' : 'bg-muted/40'}`}
+            >
+              <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-ink transition-transform ${sidebarLiveTradingEnabled ? 'translate-x-5' : ''}`} />
             </button>
           </label>
         </div>

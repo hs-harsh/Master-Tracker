@@ -383,6 +383,53 @@ function FinanceGuard() {
   return <FinanceLayout />;
 }
 
+/** Live trading routes: redirect to Habits when section is hidden in Settings. */
+function LiveTradingGuard() {
+  const [enabled, setEnabled] = useState(true);
+  const [ready, setReady] = useState(false);
+
+  const loadFlag = useCallback(() => {
+    return api
+      .get('/settings')
+      .then((r) => {
+        setEnabled(r.data?.sidebarLiveTradingEnabled !== false);
+      })
+      .catch(() => {
+        setEnabled(true);
+      });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadFlag().finally(() => {
+      if (!cancelled) setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadFlag]);
+
+  useEffect(() => {
+    const on = () => loadFlag();
+    window.addEventListener('investtrack-settings', on);
+    return () => window.removeEventListener('investtrack-settings', on);
+  }, [loadFlag]);
+
+  if (!ready) {
+    return (
+      <div className="flex flex-1 items-center justify-center min-h-[40vh]">
+        <Loader2 className="animate-spin text-accent" size={32} />
+      </div>
+    );
+  }
+
+  if (!enabled) {
+    return <Navigate to="/wellness/habits" replace />;
+  }
+
+  return <Outlet />;
+}
+
 function AdminOutlet() {
   const { isAuth, isAdmin } = useAuth();
   if (!isAuth) return <OtpLoginForm />;
@@ -412,9 +459,11 @@ export default function App() {
               <Route path="wellness/habits" element={<WellnessHabits />} />
               <Route path="wellness/meals" element={<WellnessMeals />} />
               <Route path="wellness/workouts" element={<WellnessWorkouts />} />
-              <Route path="live-trading" element={<Navigate to="/live-trading/backtest" replace />} />
-              <Route path="live-trading/backtest" element={<BacktestPage />} />
-              <Route path="live-trading/post-trade" element={<PostTradePage />} />
+              <Route element={<LiveTradingGuard />}>
+                <Route path="live-trading" element={<Navigate to="/live-trading/backtest" replace />} />
+                <Route path="live-trading/backtest" element={<BacktestPage />} />
+                <Route path="live-trading/post-trade" element={<PostTradePage />} />
+              </Route>
               <Route path="settings" element={<Settings />} />
             </Route>
             <Route element={<AdminOutlet />}>

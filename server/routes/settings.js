@@ -13,7 +13,7 @@ const USER_KEYS = [
   'default_account',
   'theme_mode', 'accent', 'currency_display', 'dashboard_default_profile',
   'onboarding_completed',
-  'sidebar_finance_enabled', 'sidebar_wellness_enabled',
+  'sidebar_finance_enabled', 'sidebar_wellness_enabled', 'sidebar_live_trading_enabled',
 ];
 
 async function getUserSetting(userId, key) {
@@ -65,7 +65,7 @@ async function buildSettingsResponse(userId) {
     defaultAccount,
     themeMode, accent, currencyDisplay, dashboardDefaultProfile,
     onboardingCompleted,
-    sidebarFinanceEnabled, sidebarWellnessEnabled,
+    sidebarFinanceEnabled, sidebarWellnessEnabled, sidebarLiveTradingEnabled,
   ] = await Promise.all(USER_KEYS.map(get));
   const anthropicApiKey = await getGlobalSetting('anthropic_api_key');
   const effectiveTheme = themeMode || 'dark';
@@ -84,6 +84,7 @@ async function buildSettingsResponse(userId) {
     // '1' or empty = show tab; '0' = hide
     sidebarFinanceEnabled: sidebarFinanceEnabled !== '0',
     sidebarWellnessEnabled: sidebarWellnessEnabled !== '0',
+    sidebarLiveTradingEnabled: sidebarLiveTradingEnabled !== '0',
   };
 }
 
@@ -145,6 +146,9 @@ router.put('/', auth, async (req, res) => {
     }
     if (body.sidebarWellnessEnabled !== undefined) {
       await setUserSetting(uid, 'sidebar_wellness_enabled', body.sidebarWellnessEnabled ? '1' : '0');
+    }
+    if (body.sidebarLiveTradingEnabled !== undefined) {
+      await setUserSetting(uid, 'sidebar_live_trading_enabled', body.sidebarLiveTradingEnabled ? '1' : '0');
     }
 
     res.json(await buildSettingsResponse(uid));
