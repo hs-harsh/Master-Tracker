@@ -5,7 +5,7 @@ import {
   LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase,
   Calculator, LineChart, LogOut, Settings, BarChart3,
   Menu, X, LogIn, Lock, Shield, Heart, ChevronDown, ChevronRight,
-  CheckSquare, Utensils, Dumbbell, Wallet,
+  CheckSquare, Utensils, Dumbbell, Wallet, BarChart2,
 } from 'lucide-react';
 import InstallPrompt from './InstallPrompt';
 import api from '../lib/api';
@@ -32,6 +32,11 @@ const WELLNESS_NAV = [
   { to: '/wellness/workouts', icon: Dumbbell,    label: 'Workouts' },
 ];
 
+const TRADING_NAV = [
+  { to: '/live-trading/backtest',   icon: TrendingUp, label: 'Backtest' },
+  { to: '/live-trading/post-trade', icon: BarChart2,  label: 'Post-Trade' },
+];
+
 /* ── Nav link class helpers ──────────────────────────────────────────────── */
 function navClass(isActive, locked = false) {
   const base = 'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] relative';
@@ -47,6 +52,7 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(true);
   const [wellnessOpen, setWellnessOpen] = useState(false);
+  const [tradingOpen, setTradingOpen] = useState(false);
   const [sidebarFinanceEnabled, setSidebarFinanceEnabled] = useState(true);
   const [sidebarWellnessEnabled, setSidebarWellnessEnabled] = useState(true);
 
@@ -57,6 +63,9 @@ export default function Layout() {
   }, [location.pathname]);
   useEffect(() => {
     if (location.pathname.startsWith('/wellness')) setWellnessOpen(true);
+  }, [location.pathname]);
+  useEffect(() => {
+    if (location.pathname.startsWith('/live-trading')) setTradingOpen(true);
   }, [location.pathname]);
 
   const refreshSettings = useCallback(() => {
@@ -312,6 +321,50 @@ export default function Layout() {
                         <Icon size={14} className="shrink-0" />
                         <span>{label}</span>
                         {!isAuth && <Lock size={11} className="text-muted/40 shrink-0 ml-auto" />}
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+          )}
+
+          {/* Live Trading (collapsible) */}
+          {isAuth && (
+          <div className="space-y-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (!tradingOpen) { setTradingOpen(true); navigate('/live-trading/backtest'); }
+                else { setTradingOpen(false); }
+              }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] w-full text-left ${
+                location.pathname.startsWith('/live-trading')
+                  ? 'text-accent bg-accent/8'
+                  : 'text-soft hover:text-white hover:bg-white/[0.04]'
+              }`}
+            >
+              <BarChart3 size={16} className="shrink-0" />
+              <span className="flex-1">Live Trading</span>
+              {tradingOpen ? <ChevronDown size={14} className="text-muted shrink-0" /> : <ChevronRight size={14} className="text-muted shrink-0" />}
+            </button>
+            {tradingOpen && (
+              <div className="pl-4 space-y-0.5">
+                {TRADING_NAV.map(({ to, icon: Icon, label }) => (
+                  <NavLink key={to} to={to}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[38px] relative ${
+                        isActive ? 'text-accent bg-accent/8' : 'text-muted hover:text-soft hover:bg-white/[0.03]'
+                      }`
+                    }
+                    onClick={closeSidebar}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full" style={{ background: 'var(--accent, #f0c040)' }} />}
+                        <Icon size={14} className="shrink-0" />
+                        <span>{label}</span>
                       </>
                     )}
                   </NavLink>

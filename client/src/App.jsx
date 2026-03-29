@@ -13,6 +13,8 @@ import ExpenseAnalyser from './pages/ExpenseAnalyser';
 import WellnessHabits from './pages/wellness/WellnessHabits';
 import WellnessMeals from './pages/wellness/WellnessMeals';
 import WellnessWorkouts from './pages/wellness/WellnessWorkouts';
+import BacktestPage from './pages/trading/BacktestPage';
+import PostTradePage from './pages/trading/PostTradePage';
 import Trade from './pages/Trade';
 import StockTrade from './pages/StockTrade';
 import Settings from './pages/Settings';
@@ -410,6 +412,9 @@ export default function App() {
               <Route path="wellness/habits" element={<WellnessHabits />} />
               <Route path="wellness/meals" element={<WellnessMeals />} />
               <Route path="wellness/workouts" element={<WellnessWorkouts />} />
+              <Route path="live-trading" element={<Navigate to="/live-trading/backtest" replace />} />
+              <Route path="live-trading/backtest" element={<BacktestPage />} />
+              <Route path="live-trading/post-trade" element={<PostTradePage />} />
               <Route path="settings" element={<Settings />} />
             </Route>
             <Route element={<AdminOutlet />}>
