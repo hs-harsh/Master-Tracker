@@ -3,6 +3,8 @@ const router         = express.Router();
 const pool           = require('../db');
 const auth           = require('../middleware/auth');
 const { runBacktest } = require('../utils/backtestEngine');
+const { YahooFinance } = require('yahoo-finance2');
+const yf = new YahooFinance();
 
 router.use(auth);
 
@@ -12,7 +14,6 @@ router.get('/ohlcv', async (req, res) => {
   const { symbol, from, to, interval } = req.query;
   if (!symbol) return res.status(400).json({ error: 'symbol is required' });
   try {
-    const yf   = require('yahoo-finance2').default;
     const data = await yf.historical(symbol.trim().toUpperCase(), {
       period1:  from     || '2023-01-01',
       period2:  to       || new Date().toISOString().slice(0, 10),
@@ -261,7 +262,6 @@ router.post('/strategies/:id/run', async (req, res) => {
     }
 
     // Fetch OHLCV for each instrument
-    const yf       = require('yahoo-finance2').default;
     const ohlcvMap = {};
     const errors   = [];
 
