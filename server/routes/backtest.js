@@ -283,7 +283,7 @@ Field name rules:
 - RSI(14) → "rsi_14" | SMA(50) → "sma_50" | EMA(20) → "ema_20"
 - Bollinger upper(20) → "bb_upper_20" | lower → "bb_lower_20"
 - MACD line → "macd" | signal → "macd_signal"
-- indicator "name" must be one of: rsi, sma, ema, macd, bollinger, atr, volume_ma
+- indicator "name" must be one of: rsi, sma, ema, macd, bollinger, atr, volume_ma (aliases: volume_sma, volumesma — SMA of volume; exposes vol_ma_N and volume_sma_N)
 - "source" must be: close, high, or low
 - stopLoss and takeProfit are decimal fractions (0.03 = 3%)
 - questions array should be empty [] if all info is provided`;

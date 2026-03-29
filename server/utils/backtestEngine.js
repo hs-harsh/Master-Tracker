@@ -21,7 +21,14 @@ function buildRows(ohlcv, indicators = []) {
       case 'ema':     arrays[`ema_${period}`]      = ema(data, period);       break;
       case 'rsi':     arrays[`rsi_${period}`]      = rsi(data, period);       break;
       case 'atr':     arrays[`atr_${period}`]      = atr(highs, lows, closes, period); break;
-      case 'volume_ma': arrays[`vol_ma_${period}`] = volumeMa(volumes, period); break;
+      case 'volume_ma':
+      case 'volume_sma':
+      case 'volumesma': {
+        const vm = volumeMa(volumes, period);
+        arrays[`vol_ma_${period}`] = vm;
+        arrays[`volume_sma_${period}`] = vm;
+        break;
+      }
       case 'bb':
       case 'bollinger': {
         const bb = bollinger(data, period);
@@ -107,6 +114,40 @@ function collectReferencedRuleFields(rules) {
 }
 
 /**
+ * If rules reference volume_sma_N or vol_ma_N, ensure a volume moving-average indicator exists.
+ * Those series are SMA(volume); Step 1 OHLCV already includes volume — no extra fetch needed.
+ */
+function expandRulesForVolumeDerivedFields(rules) {
+  if (!rules) return rules;
+  const indicators = [...(rules.indicators || [])];
+  const refs = collectReferencedRuleFields(rules);
+  const periodFromField = (f) => {
+    const s = f.trim();
+    let m = /^volume_sma_(\d+)$/i.exec(s);
+    if (m) return parseInt(m[1], 10);
+    m = /^vol_ma_(\d+)$/i.exec(s);
+    if (m) return parseInt(m[1], 10);
+    return null;
+  };
+  let changed = false;
+  for (const f of refs) {
+    const p = periodFromField(f);
+    if (p == null || !Number.isFinite(p) || p < 1) continue;
+    const has = indicators.some((i) => {
+      const n = (i.name || '').toLowerCase().replace(/[^a-z_]/g, '');
+      const per = i.period ?? 14;
+      return per === p && ['volume_ma', 'volume_sma', 'volumesma'].includes(n);
+    });
+    if (!has) {
+      indicators.push({ name: 'volume_ma', period: p });
+      changed = true;
+    }
+  }
+  if (!changed) return rules;
+  return { ...rules, indicators };
+}
+
+/**
  * Ensure rules only use columns present after buildRows (indicators + OHLCV).
  * Returns { ok, message? }.
  */
@@ -118,12 +159,13 @@ function validateRulesDataCoverage(ohlcvMap, rules) {
   const refs = collectReferencedRuleFields(rules);
   if (refs.length === 0) return { ok: true };
 
+  const effRules = expandRulesForVolumeDerivedFields(rules);
   const missing = new Set();
   for (const f of refs) {
     for (const sym of symbols) {
       const ohlcv = ohlcvMap[sym];
       if (!ohlcv?.length) continue;
-      const rows = buildRows(ohlcv, rules?.indicators ?? []);
+      const rows = buildRows(ohlcv, effRules?.indicators ?? []);
       const sample = rows[rows.length - 1];
       if (!sample || !(f in sample)) {
         missing.add(f);
@@ -137,7 +179,7 @@ function validateRulesDataCoverage(ohlcvMap, rules) {
       ok: false,
       message:
         `This strategy references data that is not available from the Step 1 dataset: ${[...missing].join(', ')}. ` +
-        'Re-run “AI Parse Strategy” so indicators match your rules, or simplify entry/exit to use only OHLCV fields and indicators the engine supports (SMA, EMA, RSI, MACD, Bollinger, ATR, volume_ma).',
+        'Re-run “AI Parse Strategy” so indicators match your rules, or simplify entry/exit to use only OHLCV fields and supported indicators (SMA, EMA, RSI, MACD, Bollinger, ATR, volume_ma / volume_sma — both use Step 1 volume).',
     };
   }
   return { ok: true };
@@ -303,6 +345,7 @@ function runBacktestPerSymbolAllocation(ohlcvMap, rules, capital = 10000) {
 
 // Main simulation
 function runBacktest(ohlcvMap, rules, capital = 10000) {
+  rules = expandRulesForVolumeDerivedFields(rules);
   const symbols    = Object.keys(ohlcvMap);
   const stopLoss   = Math.abs(rules.stopLoss   ?? 0.03);
   const takeProfit = Math.abs(rules.takeProfit  ?? 0.08);
