@@ -229,9 +229,22 @@ function runBacktest(ohlcvMap, rules, capital = 10000) {
     : 0;
   const sharpe = stdR > 0 ? +(avgR / stdR * Math.sqrt(252)).toFixed(2) : 0;
 
+  // CAGR — annualised return based on date range of equity curve
+  let cagr = 0;
+  if (equityCurve.length >= 2) {
+    const d0 = new Date(equityCurve[0].date);
+    const d1 = new Date(equityCurve[equityCurve.length - 1].date);
+    const years = (d1 - d0) / (365.25 * 24 * 60 * 60 * 1000);
+    if (years > 0 && finalCapital > 0) {
+      cagr = +((Math.pow(finalCapital / capital, 1 / years) - 1) * 100).toFixed(2);
+    }
+  }
+
   return {
     stats: {
       totalReturn,
+      cagr,
+      initialCapital: capital,
       finalCapital,
       maxDrawdown: +maxDrawdown.toFixed(2),
       sharpe,
