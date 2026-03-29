@@ -2,12 +2,44 @@ const express        = require('express');
 const router         = express.Router();
 const pool           = require('../db');
 const auth           = require('../middleware/auth');
-const { runBacktest } = require('../utils/backtestEngine');
+const {
+  runBacktestPerSymbolAllocation,
+  validateRulesDataCoverage,
+} = require('../utils/backtestEngine');
 const { getAnthropicApiKey } = require('../utils/anthropicKey');
 const YahooFinance = require('yahoo-finance2').default;
 const yf = new YahooFinance({ suppressNotices: ['ripHistorical'] });
 
 router.use(auth);
+
+function normalizeOhlcvRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((r) => ({
+      date: String(r.date || '').slice(0, 10),
+      open: +r.open,
+      high: +r.high,
+      low: +r.low,
+      close: +r.close,
+      volume: +(r.volume || 0),
+    }))
+    .filter((r) => r.date && !Number.isNaN(r.close));
+}
+
+/** Map client POST body ohlcvData onto strategy instrument keys (case-insensitive). */
+function ohlcvMapFromClientBody(ohlcvData, instruments) {
+  if (!ohlcvData || typeof ohlcvData !== 'object') return null;
+  const upper = {};
+  for (const [k, v] of Object.entries(ohlcvData)) {
+    upper[String(k).trim().toUpperCase()] = normalizeOhlcvRows(v);
+  }
+  const out = {};
+  for (const sym of instruments || []) {
+    const u = String(sym).trim().toUpperCase();
+    if (upper[u]?.length) out[sym] = upper[u];
+  }
+  return out;
+}
 
 // ── GET /api/backtest/ohlcv?symbol=&from=&to=&interval= ──────────────────────
 // Preview OHLCV data for a symbol (used in Step 1)
@@ -334,42 +366,32 @@ router.post('/strategies/:id/run', async (req, res) => {
       return res.status(400).json({ error: 'No instruments selected.' });
     }
 
-    // Fetch OHLCV for each instrument
-    const ohlcvMap = {};
-    const errors   = [];
-
-    for (const sym of strat.instruments) {
-      try {
-        const data = await yf.historical(sym.trim().toUpperCase(), {
-          period1:  strat.date_from,
-          period2:  strat.date_to,
-          interval: strat.frequency,
-        });
-        if (data.length > 0) {
-          ohlcvMap[sym] = data.map(r => ({
-            date:   r.date.toISOString().slice(0, 10),
-            open:   r.open,
-            high:   r.high,
-            low:    r.low,
-            close:  r.close,
-            volume: r.volume || 0,
-          }));
-        } else {
-          errors.push(`${sym}: no data`);
-        }
-      } catch (e) {
-        errors.push(`${sym}: ${e.message}`);
-      }
-    }
-
-    if (Object.keys(ohlcvMap).length === 0) {
-      const msg = `No data fetched. ${errors.join('; ')}`;
+    const body = req.body || {};
+    if (!body.ohlcvData || typeof body.ohlcvData !== 'object') {
+      const msg =
+        'Backtest must use the OHLCV from Data Setup. Open Step 1, click “Fetch & Preview Data” for all instruments, then run again.';
       await pool.query(`UPDATE bt_strategies SET status='error', error_msg=$1 WHERE id=$2`, [msg, id]);
       return res.status(400).json({ error: msg });
     }
 
-    // Run backtest engine
-    const results = runBacktest(ohlcvMap, strat.rules, parseFloat(strat.capital));
+    const ohlcvMap = ohlcvMapFromClientBody(body.ohlcvData, strat.instruments);
+
+    const missingInstr = strat.instruments.filter((sym) => !ohlcvMap[sym]?.length);
+    if (missingInstr.length) {
+      const msg =
+        `Missing OHLCV for: ${missingInstr.join(', ')}. ` +
+        'In Step 1 fetch data for every instrument in this strategy (same symbols as the strategy list), then run again.';
+      await pool.query(`UPDATE bt_strategies SET status='error', error_msg=$1 WHERE id=$2`, [msg, id]);
+      return res.status(400).json({ error: msg });
+    }
+
+    const coverage = validateRulesDataCoverage(ohlcvMap, strat.rules);
+    if (!coverage.ok) {
+      await pool.query(`UPDATE bt_strategies SET status='error', error_msg=$1 WHERE id=$2`, [coverage.message, id]);
+      return res.status(400).json({ error: coverage.message });
+    }
+
+    const results = runBacktestPerSymbolAllocation(ohlcvMap, strat.rules, parseFloat(strat.capital));
 
     // Store results
     const { rows } = await pool.query(

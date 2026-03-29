@@ -7,8 +7,8 @@ import {
   Lightbulb, Save, RotateCcw,
 } from 'lucide-react';
 import {
-  ComposedChart, Area, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid,
+  ComposedChart, Area, Bar, Line, Scatter, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
 import api from '../../lib/api';
 import { SECTORS, NIFTY_INDICES } from '../../lib/indianStocks';
@@ -28,9 +28,8 @@ const AI_STEPS = [
 
 const RUN_STEPS = [
   'Saving strategy…',
-  'Fetching market data…',
-  'Computing indicators…',
-  'Simulating trades…',
+  'Validating Step 1 data & rules…',
+  'Simulating each instrument…',
   'Calculating statistics…',
 ];
 
@@ -496,10 +495,19 @@ export default function BacktestPage() {
         symbols: form1.instruments,
         from: form1.date_from, to: form1.date_to, interval: form1.frequency,
       });
-      setOhlcvMap(data.data || {});
-      setOhlcvErrors(data.errors || {});
-      const syms = Object.keys(data.data || {});
-      if (syms.length > 0) setOhlcvTab(syms[0]);
+      const raw = data.data || {};
+      const rawErr = data.errors || {};
+      const mapped = {};
+      const mappedErr = {};
+      form1.instruments.forEach((sym) => {
+        const u = sym.trim().toUpperCase();
+        if (raw[u]?.length) mapped[sym] = raw[u];
+        if (rawErr[u]) mappedErr[sym] = rawErr[u];
+      });
+      setOhlcvMap(mapped);
+      setOhlcvErrors(mappedErr);
+      const first = form1.instruments.find((s) => mapped[s]?.length);
+      if (first) setOhlcvTab(first);
     } catch (e) {
       setOhlcvErrors({ _: e.response?.data?.error || 'Failed to fetch data' });
     } finally { setOhlcvLoading(false); }
@@ -555,9 +563,19 @@ export default function BacktestPage() {
     finally { stopAiAnim(); }
   }
 
-  // ── Run backtest ─────────────────────────────────────────────────────────────
+  // ── Run backtest (uses Step 1 ohlcvMap only — no refetch) ─────────────────────
   async function runBacktest() {
     if (!selectedId || !rules) return;
+    const missing = form1.instruments.filter((s) => !ohlcvMap[s]?.length);
+    if (!form1.instruments.length) {
+      setRunError('Add instruments in Step 1 first.');
+      return;
+    }
+    if (missing.length) {
+      setRunError(`Fetch OHLCV in Step 1 for: ${missing.join(', ')} — then run again.`);
+      return;
+    }
+    setRunError('');
     startRunAnim();
     try {
       await api.patch(`/backtest/strategies/${selectedId}`, {
@@ -565,7 +583,9 @@ export default function BacktestPage() {
         entry_prompt: entryPrompt, exit_prompt: exitPrompt,
         rules: { ...rules, stopLoss: parseFloat(stopLoss)/100, takeProfit: parseFloat(takeProfit)/100 },
       });
-      const { data } = await api.post(`/backtest/strategies/${selectedId}/run`);
+      const { data } = await api.post(`/backtest/strategies/${selectedId}/run`, {
+        ohlcvData: ohlcvMap,
+      });
       setStrategies(prev => prev.map(s => s.id === data.id ? data : s));
       clearDraft(selectedId);
       setHasDraft(false);
@@ -685,6 +705,7 @@ export default function BacktestPage() {
               onCallAI={callAI}
               onGoStep2={goStep2}
               onRun={runBacktest}
+              canRun={form1.instruments.length > 0 && form1.instruments.every((s) => !!ohlcvMap[s]?.length)}
               onDiscard={handleDiscard}
             />
           )}
@@ -722,6 +743,7 @@ function WizardPanel({
   ohlcvMap, ohlcvTab, setOhlcvTab, ohlcvLoading, ohlcvErrors,
   saving, running, runStep, runError, hasDraft,
   onFetchOhlcv, onCallAI, onGoStep2, onRun, onDiscard,
+  canRun,
 }) {
   const STEPS = ['Data Setup', 'Strategy'];
   const ohlcvSymbols = Object.keys(ohlcvMap);
@@ -890,6 +912,18 @@ function WizardPanel({
       {/* ── Step 2: Strategy + Entry/Exit ── */}
       {step === 2 && (
         <div className="space-y-5">
+          <div className={`rounded-xl border px-4 py-3 text-xs ${Object.keys(ohlcvMap).length >= form1.instruments.length && form1.instruments.every(s => ohlcvMap[s]?.length)
+            ? 'border-emerald-500/25 bg-emerald-500/5 text-emerald-200/90'
+            : 'border-amber-500/25 bg-amber-500/8 text-amber-200/90'}`}>
+            <p className="font-medium text-white/90 mb-1">Uses Step 1 data only</p>
+            <p className="text-muted leading-relaxed">
+              The backtest runs on the OHLCV you fetched in Data Setup — it does not download prices again.
+              {!form1.instruments.every(s => ohlcvMap[s]?.length) && (
+                <> Go back to Step 1 and click <strong className="text-soft">Fetch &amp; Preview Data</strong> for every instrument.</>
+              )}
+            </p>
+          </div>
+
           {/* Let AI Decide — prominent at top */}
           <div className="flex items-center gap-3 p-4 rounded-xl bg-violet-500/8 border border-violet-500/20">
             <Wand2 size={16} className="text-violet-400 shrink-0" />
@@ -1037,8 +1071,9 @@ function WizardPanel({
             <button onClick={() => setStep(1)} disabled={running} className="btn-ghost flex items-center gap-2 text-sm disabled:opacity-40">
               <ArrowLeft size={14} /> Back
             </button>
-            <button onClick={onRun} disabled={running || !rules}
-              className="btn-primary flex items-center gap-2 disabled:opacity-50">
+            <button onClick={onRun} disabled={running || !rules || !canRun}
+              className="btn-primary flex items-center gap-2 disabled:opacity-50"
+              title={!canRun ? 'Fetch Step 1 data for all instruments first' : ''}>
               {running
                 ? <><Loader2 size={14} className="animate-spin" /> Running…</>
                 : <><Play size={14} /> Run Backtest ({form1.capital ? `₹${parseInt(form1.capital).toLocaleString('en-IN')}` : '₹10,000'})</>
@@ -1052,43 +1087,65 @@ function WizardPanel({
 }
 
 // ─── Results ──────────────────────────────────────────────────────────────────
+function thinSeries(arr, maxPts = 450) {
+  if (!arr?.length || arr.length <= maxPts) return arr || [];
+  const step = Math.ceil(arr.length / maxPts);
+  return arr.filter((_, i) => i % step === 0);
+}
+
 function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
   const [fullData, setFullData] = useState(null);
   const [loading, setLoading]   = useState(true);
   const [tradeTab, setTradeTab] = useState('trades');
+  const [instTab, setInstTab]   = useState('all');
 
   useEffect(() => {
     setLoading(true);
+    setInstTab('all');
     onReload(strategyId).then(data => { setFullData(data); setLoading(false); });
   }, [strategyId]);
 
   if (loading) return <div className="flex items-center justify-center h-48"><Loader2 size={20} className="animate-spin text-muted" /></div>;
   if (!fullData?.results) return <div className="p-8 text-muted text-center">No results data</div>;
 
-  const { stats: r, equityCurve, trades } = fullData.results;
+  const { stats: r, equityCurve, trades, bySymbol } = fullData.results;
+  const symKeys = bySymbol && typeof bySymbol === 'object' ? Object.keys(bySymbol) : [];
+  const activeSym = instTab !== 'all' && bySymbol?.[instTab] ? instTab : null;
+  const rView = activeSym ? bySymbol[instTab].stats : r;
+  const tradesView = activeSym ? (bySymbol[instTab].trades || []) : (trades || []);
 
   const chartData = equityCurve?.length > 200
     ? equityCurve.filter((_, i) => i % Math.ceil(equityCurve.length / 200) === 0)
     : equityCurve || [];
 
+  const priceSeriesRaw = activeSym ? (bySymbol[instTab].priceSeries || []) : [];
+  const priceChartData = thinSeries(priceSeriesRaw).map((p) => ({
+    ...p,
+    entryMark: p.entry ? p.close : null,
+    exitMark: p.exit ? p.close : null,
+  }));
+
   const statCards = [
-    { label: 'Total Return',  value: fmtPct(r.totalReturn),    color: r.totalReturn >= 0 ? 'text-emerald-400' : 'text-red-400' },
-    { label: 'CAGR',          value: fmtPct(r.cagr),           color: r.cagr >= 0 ? 'text-emerald-400' : 'text-red-400' },
-    { label: 'Max Drawdown',  value: fmtPct(r.maxDrawdown),    color: 'text-red-400' },
-    { label: 'Sharpe Ratio',  value: fmtNum(r.sharpe),         color: 'text-white' },
-    { label: 'Win Rate',      value: fmtPct(r.winRate),        color: r.winRate >= 50 ? 'text-emerald-400' : 'text-amber-400' },
-    { label: 'Profit Factor', value: fmtNum(r.profitFactor),   color: r.profitFactor >= 1 ? 'text-emerald-400' : 'text-red-400' },
-    { label: 'Total Trades',  value: r.totalTrades,            color: 'text-white' },
-    { label: 'Final Capital', value: fmtCurrency(r.finalCapital), color: 'text-white' },
+    { label: 'Total Return',  value: fmtPct(rView.totalReturn),    color: rView.totalReturn >= 0 ? 'text-emerald-400' : 'text-red-400' },
+    { label: 'CAGR',          value: fmtPct(rView.cagr),           color: rView.cagr >= 0 ? 'text-emerald-400' : 'text-red-400' },
+    { label: 'Max Drawdown',  value: fmtPct(rView.maxDrawdown),    color: 'text-red-400' },
+    { label: 'Sharpe Ratio',  value: fmtNum(rView.sharpe),         color: 'text-white' },
+    { label: 'Win Rate',      value: fmtPct(rView.winRate),        color: rView.winRate >= 50 ? 'text-emerald-400' : 'text-amber-400' },
+    { label: 'Profit Factor', value: fmtNum(rView.profitFactor),   color: rView.profitFactor >= 1 ? 'text-emerald-400' : 'text-red-400' },
+    { label: 'Total Trades',  value: rView.totalTrades,            color: 'text-white' },
+    { label: 'Final Capital', value: fmtCurrency(rView.finalCapital), color: 'text-white' },
   ];
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-6 space-y-5 max-w-5xl mx-auto">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-white font-display font-bold text-lg">{fullData.name}</h2>
           <p className="text-muted text-sm font-mono mt-0.5">
             {fullData.date_from} → {fullData.date_to} · {fullData.instruments?.join(', ')} · {fullData.frequency}
+          </p>
+          <p className="text-[11px] text-muted mt-1">
+            Capital is split equally across instruments; each sleeve is backtested independently on the same Step 1 OHLCV.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1100,18 +1157,55 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
         </div>
       </div>
 
+      {symKeys.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 items-center">
+          <span className="text-[10px] text-muted font-mono uppercase tracking-wider mr-1">Report</span>
+          <button
+            type="button"
+            onClick={() => setInstTab('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all ${
+              instTab === 'all' ? 'bg-accent/20 border border-accent/40 text-accent' : 'bg-white/5 border border-white/10 text-muted hover:text-soft'
+            }`}
+          >
+            Combined
+          </button>
+          {symKeys.map((sym) => (
+            <button
+              key={sym}
+              type="button"
+              onClick={() => setInstTab(sym)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all max-w-[200px] truncate ${
+                instTab === sym ? 'bg-violet-500/20 border border-violet-400/40 text-violet-200' : 'bg-white/5 border border-white/10 text-muted hover:text-soft'
+              }`}
+            >
+              {sym}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeSym && (
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 text-sm text-violet-100/90">
+          <span className="text-muted text-xs font-mono uppercase tracking-wider">Allocated to this instrument</span>
+          <p className="text-white font-display font-bold text-lg mt-0.5">
+            {fmtCurrency(bySymbol[instTab].allocatedCapital)}
+          </p>
+          <p className="text-xs text-muted mt-1">From total initial {fmtCurrency(r.initialCapital)} · {symKeys.length} sleeve{symKeys.length !== 1 ? 's' : ''}</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {statCards.map(({ label, value, color }) => (
-          <div key={label} className="card p-3">
+          <div key={`${instTab}-${label}`} className="card p-3">
             <p className="text-[10px] text-muted uppercase tracking-wider font-mono">{label}</p>
             <p className={`text-lg font-display font-bold mt-0.5 ${color}`}>{value}</p>
           </div>
         ))}
       </div>
 
-      {chartData.length > 0 && (
+      {instTab === 'all' && chartData.length > 0 && (
         <div className="card p-4">
-          <p className="text-xs text-muted uppercase tracking-wider font-mono mb-3">Equity Curve</p>
+          <p className="text-xs text-muted uppercase tracking-wider font-mono mb-3">Combined equity (sum of sleeves)</p>
           <ResponsiveContainer width="100%" height={200}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <defs>
@@ -1136,13 +1230,35 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
         </div>
       )}
 
+      {activeSym && priceChartData.length > 0 && (
+        <div className="card p-4">
+          <p className="text-xs text-muted uppercase tracking-wider font-mono mb-1">{instTab} — price & signals</p>
+          <p className="text-[10px] text-muted mb-3">Green = entry day close · Red = exit day close</p>
+          <ResponsiveContainer width="100%" height={260}>
+            <ComposedChart data={priceChartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+              <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" />
+              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} interval="preserveStartEnd" />
+              <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} domain={['auto', 'auto']} width={52} />
+              <Tooltip
+                contentStyle={{ background: '#0d0f1a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10 }}
+                labelStyle={{ color: '#9ca3af', fontSize: 11 }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Line type="monotone" dataKey="close" name="Close" stroke="#60a5fa" dot={false} strokeWidth={1.5} connectNulls />
+              <Scatter dataKey="entryMark" name="Entry" fill="#34d399" />
+              <Scatter dataKey="exitMark" name="Exit" fill="#f87171" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
       <div className="card overflow-hidden">
         <div className="flex border-b border-white/8">
           {[['trades','Trade Log'], ['stats','Full Stats']].map(([key, label]) => (
-            <button key={key} onClick={() => setTradeTab(key)}
+            <button key={key} type="button" onClick={() => setTradeTab(key)}
               className={`px-4 py-3 text-xs font-mono transition-colors border-b-2 -mb-px ${
                 tradeTab === key ? 'text-accent border-accent' : 'text-muted border-transparent hover:text-soft'
-              }`}>{label}</button>
+              }`}>{label}{activeSym ? ` (${instTab})` : ''}</button>
           ))}
         </div>
 
@@ -1157,8 +1273,8 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
                 </tr>
               </thead>
               <tbody>
-                {!trades?.length && <tr><td colSpan={9} className="px-3 py-8 text-center text-muted">No trades executed</td></tr>}
-                {trades?.map((t, i) => (
+                {!tradesView?.length && <tr><td colSpan={9} className="px-3 py-8 text-center text-muted">No trades executed</td></tr>}
+                {tradesView?.map((t, i) => (
                   <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02]">
                     <td className="px-3 py-2 font-mono text-white">{t.symbol}</td>
                     <td className="px-3 py-2 font-mono"><span className={t.side === 'long' ? 'text-emerald-400' : 'text-red-400'}>{t.side}</span></td>
@@ -1183,20 +1299,20 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
         {tradeTab === 'stats' && (
           <div className="p-4 grid grid-cols-2 gap-0">
             {[
-              ['Initial Capital',  fmtCurrency(r.initialCapital)],
-              ['Final Capital',    fmtCurrency(r.finalCapital)],
-              ['Total Return',     fmtPct(r.totalReturn)],
-              ['CAGR',             fmtPct(r.cagr)],
-              ['Max Drawdown',     fmtPct(r.maxDrawdown)],
-              ['Sharpe Ratio',     fmtNum(r.sharpe)],
-              ['Win Rate',         fmtPct(r.winRate)],
-              ['Profit Factor',    fmtNum(r.profitFactor)],
-              ['Total Trades',     r.totalTrades],
-              ['Avg Hold Days',    r.avgTradeDays],
-              ['Gross Profit',     fmtCurrency(r.grossProfit)],
-              ['Gross Loss',       fmtCurrency(r.grossLoss)],
+              ['Initial Capital',  fmtCurrency(rView.initialCapital)],
+              ['Final Capital',    fmtCurrency(rView.finalCapital)],
+              ['Total Return',     fmtPct(rView.totalReturn)],
+              ['CAGR',             fmtPct(rView.cagr)],
+              ['Max Drawdown',     fmtPct(rView.maxDrawdown)],
+              ['Sharpe Ratio',     fmtNum(rView.sharpe)],
+              ['Win Rate',         fmtPct(rView.winRate)],
+              ['Profit Factor',    fmtNum(rView.profitFactor)],
+              ['Total Trades',     rView.totalTrades],
+              ['Avg Hold Days',    rView.avgTradeDays],
+              ['Gross Profit',     fmtCurrency(rView.grossProfit)],
+              ['Gross Loss',       fmtCurrency(rView.grossLoss)],
             ].map(([k, v]) => (
-              <div key={k} className="flex justify-between items-center px-3 py-2.5 border-b border-white/5 last:border-0">
+              <div key={`${instTab}-${k}`} className="flex justify-between items-center px-3 py-2.5 border-b border-white/5 last:border-0">
                 <span className="text-xs text-muted font-mono">{k}</span>
                 <span className="text-xs text-soft font-mono font-medium">{v}</span>
               </div>
