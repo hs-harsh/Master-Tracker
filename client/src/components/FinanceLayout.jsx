@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 const FINANCE_TABS = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/portfolio', icon: PieChart, label: 'Portfolio' },
   { to: '/investments', icon: Briefcase, label: 'Investments' },
   { to: '/cashflow', icon: TrendingUp, label: 'Cashflow' },
@@ -32,7 +32,7 @@ export default function FinanceLayout() {
           <NavLink
             key={to}
             to={to}
-            end={to === '/'}
+            end={to === '/dashboard'}
             className={({ isActive }) =>
               `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-body transition-all ${
                 isActive ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'

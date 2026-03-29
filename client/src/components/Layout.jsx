@@ -18,7 +18,7 @@ const PUBLIC_NAV = [
 ];
 
 const FINANCE_NAV = [
-  { to: '/',                  icon: LayoutDashboard, label: 'Dashboard',        end: true },
+  { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard',        end: true },
   { to: '/portfolio',         icon: PieChart,        label: 'Portfolio' },
   { to: '/investments',       icon: Briefcase,       label: 'Investments' },
   { to: '/cashflow',          icon: TrendingUp,      label: 'Cashflow' },
@@ -50,9 +50,9 @@ export default function Layout() {
   const [sidebarFinanceEnabled, setSidebarFinanceEnabled] = useState(true);
   const [sidebarWellnessEnabled, setSidebarWellnessEnabled] = useState(true);
 
-  const isFinanceRoute = ['/', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser'].includes(location.pathname);
+  const isFinanceRoute = ['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser'].includes(location.pathname);
   useEffect(() => {
-    if (['/', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser'].includes(location.pathname))
+    if (['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser'].includes(location.pathname))
       setFinanceOpen(true);
   }, [location.pathname]);
   useEffect(() => {

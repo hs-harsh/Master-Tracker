@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import api from './lib/api';
 import Layout from './components/Layout';
 import FinanceLayout from './components/FinanceLayout';
 import Dashboard from './pages/Dashboard';
@@ -331,6 +332,55 @@ function ProtectedOutlet() {
   return isAuth ? <Outlet /> : <OtpLoginForm />;
 }
 
+/** Finance section: redirects to Habits when sidebar finance is disabled; otherwise wraps sub-routes in FinanceLayout. */
+function FinanceGuard() {
+  const [financeEnabled, setFinanceEnabled] = useState(true);
+  const [ready, setReady] = useState(false);
+
+  const loadFinanceFlag = useCallback(() => {
+    return api
+      .get('/settings')
+      .then((r) => {
+        setFinanceEnabled(r.data?.sidebarFinanceEnabled !== false);
+      })
+      .catch(() => {
+        setFinanceEnabled(true);
+      });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadFinanceFlag().finally(() => {
+      if (!cancelled) setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadFinanceFlag]);
+
+  useEffect(() => {
+    const on = () => {
+      loadFinanceFlag();
+    };
+    window.addEventListener('investtrack-settings', on);
+    return () => window.removeEventListener('investtrack-settings', on);
+  }, [loadFinanceFlag]);
+
+  if (!ready) {
+    return (
+      <div className="flex flex-1 items-center justify-center min-h-[40vh]">
+        <Loader2 className="animate-spin text-accent" size={32} />
+      </div>
+    );
+  }
+
+  if (!financeEnabled) {
+    return <Navigate to="/wellness/habits" replace />;
+  }
+
+  return <FinanceLayout />;
+}
+
 function AdminOutlet() {
   const { isAuth, isAdmin } = useAuth();
   if (!isAuth) return <OtpLoginForm />;
@@ -347,8 +397,9 @@ export default function App() {
             <Route path="trade" element={<Trade />} />
             <Route path="stock-trade" element={<StockTrade />} />
             <Route element={<ProtectedOutlet />}>
-              <Route path="/" element={<FinanceLayout />}>
-                <Route index element={<Dashboard />} />
+              <Route path="/" element={<FinanceGuard />}>
+                <Route index element={<Navigate to="/wellness/habits" replace />} />
+                <Route path="dashboard" element={<Dashboard />} />
                 <Route path="portfolio" element={<Portfolio />} />
                 <Route path="investments" element={<Investments />} />
                 <Route path="cashflow" element={<Cashflow />} />
