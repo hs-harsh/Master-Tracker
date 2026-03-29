@@ -282,8 +282,21 @@ Field name rules:
     text = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim();
 
     const parsed = JSON.parse(text);
+    // Handle both formats: new { rules: {...}, suggestions, ... } and old flat { indicators, entry, exit, ... }
+    const rules = parsed.rules
+      || (parsed.indicators || parsed.entry || parsed.exit ? {
+          indicators: parsed.indicators,
+          entry:      parsed.entry,
+          exit:       parsed.exit,
+          stopLoss:   parsed.stopLoss,
+          takeProfit: parsed.takeProfit,
+          maxPositions: parsed.maxPositions,
+          interpretation: parsed.interpretation,
+        }
+      : null);
+    if (!rules) throw new Error('AI returned unparseable rules format');
     res.json({
-      rules:                parsed.rules,
+      rules,
       enhancedStrategyPrompt: parsed.enhancedStrategyPrompt || null,
       enhancedEntryPrompt:    parsed.enhancedEntryPrompt   || null,
       enhancedExitPrompt:     parsed.enhancedExitPrompt    || null,

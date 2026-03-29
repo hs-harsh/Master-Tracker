@@ -26,6 +26,14 @@ const AI_STEPS = [
   'Generating suggestions…',
 ];
 
+const RUN_STEPS = [
+  'Saving strategy…',
+  'Fetching market data…',
+  'Computing indicators…',
+  'Simulating trades…',
+  'Calculating statistics…',
+];
+
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function twoYearsAgo() {
   const d = new Date(); d.setFullYear(d.getFullYear() - 2);
@@ -257,14 +265,43 @@ function InstrumentInput({ value, onChange }) {
   );
 }
 
-// ─── AI Status Overlay ────────────────────────────────────────────────────────
-function AiStatusBar({ active, step }) {
-  if (!active) return null;
+// ─── Status Bars ──────────────────────────────────────────────────────────────
+function AiStatusBar({ active, step, error }) {
+  if (!active && !error) return null;
+  if (error) return (
+    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-300">
+      <AlertCircle size={13} className="shrink-0" />
+      <span>{error}</span>
+    </div>
+  );
   return (
     <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-sm text-purple-300">
       <Loader2 size={13} className="animate-spin shrink-0" />
       <span>{AI_STEPS[Math.min(step, AI_STEPS.length - 1)]}</span>
       <span className="ml-auto text-[10px] font-mono text-purple-400/60">{step + 1}/{AI_STEPS.length}</span>
+    </div>
+  );
+}
+
+function RunStatusBar({ active, step }) {
+  if (!active) return null;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-300">
+        <Loader2 size={13} className="animate-spin shrink-0" />
+        <span>{RUN_STEPS[Math.min(step, RUN_STEPS.length - 1)]}</span>
+        <span className="ml-auto text-[10px] font-mono text-emerald-400/60">{step + 1}/{RUN_STEPS.length}</span>
+      </div>
+      {/* Mini step trail */}
+      <div className="flex gap-1.5 px-1">
+        {RUN_STEPS.map((label, i) => (
+          <div key={i} className={`flex-1 flex flex-col items-center gap-0.5`}>
+            <div className={`h-1 w-full rounded-full transition-all duration-500 ${
+              i < step ? 'bg-emerald-500' : i === step ? 'bg-emerald-500/60' : 'bg-white/10'
+            }`} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -313,7 +350,11 @@ export default function BacktestPage() {
   // AI state
   const [aiActive, setAiActive]         = useState(false);
   const [aiStep, setAiStep]             = useState(0);
+  const [aiError, setAiError]           = useState('');
   const aiIntervalRef                   = useRef(null);
+  // Run state
+  const [runStep, setRunStep]           = useState(0);
+  const runIntervalRef                  = useRef(null);
   // OHLCV multi
   const [ohlcvMap, setOhlcvMap]         = useState({});  // { SYM: rows[] }
   const [ohlcvTab, setOhlcvTab]         = useState('');
@@ -359,7 +400,7 @@ export default function BacktestPage() {
 
   // ── AI step animation ────────────────────────────────────────────────────────
   function startAiAnim() {
-    setAiActive(true); setAiStep(0);
+    setAiActive(true); setAiStep(0); setAiError('');
     aiIntervalRef.current = setInterval(() => {
       setAiStep(s => (s < AI_STEPS.length - 1 ? s + 1 : s));
     }, 1200);
@@ -367,6 +408,17 @@ export default function BacktestPage() {
   function stopAiAnim() {
     clearInterval(aiIntervalRef.current);
     setAiActive(false); setAiStep(0);
+  }
+
+  function startRunAnim() {
+    setRunning(true); setRunStep(0); setRunError('');
+    runIntervalRef.current = setInterval(() => {
+      setRunStep(s => (s < RUN_STEPS.length - 1 ? s + 1 : s));
+    }, 1800);
+  }
+  function stopRunAnim() {
+    clearInterval(runIntervalRef.current);
+    setRunning(false); setRunStep(0);
   }
 
   // ── Form population ──────────────────────────────────────────────────────────
@@ -477,10 +529,13 @@ export default function BacktestPage() {
         dataPrompt: form1.instruments.join(', ') || 'Indian NSE stocks',
         strategyPrompt, entryPrompt, exitPrompt, letAiDecide,
       });
+      if (!data.rules) throw new Error('No rules returned from AI');
+      const slUser = parseFloat(stopLoss);
+      const tpUser = parseFloat(takeProfit);
       const r = {
         ...data.rules,
-        stopLoss:   parseFloat(stopLoss)   / 100 || data.rules?.stopLoss   || 0.03,
-        takeProfit: parseFloat(takeProfit) / 100 || data.rules?.takeProfit || 0.08,
+        stopLoss:   (slUser > 0 ? slUser / 100 : null) ?? data.rules.stopLoss ?? 0.03,
+        takeProfit: (tpUser > 0 ? tpUser / 100 : null) ?? data.rules.takeProfit ?? 0.08,
       };
       setRules(r);
       setAiInterpretation(r);
@@ -493,16 +548,20 @@ export default function BacktestPage() {
         if (r.stopLoss)   setStopLoss(String(+(r.stopLoss * 100).toFixed(1)));
         if (r.takeProfit) setTakeProfit(String(+(r.takeProfit * 100).toFixed(1)));
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      setAiError(e.response?.data?.error || e.message || 'AI failed — try again');
+    }
     finally { stopAiAnim(); }
   }
 
   // ── Run backtest ─────────────────────────────────────────────────────────────
   async function runBacktest() {
     if (!selectedId || !rules) return;
-    setRunning(true); setRunError('');
+    startRunAnim();
     try {
       await api.patch(`/backtest/strategies/${selectedId}`, {
+        strategy_prompt: strategyPrompt,
         entry_prompt: entryPrompt, exit_prompt: exitPrompt,
         rules: { ...rules, stopLoss: parseFloat(stopLoss)/100, takeProfit: parseFloat(takeProfit)/100 },
       });
@@ -513,7 +572,7 @@ export default function BacktestPage() {
       setShowResults(true);
     } catch (e) {
       setRunError(e.response?.data?.error || 'Backtest failed');
-    } finally { setRunning(false); }
+    } finally { stopRunAnim(); }
   }
 
   async function reloadStrategy(id) {
@@ -601,7 +660,7 @@ export default function BacktestPage() {
             <ResultsPanel
               strategyId={selectedId}
               strategies={strategies}
-              onEdit={() => { setShowResults(false); setStep(3); }}
+              onEdit={() => { setShowResults(false); setStep(2); }}
               onReload={reloadStrategy}
             />
           ) : (
@@ -617,10 +676,10 @@ export default function BacktestPage() {
               aiInterpretation={aiInterpretation}
               aiSuggestions={aiSuggestions}
               aiQuestions={aiQuestions}
-              aiActive={aiActive} aiStep={aiStep}
+              aiActive={aiActive} aiStep={aiStep} aiError={aiError}
               ohlcvMap={ohlcvMap} ohlcvTab={ohlcvTab} setOhlcvTab={setOhlcvTab}
               ohlcvLoading={ohlcvLoading} ohlcvErrors={ohlcvErrors}
-              saving={saving} running={running} runError={runError}
+              saving={saving} running={running} runStep={runStep} runError={runError}
               hasDraft={hasDraft}
               onFetchOhlcv={fetchOhlcvAll}
               onCallAI={callAI}
@@ -659,9 +718,9 @@ function WizardPanel({
   entryPrompt, setEntryPrompt, exitPrompt, setExitPrompt,
   stopLoss, setStopLoss, takeProfit, setTakeProfit,
   rules, aiInterpretation, aiSuggestions, aiQuestions,
-  aiActive, aiStep,
+  aiActive, aiStep, aiError,
   ohlcvMap, ohlcvTab, setOhlcvTab, ohlcvLoading, ohlcvErrors,
-  saving, running, runError, hasDraft,
+  saving, running, runStep, runError, hasDraft,
   onFetchOhlcv, onCallAI, onGoStep2, onRun, onDiscard,
 }) {
   const STEPS = ['Data Setup', 'Strategy'];
@@ -819,7 +878,7 @@ function WizardPanel({
           )}
 
           <div className="flex justify-end pt-2">
-            <button onClick={onGoStep2} disabled={saving || !form1.instruments.length}
+            <button onClick={onGoStep2} disabled={saving}
               className="btn-primary flex items-center gap-2">
               {saving && <Loader2 size={14} className="animate-spin" />}
               Next: Strategy <ArrowRight size={14} />
@@ -845,7 +904,7 @@ function WizardPanel({
             </button>
           </div>
 
-          <AiStatusBar active={aiActive} step={aiStep} />
+          <AiStatusBar active={aiActive} step={aiStep} error={aiError} />
 
           {/* Strategy prompt */}
           <div className="space-y-1.5">
@@ -964,6 +1023,9 @@ function WizardPanel({
             </div>
           )}
 
+          {/* Run status */}
+          <RunStatusBar active={running} step={runStep} />
+
           {runError && (
             <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
               <AlertCircle size={14} className="text-red-400 shrink-0 mt-0.5" />
@@ -972,12 +1034,15 @@ function WizardPanel({
           )}
 
           <div className="flex justify-between pt-2">
-            <button onClick={() => setStep(1)} className="btn-ghost flex items-center gap-2 text-sm">
+            <button onClick={() => setStep(1)} disabled={running} className="btn-ghost flex items-center gap-2 text-sm disabled:opacity-40">
               <ArrowLeft size={14} /> Back
             </button>
-            <button onClick={onRun} disabled={running || !rules} className="btn-primary flex items-center gap-2">
-              {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-              Run Backtest ({form1.capital ? `₹${parseInt(form1.capital).toLocaleString('en-IN')}` : '₹10,000'})
+            <button onClick={onRun} disabled={running || !rules}
+              className="btn-primary flex items-center gap-2 disabled:opacity-50">
+              {running
+                ? <><Loader2 size={14} className="animate-spin" /> Running…</>
+                : <><Play size={14} /> Run Backtest ({form1.capital ? `₹${parseInt(form1.capital).toLocaleString('en-IN')}` : '₹10,000'})</>
+              }
             </button>
           </div>
         </div>
