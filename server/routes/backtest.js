@@ -3,8 +3,8 @@ const router         = express.Router();
 const pool           = require('../db');
 const auth           = require('../middleware/auth');
 const { runBacktest } = require('../utils/backtestEngine');
-const { YahooFinance } = require('yahoo-finance2');
-const yf = new YahooFinance();
+const YahooFinance = require('yahoo-finance2').default;
+const yf = new YahooFinance({ suppressNotices: ['ripHistorical'] });
 
 router.use(auth);
 
