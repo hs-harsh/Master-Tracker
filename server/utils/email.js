@@ -1,39 +1,35 @@
-// Email sending via Resend HTTP API (port 443 — works on Railway, no SMTP needed)
-// Requires: RESEND_API_KEY env var
-// Optional: RESEND_FROM env var (defaults to onboarding@resend.dev for testing)
-//   Note: onboarding@resend.dev can only send to your own verified email.
-//   To send to any email, add and verify a domain at resend.com and set RESEND_FROM.
+// Email sending via nodemailer + Gmail SMTP
+// Requires: SMTP_USER and SMTP_PASS env vars (Gmail App Password)
+// Optional: RESEND_API_KEY + RESEND_FROM — falls back to Resend if SMTP not configured
 
-const RESEND_API = 'https://api.resend.com/emails';
+const nodemailer = require('nodemailer');
 
-function getConfig() {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      'RESEND_API_KEY is not set. Sign up at resend.com, create an API key, ' +
-      'and add it as a Railway environment variable.'
-    );
+// Lazy-create a single reusable transport
+let _transport = null;
+function getTransport() {
+  if (_transport) return _transport;
+  const user = process.env.SMTP_USER;
+  const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, ''); // strip spaces from app password
+  if (!user || !pass) {
+    throw new Error('SMTP_USER / SMTP_PASS not set in environment. Add Gmail SMTP credentials.');
   }
-  const from = process.env.RESEND_FROM || 'onboarding@resend.dev';
-  return { apiKey, from };
+  _transport = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user, pass },
+  });
+  return _transport;
 }
 
 async function sendViaResend({ to, subject, html, text }) {
-  const { apiKey, from } = getConfig();
-
-  const resp = await fetch(RESEND_API, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ from: `InvestTrack <${from}>`, to, subject, html, text }),
+  const from = process.env.SMTP_USER;
+  const transport = getTransport();
+  await transport.sendMail({
+    from: `InvestTrack <${from}>`,
+    to,
+    subject,
+    html,
+    text,
   });
-
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}));
-    throw new Error(`Resend API error ${resp.status}: ${body.message || body.name || resp.statusText}`);
-  }
 }
 
 async function sendAdminOtp(toEmail, otp) {
