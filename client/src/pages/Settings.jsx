@@ -281,9 +281,10 @@ export default function Settings() {
 
       {/* ── 4. AI ── */}
       <div className="card max-w-2xl">
-        <h2 className="font-display font-bold text-white mb-2">Expense Analyser (AI)</h2>
+        <h2 className="font-display font-bold text-white mb-2">Claude / Anthropic (AI)</h2>
         <p className="text-sm text-soft mb-4">
-          Required for the <strong>Expense Analyser</strong> tab. Get a key at{' '}
+          Used for <strong>Expense Analyser</strong>, <strong>Live Trading</strong> (backtest strategy parsing), <strong>Meals</strong> and <strong>Workouts</strong> AI features.
+          Paste your key below and click <strong>Save all</strong>. Get a key at{' '}
           <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">console.anthropic.com</a>.
         </p>
         <div>

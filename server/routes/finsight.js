@@ -1,19 +1,17 @@
 const express = require('express');
-const pool = require('../db');
 const router = express.Router();
+const { getAnthropicApiKey } = require('../utils/anthropicKey');
 
 const MODEL = 'claude-sonnet-4-20250514';
 
-async function getSetting(key) {
-  const { rows } = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
-  return (rows[0]?.value ?? '').trim();
-}
-
 // POST /api/chat — proxy for Expense Analyser (Anthropic Claude)
 router.post('/', async (req, res) => {
-  const key = (await getSetting('anthropic_api_key')) || process.env.ANTHROPIC_API_KEY || '';
+  const key = await getAnthropicApiKey();
   if (!key) {
-    return res.status(500).json({ error: 'Anthropic API key not set. Add it in Settings → Expense Analyser (or set ANTHROPIC_API_KEY in .env).' });
+    return res.status(500).json({
+      error:
+        'Anthropic API key not set. Add it in Settings under “Claude / Anthropic (AI)” and Save all, or set ANTHROPIC_API_KEY / CLAUDE_API_KEY on the server.',
+    });
   }
 
   const body = { ...req.body, model: MODEL };

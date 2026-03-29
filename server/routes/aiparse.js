@@ -1,16 +1,12 @@
 const express = require('express');
 const pool = require('../db');
 const auth = require('../middleware/auth');
+const { getAnthropicApiKey } = require('../utils/anthropicKey');
 const router = express.Router();
 
 const TX_TYPES    = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
 const INV_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const INV_SIDES   = ['BUY', 'SELL'];
-
-async function getApiKey() {
-  const { rows } = await pool.query("SELECT value FROM settings WHERE key = 'anthropic_api_key'");
-  return (rows[0]?.value ?? '').trim() || process.env.ANTHROPIC_API_KEY || '';
-}
 
 // Snap an AI-returned account name to the closest real person, or fallback to persons[0].
 // Prevents "Account does not belong to your profile" 403s.
@@ -172,7 +168,7 @@ router.post('/edit', auth, async (req, res) => {
     return res.status(400).json({ error: 'type must be transactions or investments' });
   }
 
-  const key = await getApiKey();
+  const key = await getAnthropicApiKey();
   console.log(`${tag} API key fetched — ${Date.now()-t0}ms — key present=${!!key}`);
   if (!key) return res.status(500).json({ error: 'Anthropic API key not set. Add it in Settings → Expense Analyser.' });
 
@@ -290,7 +286,7 @@ router.post('/parse', auth, async (req, res) => {
     return res.status(400).json({ error: 'type must be transactions, investments, or cashflow' });
   }
 
-  const key = await getApiKey();
+  const key = await getAnthropicApiKey();
   console.log(`${tag} API key fetched — ${Date.now()-t0}ms — key present=${!!key}`);
   if (!key) return res.status(500).json({ error: 'Anthropic API key not set. Add it in Settings → Expense Analyser.' });
 
@@ -388,7 +384,7 @@ router.post('/parse-image', auth, async (req, res) => {
 
   if (!imageList.length) return res.status(400).json({ error: 'At least one image is required' });
 
-  const key = await getApiKey();
+  const key = await getAnthropicApiKey();
   console.log(`${tag} API key fetched — ${Date.now()-t0}ms — key present=${!!key}`);
   if (!key) return res.status(500).json({ error: 'Anthropic API key not set. Add it in Settings → Expense Analyser.' });
 

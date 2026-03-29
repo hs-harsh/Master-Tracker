@@ -3,6 +3,7 @@ const router             = express.Router();
 const pool               = require('../db');
 const auth               = require('../middleware/auth');
 const { sendMealPlanEmail } = require('../utils/email');
+const { getAnthropicApiKey } = require('../utils/anthropicKey');
 
 router.use(auth);
 
@@ -20,11 +21,6 @@ function getMonday(dateStr) {
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-
-async function getApiKey() {
-  const { rows } = await pool.query("SELECT value FROM settings WHERE key='anthropic_api_key'");
-  return (rows[0]?.value ?? '').trim() || process.env.ANTHROPIC_API_KEY || '';
 }
 
 function getWeekDays(weekStart) {
@@ -232,7 +228,7 @@ router.get('/calendar', async (req, res) => {
 // ── Generate grocery lists via Claude ─────────────────────────────────────────
 async function generateGroceryLists(entries) {
   try {
-    const apiKey = await getApiKey();
+    const apiKey = await getAnthropicApiKey();
     if (!apiKey) return null;
 
     const mealSummary = entries.map(e =>
@@ -371,7 +367,7 @@ Requirements:
 - Vary meals significantly compared to last week
 - Align meals with the user's goal above`;
 
-    const apiKey = await getApiKey();
+    const apiKey = await getAnthropicApiKey();
     if (!apiKey) return res.status(500).json({ error: 'Anthropic API key not configured in Settings' });
 
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {

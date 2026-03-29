@@ -3,6 +3,7 @@ const router  = express.Router();
 const pool    = require('../db');
 const auth    = require('../middleware/auth');
 const { sendWorkoutPlanEmail } = require('../utils/email');
+const { getAnthropicApiKey } = require('../utils/anthropicKey');
 
 router.use(auth);
 
@@ -205,11 +206,6 @@ router.get('/calendar', async (req, res) => {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-async function getApiKey() {
-  const { rows } = await pool.query("SELECT value FROM settings WHERE key='anthropic_api_key'");
-  return (rows[0]?.value ?? '').trim() || process.env.ANTHROPIC_API_KEY || '';
-}
-
 function getWeekDays(weekStart) {
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart + 'T12:00:00');
@@ -322,7 +318,7 @@ Requirements:
 - Align with the user's split preference above
 - Vary exercises compared to last week to avoid monotony`;
 
-    const apiKey = await getApiKey();
+    const apiKey = await getAnthropicApiKey();
     if (!apiKey) return res.status(500).json({ error: 'Anthropic API key not configured in Settings' });
 
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {

@@ -3,6 +3,7 @@ const router         = express.Router();
 const pool           = require('../db');
 const auth           = require('../middleware/auth');
 const { runBacktest } = require('../utils/backtestEngine');
+const { getAnthropicApiKey } = require('../utils/anthropicKey');
 const YahooFinance = require('yahoo-finance2').default;
 const yf = new YahooFinance({ suppressNotices: ['ripHistorical'] });
 
@@ -186,13 +187,11 @@ router.delete('/strategies/:id', async (req, res) => {
 router.post('/ai/parse-rules', async (req, res) => {
   const { dataPrompt, strategyPrompt, entryPrompt, exitPrompt } = req.body;
   try {
-    const { rows } = await pool.query(
-      `SELECT value FROM settings WHERE key='anthropic_api_key' LIMIT 1`
-    );
-    const apiKey = (rows[0]?.value ?? '').trim() || process.env.ANTHROPIC_API_KEY;
+    const apiKey = await getAnthropicApiKey();
     if (!apiKey) {
       return res.status(400).json({
-        error: 'Claude API key not configured. Add it in Settings → AI Configuration.',
+        error:
+          'Claude API key not configured. In Settings, add your Anthropic API key under “Claude / Anthropic (AI)” and click Save all. You can also set ANTHROPIC_API_KEY or CLAUDE_API_KEY on the server.',
       });
     }
 
