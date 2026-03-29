@@ -381,12 +381,10 @@ Return ONLY this JSON:
   "suggestions": ["suggestion 1", "suggestion 2", "suggestion 3"],
   "questions": []
 }`
-      : `Parse this trading strategy into structured JSON rules AND improve the user's prompts:
+      : `Parse this trading strategy into structured JSON rules. The user describes EVERYTHING in one text block (entries, exits, risk ideas, indicators). Infer entry rules (when to BUY), exit rules (when to SELL), and indicators from that description alone.
 
 Data context: "${dataPrompt || 'Indian NSE stocks'}"
-Core strategy idea: "${strategyPrompt || ''}"
-Entry conditions (when to BUY): "${entryPrompt || ''}"
-Exit conditions (when to SELL): "${exitPrompt || ''}"
+Strategy description (complete): "${strategyPrompt || ''}"
 
 Return ONLY this JSON:
 {
@@ -400,8 +398,8 @@ Return ONLY this JSON:
     "interpretation": "Plain English summary in one sentence"
   },
   "enhancedStrategyPrompt": "Improved version of the user's strategy description",
-  "enhancedEntryPrompt": "Improved entry conditions prompt",
-  "enhancedExitPrompt": "Improved exit conditions prompt",
+  "enhancedEntryPrompt": null,
+  "enhancedExitPrompt": null,
   "suggestions": ["Actionable improvement 1", "Actionable improvement 2"],
   "questions": ["Question about missing param if any, e.g. What holding period do you prefer?"]
 }

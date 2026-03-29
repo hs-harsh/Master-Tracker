@@ -340,9 +340,6 @@ export default function BacktestPage() {
   const [aiInterpretation, setAiInterpretation] = useState(null);
   const [aiSuggestions, setAiSuggestions]   = useState([]);
   const [aiQuestions, setAiQuestions]       = useState([]);
-  // Step 3
-  const [entryPrompt, setEntryPrompt]   = useState('');
-  const [exitPrompt, setExitPrompt]     = useState('');
   const [stopLoss, setStopLoss]         = useState('3');
   const [takeProfit, setTakeProfit]     = useState('8');
   const [rules, setRules]               = useState(null);
@@ -367,8 +364,8 @@ export default function BacktestPage() {
 
   // ── Draft auto-save ──────────────────────────────────────────────────────────
   const draftState = useCallback(() => ({
-    form1, strategyPrompt, entryPrompt, exitPrompt, stopLoss, takeProfit, rules,
-  }), [form1, strategyPrompt, entryPrompt, exitPrompt, stopLoss, takeProfit, rules]);
+    form1, strategyPrompt, stopLoss, takeProfit, rules,
+  }), [form1, strategyPrompt, stopLoss, takeProfit, rules]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -433,8 +430,6 @@ export default function BacktestPage() {
       capital:    f.capital    ?? String(s.capital || 10000),
     });
     setStrategyPrompt(d.strategyPrompt ?? (s.strategy_prompt || ''));
-    setEntryPrompt(d.entryPrompt ?? (s.entry_prompt || ''));
-    setExitPrompt(d.exitPrompt ?? (s.exit_prompt || ''));
     setStopLoss(d.stopLoss ?? (s.rules?.stopLoss ? String(+(s.rules.stopLoss * 100).toFixed(1)) : '3'));
     setTakeProfit(d.takeProfit ?? (s.rules?.takeProfit ? String(+(s.rules.takeProfit * 100).toFixed(1)) : '8'));
     setRules(d.rules ?? s.rules ?? null);
@@ -463,7 +458,7 @@ export default function BacktestPage() {
       setStrategies(prev => [data, ...prev]);
       setSelectedId(data.id);
       setForm1({ name: 'Untitled Strategy', instruments: [], frequency: '1d', date_from: twoYearsAgo(), date_to: todayStr(), capital: '10000' });
-      setStrategyPrompt(''); setEntryPrompt(''); setExitPrompt('');
+      setStrategyPrompt('');
       setRules(null); setAiInterpretation(null);
       setAiSuggestions([]); setAiQuestions([]);
       setOhlcvMap({}); setOhlcvTab(''); setRunError('');
@@ -484,6 +479,32 @@ export default function BacktestPage() {
     clearDraft(selectedId);
     setHasDraft(false);
     populateForm(selected, null);
+  }
+
+  function handleResetPrompts() {
+    if (!selectedId) return;
+    if (strategyPrompt.trim() || rules) {
+      if (!confirm('Clear strategy text, AI suggestions, and parsed rules?')) return;
+    }
+    setStrategyPrompt('');
+    setRules(null);
+    setAiInterpretation(null);
+    setAiSuggestions([]);
+    setAiQuestions([]);
+    setAiError('');
+    setStopLoss('3');
+    setTakeProfit('8');
+    setRunError('');
+    if (selectedId) {
+      saveDraft(selectedId, {
+        form1,
+        strategyPrompt: '',
+        stopLoss: '3',
+        takeProfit: '8',
+        rules: null,
+      });
+      setHasDraft(true);
+    }
   }
 
   // ── OHLCV multi-fetch ────────────────────────────────────────────────────────
@@ -535,7 +556,10 @@ export default function BacktestPage() {
     try {
       const { data } = await api.post('/backtest/ai/parse-rules', {
         dataPrompt: form1.instruments.join(', ') || 'Indian NSE stocks',
-        strategyPrompt, entryPrompt, exitPrompt, letAiDecide,
+        strategyPrompt,
+        entryPrompt: '',
+        exitPrompt: '',
+        letAiDecide,
       });
       if (!data.rules) throw new Error('No rules returned from AI');
       const slUser = parseFloat(stopLoss);
@@ -551,8 +575,6 @@ export default function BacktestPage() {
       setAiQuestions(data.questions || []);
       if (letAiDecide || data.enhancedStrategyPrompt) {
         if (data.enhancedStrategyPrompt) setStrategyPrompt(data.enhancedStrategyPrompt);
-        if (data.enhancedEntryPrompt)    setEntryPrompt(data.enhancedEntryPrompt);
-        if (data.enhancedExitPrompt)     setExitPrompt(data.enhancedExitPrompt);
         if (r.stopLoss)   setStopLoss(String(+(r.stopLoss * 100).toFixed(1)));
         if (r.takeProfit) setTakeProfit(String(+(r.takeProfit * 100).toFixed(1)));
       }
@@ -580,7 +602,8 @@ export default function BacktestPage() {
     try {
       await api.patch(`/backtest/strategies/${selectedId}`, {
         strategy_prompt: strategyPrompt,
-        entry_prompt: entryPrompt, exit_prompt: exitPrompt,
+        entry_prompt: '',
+        exit_prompt: '',
         rules: { ...rules, stopLoss: parseFloat(stopLoss)/100, takeProfit: parseFloat(takeProfit)/100 },
       });
       const { data } = await api.post(`/backtest/strategies/${selectedId}/run`, {
@@ -688,8 +711,6 @@ export default function BacktestPage() {
               step={step} setStep={setStep}
               form1={form1} setForm1={setForm1}
               strategyPrompt={strategyPrompt} setStrategyPrompt={setStrategyPrompt}
-              entryPrompt={entryPrompt} setEntryPrompt={setEntryPrompt}
-              exitPrompt={exitPrompt} setExitPrompt={setExitPrompt}
               stopLoss={stopLoss} setStopLoss={setStopLoss}
               takeProfit={takeProfit} setTakeProfit={setTakeProfit}
               rules={rules}
@@ -707,6 +728,7 @@ export default function BacktestPage() {
               onRun={runBacktest}
               canRun={form1.instruments.length > 0 && form1.instruments.every((s) => !!ohlcvMap[s]?.length)}
               onDiscard={handleDiscard}
+              onResetPrompts={handleResetPrompts}
             />
           )}
         </div>
@@ -736,13 +758,13 @@ export default function BacktestPage() {
 function WizardPanel({
   step, setStep, form1, setForm1,
   strategyPrompt, setStrategyPrompt,
-  entryPrompt, setEntryPrompt, exitPrompt, setExitPrompt,
   stopLoss, setStopLoss, takeProfit, setTakeProfit,
   rules, aiInterpretation, aiSuggestions, aiQuestions,
   aiActive, aiStep, aiError,
   ohlcvMap, ohlcvTab, setOhlcvTab, ohlcvLoading, ohlcvErrors,
   saving, running, runStep, runError, hasDraft,
   onFetchOhlcv, onCallAI, onGoStep2, onRun, onDiscard,
+  onResetPrompts,
   canRun,
 }) {
   const STEPS = ['Data Setup', 'Strategy'];
@@ -750,6 +772,29 @@ function WizardPanel({
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-6">
+      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+        <p className="text-sm font-display font-semibold text-white flex items-center gap-2">
+          <Lightbulb size={16} className="text-accent shrink-0" />
+          How strategy creation works
+        </p>
+        <ol className="text-xs text-soft space-y-2.5 list-decimal pl-4 leading-relaxed marker:text-muted">
+          <li>
+            <span className="text-white font-medium">Data setup</span>
+            {' — '}Give the strategy a name, add tickers, choose date range, bar size (e.g. 1d), and starting capital. Tap{' '}
+            <strong className="text-soft">Fetch &amp; Preview Data</strong> for every symbol. The simulator only uses this OHLCV (nothing is re-downloaded at run time).
+          </li>
+          <li>
+            <span className="text-white font-medium">Strategy</span>
+            {' — '}Write your full idea in one place: when to buy, when to sell, indicators, risk. Use{' '}
+            <strong className="text-soft">Let AI Decide</strong> for a complete draft, or <strong className="text-soft">AI Parse Strategy</strong> to turn your text into rules. Adjust stop loss / take profit, check the parsed rules, then <strong className="text-soft">Run Backtest</strong>.
+          </li>
+          <li>
+            <span className="text-white font-medium">Results</span>
+            {' — '}Review combined and per-symbol stats, trades, and price charts with entries/exits. <strong className="text-soft">Edit Strategy</strong> returns you here to change prompts and re-run.
+          </li>
+        </ol>
+      </div>
+
       {/* Draft banner */}
       {hasDraft && (
         <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
@@ -909,7 +954,7 @@ function WizardPanel({
         </div>
       )}
 
-      {/* ── Step 2: Strategy + Entry/Exit ── */}
+      {/* ── Step 2: Strategy ── */}
       {step === 2 && (
         <div className="space-y-5">
           <div className={`rounded-xl border px-4 py-3 text-xs ${Object.keys(ohlcvMap).length >= form1.instruments.length && form1.instruments.every(s => ohlcvMap[s]?.length)
@@ -943,26 +988,20 @@ function WizardPanel({
 
           {/* Strategy prompt */}
           <div className="space-y-1.5">
-            <label className="label">Strategy idea</label>
-            <textarea className="input min-h-[90px] resize-none" value={strategyPrompt}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <label className="label mb-0">Strategy description</label>
+              <button
+                type="button"
+                onClick={onResetPrompts}
+                className="flex items-center gap-1.5 text-xs text-muted hover:text-soft px-2.5 py-1.5 rounded-lg border border-white/10 hover:bg-white/[0.04] transition-colors shrink-0"
+              >
+                <RotateCcw size={12} /> Reset prompts
+              </button>
+            </div>
+            <p className="text-[11px] text-muted -mt-0.5">Include entries, exits, indicators, and risk in this one box — AI will infer structured rules.</p>
+            <textarea className="input min-h-[120px] resize-none" value={strategyPrompt}
               onChange={e => setStrategyPrompt(e.target.value)}
-              placeholder="e.g. Buy when RSI drops below 30 and price is above the 50-day moving average…" />
-          </div>
-
-          {/* Entry / Exit inline */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <label className="label">Entry <span className="text-muted font-normal text-xs">(when to BUY)</span></label>
-              <textarea className="input min-h-[72px] resize-none text-sm" value={entryPrompt}
-                onChange={e => setEntryPrompt(e.target.value)}
-                placeholder="RSI crosses below 30 AND price above SMA 50" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="label">Exit <span className="text-muted font-normal text-xs">(when to SELL)</span></label>
-              <textarea className="input min-h-[72px] resize-none text-sm" value={exitPrompt}
-                onChange={e => setExitPrompt(e.target.value)}
-                placeholder="RSI crosses above 65 OR max 10 days" />
-            </div>
+              placeholder="Example: Go long when RSI(14) is below 30 and close is above the 50-day SMA. Exit when RSI rises above 65 or stop −3% / target +8%." />
           </div>
 
           {/* Risk params */}
@@ -981,7 +1020,7 @@ function WizardPanel({
 
           {/* AI Parse button */}
           <button onClick={() => onCallAI(false)}
-            disabled={aiActive || (!strategyPrompt.trim() && !entryPrompt.trim() && !exitPrompt.trim())}
+            disabled={aiActive || !strategyPrompt.trim()}
             className="btn-ghost flex items-center gap-2 text-sm">
             <Sparkles size={14} className="text-purple-400" />
             AI Parse Strategy
