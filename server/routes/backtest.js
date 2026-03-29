@@ -5,6 +5,8 @@ const auth           = require('../middleware/auth');
 const {
   runBacktestPerSymbolAllocation,
   validateRulesDataCoverage,
+  findMissingRuleFields,
+  expandRulesForVolumeDerivedFields,
 } = require('../utils/backtestEngine');
 const { getAnthropicApiKey } = require('../utils/anthropicKey');
 const YahooFinance = require('yahoo-finance2').default;
@@ -39,6 +41,131 @@ function ohlcvMapFromClientBody(ohlcvData, instruments) {
     if (upper[u]?.length) out[sym] = upper[u];
   }
   return out;
+}
+
+function mergeIndicatorsDedupe(existing, toAdd) {
+  const key = (i) =>
+    `${String(i.name || '')
+      .toLowerCase()
+      .replace(/[^a-z_]/g, '')}_${i.period ?? 14}_${String(i.source || 'close').toLowerCase()}`;
+  const map = new Map();
+  for (const i of [...(existing || []), ...(toAdd || [])]) {
+    if (!i || !i.name) continue;
+    map.set(key(i), {
+      name:   i.name,
+      period: i.period ?? 14,
+      source: i.source || 'close',
+    });
+  }
+  return [...map.values()];
+}
+
+function applyFieldAliasesToRules(rules, aliases) {
+  if (!aliases || typeof aliases !== 'object' || !rules) return rules;
+  const entries = Object.entries(aliases).filter(([, b]) => typeof b === 'string' && b.length);
+  if (!entries.length) return rules;
+  const aliasMap = Object.fromEntries(entries);
+  const sub = (v) => {
+    if (typeof v !== 'string') return v;
+    const t = v.trim();
+    return aliasMap[t] !== undefined ? aliasMap[t] : v;
+  };
+  const walkConds = (conds) => {
+    if (!Array.isArray(conds)) return conds;
+    return conds.map((c) => ({
+      ...c,
+      left:  sub(c.left),
+      right: sub(c.right),
+    }));
+  };
+  return {
+    ...rules,
+    entry: { ...rules.entry, long: walkConds(rules.entry?.long) },
+    exit:  { ...rules.exit,  long: walkConds(rules.exit?.long) },
+  };
+}
+
+/** Ask Claude whether missing rule fields can be computed from OHLCV + supported indicators. */
+async function tryAiResolveMissingRuleFields(apiKey, rules, missingFields) {
+  if (!missingFields?.length) return { ok: true, rules };
+  const systemPrompt =
+    'You validate trading backtest rules against a fixed OHLCV engine. Reply with ONLY valid JSON, no markdown.';
+  const userMessage = `STEP 1 bars always include: date, open, high, low, close, volume.
+
+The engine can ONLY compute these indicator types (exact "name" values):
+- sma, ema, rsi — need "period" and "source" (close|high|low). Row keys: sma_N, ema_N, rsi_N.
+- macd — no period. Keys: macd, macd_signal, macd_histogram.
+- bollinger — period. Keys: bb_upper_N, bb_mid_N, bb_lower_N.
+- atr — period. Key: atr_N.
+- volume_ma or volume_sma — period, computed on volume. Keys: vol_ma_N and volume_sma_N.
+
+Field names in rules must match those keys (e.g. rsi_14, sma_50, volume_sma_20).
+
+These fields are referenced in entry/exit but MISSING after computing current indicators:
+${JSON.stringify(missingFields)}
+
+Current indicators:
+${JSON.stringify(rules.indicators || [])}
+
+Return ONLY this JSON:
+{
+  "canComputeAll": true or false,
+  "indicatorsToAdd": [{"name":"rsi","period":14,"source":"close"}],
+  "fieldAliases": {"wrong_key": "correct_key"},
+  "explanation": "One short sentence"
+}
+
+If every missing field can be produced by adding indicators from the list above (and/or fixing typos via fieldAliases), set canComputeAll true.
+If any missing field needs data outside OHLCV (VWAP, fundamentals, sentiment, etc.), set canComputeAll false and explain.`;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method:  'POST',
+    headers: {
+      'x-api-key':         apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type':      'application/json',
+    },
+    body: JSON.stringify({
+      model:      'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system:     systemPrompt,
+      messages:   [{ role: 'user', content: userMessage }],
+    }),
+  });
+
+  const aiData = await response.json();
+  if (!response.ok) {
+    return { ok: false, error: aiData.error?.message || 'AI field check failed' };
+  }
+
+  let text = aiData.content?.[0]?.text || '';
+  text = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { ok: false, error: 'AI field check returned invalid JSON' };
+  }
+
+  if (!parsed.canComputeAll) {
+    return {
+      ok:    false,
+      error: parsed.explanation || 'AI: one or more fields cannot be computed from Step 1 OHLCV.',
+    };
+  }
+
+  let next = {
+    ...rules,
+    indicators: mergeIndicatorsDedupe(rules.indicators, parsed.indicatorsToAdd || []),
+  };
+  next = applyFieldAliasesToRules(next, parsed.fieldAliases || {});
+  next = expandRulesForVolumeDerivedFields(next);
+
+  return {
+    ok:          true,
+    rules:       next,
+    explanation: parsed.explanation || '',
+  };
 }
 
 // ── GET /api/backtest/ohlcv?symbol=&from=&to=&interval= ──────────────────────
@@ -286,7 +413,9 @@ Field name rules:
 - indicator "name" must be one of: rsi, sma, ema, macd, bollinger, atr, volume_ma (aliases: volume_sma, volumesma — SMA of volume; exposes vol_ma_N and volume_sma_N)
 - "source" must be: close, high, or low
 - stopLoss and takeProfit are decimal fractions (0.03 = 3%)
-- questions array should be empty [] if all info is provided`;
+- questions array should be empty [] if all info is provided
+
+Before you return JSON, check: every string in entry.long and exit.long (left/right, except plain numbers) must match a column that EXISTS after computing your indicators on OHLCV (date, open, high, low, close, volume). If a field would be missing, ADD the corresponding indicator to the indicators array instead of inventing unsupported names.`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method:  'POST',
@@ -385,13 +514,43 @@ router.post('/strategies/:id/run', async (req, res) => {
       return res.status(400).json({ error: msg });
     }
 
-    const coverage = validateRulesDataCoverage(ohlcvMap, strat.rules);
-    if (!coverage.ok) {
-      await pool.query(`UPDATE bt_strategies SET status='error', error_msg=$1 WHERE id=$2`, [coverage.message, id]);
-      return res.status(400).json({ error: coverage.message });
+    let rulesToUse =
+      strat.rules && typeof strat.rules === 'object'
+        ? JSON.parse(JSON.stringify(strat.rules))
+        : {};
+
+    let coverage = validateRulesDataCoverage(ohlcvMap, rulesToUse);
+    let aiFieldNote = '';
+    const allowAiFieldCheck = req.body?.aiResolveRuleFields !== false;
+
+    if (!coverage.ok && allowAiFieldCheck) {
+      const apiKey = await getAnthropicApiKey();
+      if (apiKey) {
+        const { missing } = findMissingRuleFields(ohlcvMap, rulesToUse);
+        if (missing.length) {
+          const ai = await tryAiResolveMissingRuleFields(apiKey, rulesToUse, missing);
+          if (ai.ok && ai.rules) {
+            rulesToUse = ai.rules;
+            if (ai.explanation) aiFieldNote = ai.explanation;
+            await pool.query(
+              `UPDATE bt_strategies SET rules = $1::jsonb, updated_at = NOW() WHERE id = $2 AND user_id = $3`,
+              [JSON.stringify(rulesToUse), id, req.user.id]
+            );
+            coverage = validateRulesDataCoverage(ohlcvMap, rulesToUse);
+          } else if (ai.error) {
+            aiFieldNote = ai.error;
+          }
+        }
+      }
     }
 
-    const results = runBacktestPerSymbolAllocation(ohlcvMap, strat.rules, parseFloat(strat.capital));
+    if (!coverage.ok) {
+      const msg = [coverage.message, aiFieldNote].filter(Boolean).join(' ');
+      await pool.query(`UPDATE bt_strategies SET status='error', error_msg=$1 WHERE id=$2`, [msg, id]);
+      return res.status(400).json({ error: msg });
+    }
+
+    const results = runBacktestPerSymbolAllocation(ohlcvMap, rulesToUse, parseFloat(strat.capital));
 
     // Store results
     const { rows } = await pool.query(

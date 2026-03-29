@@ -147,18 +147,13 @@ function expandRulesForVolumeDerivedFields(rules) {
   return { ...rules, indicators };
 }
 
-/**
- * Ensure rules only use columns present after buildRows (indicators + OHLCV).
- * Returns { ok, message? }.
- */
-function validateRulesDataCoverage(ohlcvMap, rules) {
+/** After volume expansion: list rule string fields still absent from built rows. */
+function findMissingRuleFields(ohlcvMap, rules) {
   const symbols = Object.keys(ohlcvMap);
-  if (symbols.length === 0) {
-    return { ok: false, message: 'No price data. Fetch OHLCV in Data Setup (Step 1) first.' };
-  }
   const refs = collectReferencedRuleFields(rules);
-  if (refs.length === 0) return { ok: true };
-
+  if (refs.length === 0) {
+    return { missing: [], effRules: expandRulesForVolumeDerivedFields(rules) };
+  }
   const effRules = expandRulesForVolumeDerivedFields(rules);
   const missing = new Set();
   for (const f of refs) {
@@ -173,16 +168,27 @@ function validateRulesDataCoverage(ohlcvMap, rules) {
       }
     }
   }
+  return { missing: [...missing], effRules };
+}
 
-  if (missing.size > 0) {
-    return {
-      ok: false,
-      message:
-        `This strategy references data that is not available from the Step 1 dataset: ${[...missing].join(', ')}. ` +
-        'Re-run “AI Parse Strategy” so indicators match your rules, or simplify entry/exit to use only OHLCV fields and supported indicators (SMA, EMA, RSI, MACD, Bollinger, ATR, volume_ma / volume_sma — both use Step 1 volume).',
-    };
+/**
+ * Ensure rules only use columns present after buildRows (indicators + OHLCV).
+ * Returns { ok, message? }.
+ */
+function validateRulesDataCoverage(ohlcvMap, rules) {
+  const symbols = Object.keys(ohlcvMap);
+  if (symbols.length === 0) {
+    return { ok: false, message: 'No price data. Fetch OHLCV in Data Setup (Step 1) first.' };
   }
-  return { ok: true };
+  const { missing } = findMissingRuleFields(ohlcvMap, rules);
+  if (missing.length === 0) return { ok: true };
+
+  return {
+    ok: false,
+    message:
+      `This strategy references data that is not available from the Step 1 dataset: ${missing.join(', ')}. ` +
+      'Re-run “AI Parse Strategy”, enable AI field check on run, or simplify entry/exit to use only OHLCV fields and supported indicators (SMA, EMA, RSI, MACD, Bollinger, ATR, volume_ma / volume_sma).',
+  };
 }
 
 function buildStats(trades, equityCurve, capital, finalCapital) {
@@ -480,4 +486,6 @@ module.exports = {
   runBacktestPerSymbolAllocation,
   validateRulesDataCoverage,
   collectReferencedRuleFields,
+  findMissingRuleFields,
+  expandRulesForVolumeDerivedFields,
 };

@@ -918,6 +918,7 @@ function WizardPanel({
             <p className="font-medium text-white/90 mb-1">Uses Step 1 data only</p>
             <p className="text-muted leading-relaxed">
               The backtest runs on the OHLCV you fetched in Data Setup — it does not download prices again.
+              If parsed rules reference fields that are not on that dataset, Run will ask Claude once whether they can be computed from OHLCV (and add indicators or fix names when possible — uses your key from Settings).
               {!form1.instruments.every(s => ohlcvMap[s]?.length) && (
                 <> Go back to Step 1 and click <strong className="text-soft">Fetch &amp; Preview Data</strong> for every instrument.</>
               )}
