@@ -502,3 +502,17 @@ CREATE TABLE IF NOT EXISTS bt_strategies (
   updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_bt_strategies_user ON bt_strategies(user_id, created_at DESC);
+
+-- ─── Investment avg_price / qty / ticker enrichment ──────────────────────────
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'investments' AND column_name = 'avg_price') THEN
+    ALTER TABLE investments ADD COLUMN avg_price NUMERIC(14,4);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'investments' AND column_name = 'qty') THEN
+    ALTER TABLE investments ADD COLUMN qty NUMERIC(16,4);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'investments' AND column_name = 'ticker') THEN
+    ALTER TABLE investments ADD COLUMN ticker VARCHAR(30);
+  END IF;
+END $$;
