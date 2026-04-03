@@ -82,7 +82,7 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
         </div>
         <div>
           <label className="label">
-            Avg Price / NAV
+            {form.side === 'SELL' ? 'Sell Price / NAV' : 'Buy Price / NAV'}
             <span className="text-muted font-normal ml-1 text-xs">(optional)</span>
           </label>
           <input
@@ -109,8 +109,9 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
             value={form.ticker}
             onChange={onChange}
             className="input"
-            placeholder="e.g. RELIANCE.NS, GC=F"
+            placeholder="e.g. RELIANCE.NS, GC=F, ^NSEI"
           />
+          <p className="text-[10px] text-muted mt-1">NSE: add .NS · BSE: add .BO · Gold futures: GC=F · Leave blank — AI will try to find it</p>
         </div>
         <div className="col-span-2 md:col-span-3">
           <label className="label">Broker / Account</label>
@@ -244,8 +245,6 @@ export default function Investments() {
     (sum, inv) => sum + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)),
     0
   );
-  const hasAnyTicker = data.some(r => r.ticker || r.avg_price);
-
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -254,7 +253,7 @@ export default function Investments() {
           <p className="text-muted text-sm mt-0.5">Raw investment entries powering your goal-based portfolio</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {hasAnyTicker && (
+          {data.length > 0 && (
             <button
               onClick={handleFetchPrices}
               disabled={fetchingPrices}
@@ -392,7 +391,7 @@ export default function Investments() {
                       <td className="py-3 px-4 text-soft text-xs max-w-[160px]">
                         <div className="truncate">{row.instrument}</div>
                         {row.ticker && <div className="text-muted text-[10px]">{row.ticker}</div>}
-                        {returnPct !== null && (
+                        {returnPct !== null && row.side === 'BUY' && (
                           <div className={`text-[10px] font-mono ${returnPct >= 0 ? 'text-teal' : 'text-rose'}`}>
                             {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(1)}%
                           </div>

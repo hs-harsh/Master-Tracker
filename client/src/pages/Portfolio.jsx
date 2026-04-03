@@ -101,10 +101,14 @@ export default function Portfolio() {
   }), [aggregated, marketPrices]);
 
   const totalNet       = goalInvestments.reduce((s, inv) => s + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)), 0);
-  const hasMktData     = enriched.some(r => r.mktValue !== null);
-  const totalMktValue  = enriched.reduce((s, r) => s + (r.mktValue || r.net), 0);
-  const totalReturn    = hasMktData ? totalMktValue - totalNet : null;
-  const totalReturnPct = totalReturn !== null && totalNet > 0 ? (totalReturn / totalNet * 100) : null;
+  const pricedCount    = enriched.filter(r => r.mktValue !== null).length;
+  const hasMktData     = pricedCount > 0;
+  const allPriced      = pricedCount === enriched.length && enriched.length > 0;
+  // Only sum market value for positions that have live prices; leave unpriced positions out of the total
+  const pricedInvested = enriched.filter(r => r.mktValue !== null).reduce((s, r) => s + r.net, 0);
+  const totalMktValue  = enriched.filter(r => r.mktValue !== null).reduce((s, r) => s + r.mktValue, 0);
+  const totalReturn    = hasMktData ? totalMktValue - pricedInvested : null;
+  const totalReturnPct = totalReturn !== null && pricedInvested > 0 ? (totalReturn / pricedInvested * 100) : null;
 
   // ── Chart buckets ─────────────────────────────────────────────────────────
   const riskBuckets = {}, assetBuckets = {}, brokerBuckets = {};
@@ -119,15 +123,20 @@ export default function Portfolio() {
   const brokerPie = Object.entries(brokerBuckets).filter(([, v]) => v !== 0).map(([name, value]) => ({ name, value }));
 
   const assetCompare = useMemo(() => {
-    const inv = {}, mkt = {};
+    const inv = {}, mkt = {}, pricedQty = {}, totalQty = {};
     enriched.forEach(r => {
-      inv[r.asset_class] = (inv[r.asset_class] || 0) + r.net;
-      mkt[r.asset_class] = (mkt[r.asset_class] || 0) + (r.mktValue || r.net);
+      inv[r.asset_class]      = (inv[r.asset_class] || 0) + r.net;
+      totalQty[r.asset_class] = (totalQty[r.asset_class] || 0) + 1;
+      if (r.mktValue !== null) {
+        mkt[r.asset_class]      = (mkt[r.asset_class] || 0) + r.mktValue;
+        pricedQty[r.asset_class] = (pricedQty[r.asset_class] || 0) + 1;
+      }
     });
     return Object.keys(inv).map(name => ({
       name,
       Invested:    +(inv[name] / 100000).toFixed(2),
-      MarketValue: +(mkt[name] / 100000).toFixed(2),
+      // Only show MarketValue bar for this asset class if at least one position is priced
+      ...(pricedQty[name] ? { MarketValue: +(mkt[name] / 100000).toFixed(2) } : {}),
     }));
   }, [enriched]);
 
@@ -216,7 +225,11 @@ export default function Portfolio() {
         </div>
         {hasMktData && (
           <div className="card flex flex-col">
-            <div className="flex items-center gap-2 text-muted mb-1"><TrendingUp size={14} /><span className="stat-label text-xs">Market Value</span></div>
+            <div className="flex items-center gap-2 text-muted mb-1">
+              <TrendingUp size={14} />
+              <span className="stat-label text-xs">Market Value</span>
+              {!allPriced && <span className="text-[10px] text-muted">({pricedCount}/{enriched.length})</span>}
+            </div>
             <span className="font-mono text-lg font-bold text-white">{fmt(totalMktValue)}</span>
             {totalReturnPct !== null && (
               <span className={`text-xs font-mono ${totalReturn >= 0 ? 'text-teal' : 'text-rose'}`}>
