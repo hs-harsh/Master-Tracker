@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, TrendingUp, Loader2 } from 'lucide-react';
 import AiEntryPanel from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
@@ -17,6 +17,8 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
     instrument: '',
     side: 'BUY',
     amount: 0,
+    avg_price: '',
+    ticker: '',
     broker: '',
   };
   const [form, setForm] = useState(initial || { ...EMPTY });
@@ -26,11 +28,12 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
 
   const onChange = e => {
     const { name, value } = e.target;
-    setForm(p => ({
-      ...p,
-      [name]: name === 'amount' ? Number(value) : value,
-    }));
+    setForm(p => ({ ...p, [name]: value }));
   };
+
+  const computedQty = form.avg_price && Number(form.avg_price) > 0 && Number(form.amount) > 0
+    ? (Number(form.amount) / Number(form.avg_price)).toFixed(3)
+    : null;
 
   return (
     <div className="card space-y-4">
@@ -45,102 +48,81 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div>
           <label className="label">Date</label>
-          <input
-            type="date"
-            name="date"
-            value={form.date}
-            onChange={onChange}
-            className="input"
-          />
+          <input type="date" name="date" value={form.date} onChange={onChange} className="input" />
         </div>
         <div>
           <label className="label">Account</label>
-          <select
-            name="account"
-            value={form.account}
-            onChange={onChange}
-            className="input"
-          >
+          <select name="account" value={form.account} onChange={onChange} className="input">
             {(persons || []).map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
         <div>
           <label className="label">Goal</label>
-          <input
-            type="text"
-            name="goal"
-            value={form.goal}
-            onChange={onChange}
-            className="input"
-            placeholder="e.g. Europe Trip, House, Retirement"
-          />
+          <input type="text" name="goal" value={form.goal} onChange={onChange} className="input" placeholder="e.g. Europe Trip, House, Retirement" />
         </div>
         <div>
           <label className="label">Asset Class</label>
-          <select
-            name="asset_class"
-            value={form.asset_class}
-            onChange={onChange}
-            className="input"
-          >
-            {ASSET_CLASSES.map(a => (
-              <option key={a}>{a}</option>
-            ))}
+          <select name="asset_class" value={form.asset_class} onChange={onChange} className="input">
+            {ASSET_CLASSES.map(a => <option key={a}>{a}</option>)}
           </select>
         </div>
         <div>
           <label className="label">Instrument</label>
-          <input
-            type="text"
-            name="instrument"
-            value={form.instrument}
-            onChange={onChange}
-            className="input"
-            placeholder="Fund / stock / FD name"
-          />
+          <input type="text" name="instrument" value={form.instrument} onChange={onChange} className="input" placeholder="Fund / stock / FD name" />
         </div>
         <div>
           <label className="label">Side</label>
-          <select
-            name="side"
-            value={form.side}
-            onChange={onChange}
-            className="input"
-          >
-            {SIDES.map(s => (
-              <option key={s}>{s}</option>
-            ))}
+          <select name="side" value={form.side} onChange={onChange} className="input">
+            {SIDES.map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
         <div>
           <label className="label">Amount (₹)</label>
+          <input type="number" name="amount" value={form.amount} onChange={onChange} className="input" />
+        </div>
+        <div>
+          <label className="label">
+            {form.side === 'SELL' ? 'Sell Price / NAV' : 'Buy Price / NAV'}
+            <span className="text-muted font-normal ml-1 text-xs">(optional)</span>
+          </label>
           <input
             type="number"
-            name="amount"
-            value={form.amount}
+            name="avg_price"
+            value={form.avg_price}
             onChange={onChange}
             className="input"
+            placeholder="Price per unit"
+            step="0.0001"
           />
+          {computedQty && (
+            <p className="text-xs text-teal mt-1">≈ {computedQty} units</p>
+          )}
         </div>
-        <div className="col-span-2">
-          <label className="label">Broker / Account</label>
+        <div>
+          <label className="label">
+            Yahoo Ticker
+            <span className="text-muted font-normal ml-1 text-xs">(for live price)</span>
+          </label>
           <input
             type="text"
-            name="broker"
-            value={form.broker}
+            name="ticker"
+            value={form.ticker}
             onChange={onChange}
             className="input"
-            placeholder="e.g. Harsh Zerodha, Kirti Coin"
+            placeholder="e.g. RELIANCE.NS, GC=F, ^NSEI"
           />
+          <p className="text-[10px] text-muted mt-1">NSE: add .NS · BSE: add .BO · Gold futures: GC=F · Leave blank — AI will try to find it</p>
+        </div>
+        <div className="col-span-2 md:col-span-3">
+          <label className="label">Broker / Account</label>
+          <input type="text" name="broker" value={form.broker} onChange={onChange} className="input" placeholder="e.g. Harsh Zerodha, Kirti Coin" />
         </div>
       </div>
       <div className="flex gap-2 pt-1">
         <button onClick={() => onSave(form)} className="btn-primary flex items-center gap-2">
           <Save size={14} /> Save
         </button>
-        <button onClick={onCancel} className="btn-ghost">
-          Cancel
-        </button>
+        <button onClick={onCancel} className="btn-ghost">Cancel</button>
       </div>
     </div>
   );
@@ -153,6 +135,8 @@ export default function Investments() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [filters, setFilters] = useState({ goal: '', asset_class: '', search: '' });
+  const [marketPrices, setMarketPrices] = useState({});
+  const [fetchingPrices, setFetchingPrices] = useState(false);
 
   const currentPerson = activePerson || personName;
 
@@ -206,6 +190,8 @@ export default function Investments() {
         instrument:  e.instrument || '',
         side:        e.side || 'BUY',
         amount:      Number(e.amount) || 0,
+        avg_price:   e.avg_price ? Number(e.avg_price) : null,
+        ticker:      e.ticker || '',
         broker:      e.broker || '',
       });
     }
@@ -225,19 +211,31 @@ export default function Investments() {
     bumpDataVersion();
   };
 
+  const handleFetchPrices = async () => {
+    const instruments = Array.from(
+      new Map(data.map(r => [r.instrument, { instrument: r.instrument, ticker: r.ticker || '' }])).values()
+    );
+    if (instruments.length === 0) return;
+    setFetchingPrices(true);
+    try {
+      const { data: prices } = await api.post('/investments/fetch-prices', { instruments });
+      setMarketPrices(prices);
+    } catch (err) {
+      alert('Failed to fetch market prices: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setFetchingPrices(false);
+    }
+  };
+
   const filtered = data.filter(inv => {
     if (filters.search) {
       const q = filters.search.toLowerCase();
-      if (
-        !(
-          inv.goal.toLowerCase().includes(q) ||
-          inv.instrument.toLowerCase().includes(q) ||
-          inv.broker?.toLowerCase().includes(q) ||
-          String(inv.amount).includes(q)
-        )
-      ) {
-        return false;
-      }
+      if (!(
+        inv.goal.toLowerCase().includes(q) ||
+        inv.instrument.toLowerCase().includes(q) ||
+        inv.broker?.toLowerCase().includes(q) ||
+        String(inv.amount).includes(q)
+      )) return false;
     }
     return true;
   });
@@ -247,17 +245,24 @@ export default function Investments() {
     (sum, inv) => sum + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)),
     0
   );
-
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="font-display text-2xl font-bold text-white">{currentPerson ? `${currentPerson}'s Investments` : 'Investments'}</h1>
-          <p className="text-muted text-sm mt-0.5">
-            Raw investment entries powering your goal-based portfolio
-          </p>
+          <p className="text-muted text-sm mt-0.5">Raw investment entries powering your goal-based portfolio</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          {data.length > 0 && (
+            <button
+              onClick={handleFetchPrices}
+              disabled={fetchingPrices}
+              className="btn-ghost flex items-center gap-2 text-sm"
+            >
+              {fetchingPrices ? <Loader2 size={14} className="animate-spin" /> : <TrendingUp size={14} />}
+              Check Market Value
+            </button>
+          )}
           <button
             onClick={() => { setEditing(null); setShowForm(true); }}
             className="btn-primary flex items-center gap-2"
@@ -267,7 +272,7 @@ export default function Investments() {
         </div>
       </div>
 
-      <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
+      <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} onEdit={handleAiEdit} />
 
       {(showForm || editing) && (
         <InvestmentForm
@@ -279,13 +284,53 @@ export default function Investments() {
         />
       )}
 
+      {/* Market value summary */}
+      {Object.keys(marketPrices).length > 0 && (
+        <div className="card space-y-2">
+          <p className="stat-label text-xs mb-2">Current Market Values</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {Object.entries(marketPrices).map(([instrument, info]) => {
+              if (info.error) return (
+                <div key={instrument} className="flex items-center justify-between p-2 rounded-lg bg-card/40">
+                  <span className="text-xs text-soft truncate max-w-[60%]">{instrument}</span>
+                  <span className="text-xs text-muted">{info.symbol} — not found</span>
+                </div>
+              );
+              const invRows = data.filter(r => r.instrument === instrument);
+              const netQty = invRows.reduce((s, r) => {
+                const q = r.qty ? Number(r.qty) : 0;
+                return r.side === 'SELL' ? s - q : s + q;
+              }, 0);
+              const netInvested = invRows.reduce((s, r) => s + (r.side === 'SELL' ? -Number(r.amount) : Number(r.amount)), 0);
+              const mktValue = netQty > 0 ? netQty * info.price : null;
+              const returnPct = mktValue && netInvested > 0 ? ((mktValue - netInvested) / netInvested * 100) : null;
+              return (
+                <div key={instrument} className="p-2 rounded-lg bg-card/40 space-y-0.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-soft truncate max-w-[60%]">{instrument}</span>
+                    <span className="text-xs font-mono text-accent">₹{info.price?.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                  </div>
+                  {mktValue && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted">Mkt: {fmt(mktValue)}</span>
+                      {returnPct !== null && (
+                        <span className={`text-xs font-mono ${returnPct >= 0 ? 'text-teal' : 'text-rose'}`}>
+                          {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-48 max-w-xs">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-          />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <input
             className="input pl-8"
             placeholder="Search goal, instrument, broker…"
@@ -293,31 +338,16 @@ export default function Investments() {
             onChange={e => setFilters(p => ({ ...p, search: e.target.value }))}
           />
         </div>
-        <select
-          className="input w-40"
-          value={filters.goal}
-          onChange={e => setFilters(p => ({ ...p, goal: e.target.value }))}
-        >
+        <select className="input w-40" value={filters.goal} onChange={e => setFilters(p => ({ ...p, goal: e.target.value }))}>
           <option value="">All Goals</option>
-          {goals.map(g => (
-            <option key={g}>{g}</option>
-          ))}
+          {goals.map(g => <option key={g}>{g}</option>)}
         </select>
-        <select
-          className="input w-40"
-          value={filters.asset_class}
-          onChange={e => setFilters(p => ({ ...p, asset_class: e.target.value }))}
-        >
+        <select className="input w-40" value={filters.asset_class} onChange={e => setFilters(p => ({ ...p, asset_class: e.target.value }))}>
           <option value="">All Asset Classes</option>
-          {ASSET_CLASSES.map(a => (
-            <option key={a}>{a}</option>
-          ))}
+          {ASSET_CLASSES.map(a => <option key={a}>{a}</option>)}
         </select>
         {(filters.goal || filters.asset_class || filters.search) && (
-          <button
-            onClick={() => setFilters({ goal: '', asset_class: '', search: '' })}
-            className="text-muted hover:text-white text-xs flex items-center gap-1"
-          >
+          <button onClick={() => setFilters({ goal: '', asset_class: '', search: '' })} className="text-muted hover:text-white text-xs flex items-center gap-1">
             <X size={12} /> Clear
           </button>
         )}
@@ -333,102 +363,68 @@ export default function Investments() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                {[
-                  'Date',
-                  'Account',
-                  'Goal',
-                  'Asset Class',
-                  'Instrument',
-                  'Side',
-                  'Amount',
-                  'Broker',
-                  '',
-                ].map(h => (
-                  <th
-                    key={h}
-                    className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider"
-                  >
-                    {h}
-                  </th>
+                {['Date', 'Account', 'Goal', 'Asset Class', 'Instrument', 'Side', 'Amount', 'Avg Price', 'Qty', 'Broker', ''].map(h => (
+                  <th key={h} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td
-                    colSpan={9}
-                    className="py-8 text-center text-muted font-mono text-sm animate-pulse"
-                  >
-                    Loading…
-                  </td>
-                </tr>
+                <tr><td colSpan={11} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-8 text-center text-muted">
-                    No investments yet
-                  </td>
-                </tr>
+                <tr><td colSpan={11} className="py-8 text-center text-muted">No investments yet</td></tr>
               ) : (
-                filtered.map(row => (
-                  <tr
-                    key={row.id}
-                    className="border-b border-border/40 hover:bg-surface/50 transition-colors"
-                  >
-                    <td className="py-3 px-4 font-mono text-xs text-soft">
-                      {fmtDate(row.date)}
-                    </td>
-                    <td className="py-3 px-4 text-xs">
-                      <span className="tag">
-                        {row.account}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-soft text-xs">{row.goal}</td>
-                    <td className="py-3 px-4 text-xs">
-                      <span className="tag bg-card/60">{row.asset_class}</span>
-                    </td>
-                    <td className="py-3 px-4 text-soft text-xs max-w-xs truncate">
-                      {row.instrument}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`tag text-xs ${
-                          row.side === 'BUY'
-                            ? 'bg-teal/10 text-teal'
-                            : 'bg-rose/10 text-rose'
-                        }`}
-                      >
-                        {row.side}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-mono text-soft">
-                      {row.side === 'SELL' ? '-' : ''}
-                      {fmt(row.amount)}
-                    </td>
-                    <td className="py-3 px-4 text-soft text-xs">
-                      {row.broker || '—'}
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            setEditing(row);
-                            setShowForm(false);
-                          }}
-                          className="text-muted hover:text-accent transition-colors"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(row.id)}
-                          className="text-muted hover:text-rose transition-colors"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                filtered.map(row => {
+                  const mktInfo = marketPrices[row.instrument];
+                  const mktPrice = mktInfo?.price;
+                  const rowQty = row.qty ? Number(row.qty) : null;
+                  const currentVal = mktPrice && rowQty ? mktPrice * rowQty : null;
+                  const returnPct = currentVal && Number(row.amount) > 0
+                    ? ((currentVal - Number(row.amount)) / Number(row.amount) * 100)
+                    : null;
+                  return (
+                    <tr key={row.id} className="border-b border-border/40 hover:bg-surface/50 transition-colors">
+                      <td className="py-3 px-4 font-mono text-xs text-soft">{fmtDate(row.date)}</td>
+                      <td className="py-3 px-4 text-xs"><span className="tag">{row.account}</span></td>
+                      <td className="py-3 px-4 text-soft text-xs">{row.goal}</td>
+                      <td className="py-3 px-4 text-xs"><span className="tag bg-card/60">{row.asset_class}</span></td>
+                      <td className="py-3 px-4 text-soft text-xs max-w-[160px]">
+                        <div className="truncate">{row.instrument}</div>
+                        {row.ticker && <div className="text-muted text-[10px]">{row.ticker}</div>}
+                        {returnPct !== null && row.side === 'BUY' && (
+                          <div className={`text-[10px] font-mono ${returnPct >= 0 ? 'text-teal' : 'text-rose'}`}>
+                            {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(1)}%
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`tag text-xs ${row.side === 'BUY' ? 'bg-teal/10 text-teal' : 'bg-rose/10 text-rose'}`}>
+                          {row.side}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-mono text-soft">
+                        {row.side === 'SELL' ? '-' : ''}{fmt(row.amount)}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-soft text-xs">
+                        {row.avg_price ? `₹${Number(row.avg_price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-soft text-xs">
+                        {row.qty ? Number(row.qty).toLocaleString('en-IN', { maximumFractionDigits: 3 }) : '—'}
+                      </td>
+                      <td className="py-3 px-4 text-soft text-xs">{row.broker || '—'}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex gap-2">
+                          <button onClick={() => { setEditing(row); setShowForm(false); }} className="text-muted hover:text-accent transition-colors">
+                            <Edit2 size={14} />
+                          </button>
+                          <button onClick={() => handleDelete(row.id)} className="text-muted hover:text-rose transition-colors">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -437,4 +433,3 @@ export default function Investments() {
     </div>
   );
 }
-
