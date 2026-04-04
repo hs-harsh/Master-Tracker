@@ -2,6 +2,143 @@ const router = require('express').Router();
 const pool = require('../db');
 const auth = require('../middleware/auth');
 
+// ── Yahoo Finance singleton (instantiated once per process) ──────────────────
+const YahooFinance = require('yahoo-finance2').default;
+const yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
+
+// ── Fallback: scrape NSE India quote API ─────────────────────────────────────
+async function fetchFromNSE(symbol) {
+  const cleanSymbol = symbol.replace(/\.(NS|BO)$/i, '').toUpperCase();
+  try {
+    const homeRes = await fetch('https://www.nseindia.com/', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    const rawCookies = homeRes.headers.getSetCookie?.() || [];
+    const cookies = rawCookies.map(c => c.split(';')[0]).join('; ');
+
+    const apiRes = await fetch(
+      `https://www.nseindia.com/api/quote-equity?symbol=${encodeURIComponent(cleanSymbol)}`,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Cookie': cookies,
+          'Referer': 'https://www.nseindia.com/',
+        },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+    if (apiRes.ok) {
+      const data = await apiRes.json();
+      const price = data?.priceInfo?.lastPrice;
+      if (price) {
+        return {
+          price,
+          currency: 'INR',
+          symbol: cleanSymbol + '.NS',
+          name: data?.info?.companyName || cleanSymbol,
+          source: 'NSE',
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('[NSE fallback]', cleanSymbol, e.message);
+  }
+  return null;
+}
+
+// ── Fallback: MFAPI for Indian mutual funds ──────────────────────────────────
+async function fetchFromMFAPI(instrumentName) {
+  try {
+    const searchRes = await fetch(
+      `https://api.mfapi.in/mf/search?q=${encodeURIComponent(instrumentName)}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (searchRes.ok) {
+      const funds = await searchRes.json();
+      if (funds?.length > 0) {
+        const fund = funds[0];
+        const navRes = await fetch(`https://api.mfapi.in/mf/${fund.schemeCode}/latest`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (navRes.ok) {
+          const navData = await navRes.json();
+          const nav = navData?.data?.[0]?.nav;
+          if (nav) {
+            return {
+              price: parseFloat(nav),
+              currency: 'INR',
+              symbol: `MF:${fund.schemeCode}`,
+              name: fund.schemeName,
+              source: 'MFAPI',
+            };
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[MFAPI fallback]', instrumentName, e.message);
+  }
+  return null;
+}
+
+// ── Fetch price with cascading fallbacks ─────────────────────────────────────
+// 1. Yahoo Finance (given symbol)
+// 2. Yahoo Finance (.NS / .BO variations)
+// 3. NSE India scrape
+// 4. MFAPI (Indian mutual funds)
+// 5. needsManualPrice: true
+async function fetchPriceWithFallbacks(symbol, instrumentName) {
+  const sym = symbol.trim();
+
+  // 1. Yahoo Finance — given symbol
+  try {
+    const quote = await yf.quote(sym);
+    if (quote?.regularMarketPrice) {
+      return {
+        price: quote.regularMarketPrice,
+        currency: quote.currency || 'INR',
+        symbol: sym,
+        name: quote.longName || quote.shortName || sym,
+      };
+    }
+  } catch (e) { /* continue */ }
+
+  // 2. Yahoo Finance — try .NS / .BO variants for Indian stocks
+  const cleanSym = sym.replace(/\.(NS|BO)$/i, '').toUpperCase();
+  for (const suffix of ['.NS', '.BO']) {
+    if (sym.toUpperCase().endsWith(suffix.toUpperCase())) continue;
+    try {
+      const quote = await yf.quote(cleanSym + suffix);
+      if (quote?.regularMarketPrice) {
+        return {
+          price: quote.regularMarketPrice,
+          currency: quote.currency || 'INR',
+          symbol: cleanSym + suffix,
+          name: quote.longName || quote.shortName || cleanSym + suffix,
+        };
+      }
+    } catch (e) { /* continue */ }
+  }
+
+  // 3. NSE India direct scrape
+  const nseResult = await fetchFromNSE(cleanSym);
+  if (nseResult) return nseResult;
+
+  // 4. MFAPI — Indian mutual fund NAV
+  const mfResult = await fetchFromMFAPI(instrumentName);
+  if (mfResult) return mfResult;
+
+  // 5. Nothing worked — ask user to enter manually
+  return { needsManualPrice: true, symbol: sym };
+}
+
 const CSV_HEADER = 'date,account,goal,asset_class,instrument,side,amount,avg_price,qty,ticker,broker';
 function escapeCsvField(v) {
   const s = String(v ?? '');
@@ -154,28 +291,13 @@ Instruments: ${needAI.map(i => i.instrument).join(', ')}`;
       }
     }
 
-    // Fetch prices via Yahoo Finance
-    const yf = require('yahoo-finance2').default;
+    // Fetch prices with cascading fallbacks (Yahoo → NSE scrape → MFAPI → manual)
     const results = {};
 
     await Promise.allSettled(
       instruments.map(async ({ instrument, ticker }) => {
         const symbol = ticker || aiSymbols[instrument] || instrument;
-        try {
-          const quote = await yf.quote(symbol.trim());
-          if (quote?.regularMarketPrice) {
-            results[instrument] = {
-              price: quote.regularMarketPrice,
-              currency: quote.currency || 'INR',
-              symbol,
-              name: quote.longName || quote.shortName || symbol,
-            };
-          } else {
-            results[instrument] = { error: 'No price data', symbol };
-          }
-        } catch (e) {
-          results[instrument] = { error: e.message, symbol };
-        }
+        results[instrument] = await fetchPriceWithFallbacks(symbol, instrument);
       })
     );
 

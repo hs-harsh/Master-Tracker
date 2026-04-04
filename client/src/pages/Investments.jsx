@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, TrendingUp, Loader2 } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save } from 'lucide-react';
 import AiEntryPanel from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
@@ -133,10 +133,8 @@ export default function Investments() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
+  const [inlineEdit, setInlineEdit] = useState(null); // { id, form: {...row} }
   const [filters, setFilters] = useState({ goal: '', asset_class: '', search: '' });
-  const [marketPrices, setMarketPrices] = useState({});
-  const [fetchingPrices, setFetchingPrices] = useState(false);
 
   const currentPerson = activePerson || personName;
 
@@ -165,7 +163,7 @@ export default function Investments() {
         await api.post('/investments', form);
       }
       setShowForm(false);
-      setEditing(null);
+      setInlineEdit(null);
       load();
       bumpDataVersion();
     } catch (err) {
@@ -211,21 +209,6 @@ export default function Investments() {
     bumpDataVersion();
   };
 
-  const handleFetchPrices = async () => {
-    const instruments = Array.from(
-      new Map(data.map(r => [r.instrument, { instrument: r.instrument, ticker: r.ticker || '' }])).values()
-    );
-    if (instruments.length === 0) return;
-    setFetchingPrices(true);
-    try {
-      const { data: prices } = await api.post('/investments/fetch-prices', { instruments });
-      setMarketPrices(prices);
-    } catch (err) {
-      alert('Failed to fetch market prices: ' + (err.response?.data?.error || err.message));
-    } finally {
-      setFetchingPrices(false);
-    }
-  };
 
   const filtered = data.filter(inv => {
     if (filters.search) {
@@ -253,18 +236,8 @@ export default function Investments() {
           <p className="text-muted text-sm mt-0.5">Raw investment entries powering your goal-based portfolio</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {data.length > 0 && (
-            <button
-              onClick={handleFetchPrices}
-              disabled={fetchingPrices}
-              className="btn-ghost flex items-center gap-2 text-sm"
-            >
-              {fetchingPrices ? <Loader2 size={14} className="animate-spin" /> : <TrendingUp size={14} />}
-              Check Market Value
-            </button>
-          )}
           <button
-            onClick={() => { setEditing(null); setShowForm(true); }}
+            onClick={() => setShowForm(true)}
             className="btn-primary flex items-center gap-2"
           >
             <Plus size={14} /> Add Investment
@@ -274,57 +247,14 @@ export default function Investments() {
 
       <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} onEdit={handleAiEdit} />
 
-      {(showForm || editing) && (
+      {showForm && (
         <InvestmentForm
-          initial={editing}
+          initial={null}
           defaultAccount={personName}
           persons={persons}
           onSave={handleSave}
-          onCancel={() => { setShowForm(false); setEditing(null); }}
+          onCancel={() => setShowForm(false)}
         />
-      )}
-
-      {/* Market value summary */}
-      {Object.keys(marketPrices).length > 0 && (
-        <div className="card space-y-2">
-          <p className="stat-label text-xs mb-2">Current Market Values</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {Object.entries(marketPrices).map(([instrument, info]) => {
-              if (info.error) return (
-                <div key={instrument} className="flex items-center justify-between p-2 rounded-lg bg-card/40">
-                  <span className="text-xs text-soft truncate max-w-[60%]">{instrument}</span>
-                  <span className="text-xs text-muted">{info.symbol} — not found</span>
-                </div>
-              );
-              const invRows = data.filter(r => r.instrument === instrument);
-              const netQty = invRows.reduce((s, r) => {
-                const q = r.qty ? Number(r.qty) : 0;
-                return r.side === 'SELL' ? s - q : s + q;
-              }, 0);
-              const netInvested = invRows.reduce((s, r) => s + (r.side === 'SELL' ? -Number(r.amount) : Number(r.amount)), 0);
-              const mktValue = netQty > 0 ? netQty * info.price : null;
-              const returnPct = mktValue && netInvested > 0 ? ((mktValue - netInvested) / netInvested * 100) : null;
-              return (
-                <div key={instrument} className="p-2 rounded-lg bg-card/40 space-y-0.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-soft truncate max-w-[60%]">{instrument}</span>
-                    <span className="text-xs font-mono text-accent">₹{info.price?.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
-                  </div>
-                  {mktValue && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted">Mkt: {fmt(mktValue)}</span>
-                      {returnPct !== null && (
-                        <span className={`text-xs font-mono ${returnPct >= 0 ? 'text-teal' : 'text-rose'}`}>
-                          {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(1)}%
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
       )}
 
       {/* Filters */}
@@ -375,13 +305,52 @@ export default function Investments() {
                 <tr><td colSpan={11} className="py-8 text-center text-muted">No investments yet</td></tr>
               ) : (
                 filtered.map(row => {
-                  const mktInfo = marketPrices[row.instrument];
-                  const mktPrice = mktInfo?.price;
-                  const rowQty = row.qty ? Number(row.qty) : null;
-                  const currentVal = mktPrice && rowQty ? mktPrice * rowQty : null;
-                  const returnPct = currentVal && Number(row.amount) > 0
-                    ? ((currentVal - Number(row.amount)) / Number(row.amount) * 100)
-                    : null;
+                  const isEditing = inlineEdit?.id === row.id;
+                  const ef = inlineEdit?.form || {};
+
+                  if (isEditing) {
+                    const computedQty = ef.avg_price && Number(ef.avg_price) > 0 && Number(ef.amount) > 0
+                      ? (Number(ef.amount) / Number(ef.avg_price)).toFixed(3)
+                      : (row.qty ? Number(row.qty).toLocaleString('en-IN', { maximumFractionDigits: 3 }) : '—');
+                    const setEf = patch => setInlineEdit(prev => ({ ...prev, form: { ...prev.form, ...patch } }));
+                    return (
+                      <tr key={row.id} className="border-b border-border/40 bg-surface/60">
+                        <td className="py-1.5 px-2"><input type="date" value={ef.date || ''} onChange={e => setEf({ date: e.target.value })} className="input text-xs py-0.5 px-1.5 h-7 w-28" /></td>
+                        <td className="py-1.5 px-2">
+                          <select value={ef.account || ''} onChange={e => setEf({ account: e.target.value })} className="input text-xs py-0.5 px-1.5 h-7">
+                            {(persons.length ? persons : [personName]).map(p => <option key={p} value={p}>{p}</option>)}
+                          </select>
+                        </td>
+                        <td className="py-1.5 px-2"><input type="text" value={ef.goal || ''} onChange={e => setEf({ goal: e.target.value })} placeholder="Goal" className="input text-xs py-0.5 px-1.5 h-7 w-28" /></td>
+                        <td className="py-1.5 px-2">
+                          <select value={ef.asset_class || ''} onChange={e => setEf({ asset_class: e.target.value })} className="input text-xs py-0.5 px-1.5 h-7">
+                            {ASSET_CLASSES.map(a => <option key={a}>{a}</option>)}
+                          </select>
+                        </td>
+                        <td className="py-1.5 px-2"><input type="text" value={ef.instrument || ''} onChange={e => setEf({ instrument: e.target.value })} placeholder="Instrument" className="input text-xs py-0.5 px-1.5 h-7 w-36" /></td>
+                        <td className="py-1.5 px-2">
+                          <select value={ef.side || 'BUY'} onChange={e => setEf({ side: e.target.value })} className="input text-xs py-0.5 px-1.5 h-7">
+                            {SIDES.map(s => <option key={s}>{s}</option>)}
+                          </select>
+                        </td>
+                        <td className="py-1.5 px-2"><input type="number" value={ef.amount ?? ''} onChange={e => setEf({ amount: e.target.value })} className="input text-xs py-0.5 px-1.5 h-7 w-24 font-mono" /></td>
+                        <td className="py-1.5 px-2"><input type="number" value={ef.avg_price ?? ''} onChange={e => setEf({ avg_price: e.target.value })} placeholder="Price" className="input text-xs py-0.5 px-1.5 h-7 w-24 font-mono" step="0.0001" /></td>
+                        <td className="py-1.5 px-2 text-xs text-muted font-mono">{computedQty}</td>
+                        <td className="py-1.5 px-2"><input type="text" value={ef.broker || ''} onChange={e => setEf({ broker: e.target.value })} placeholder="Broker" className="input text-xs py-0.5 px-1.5 h-7 w-28" /></td>
+                        <td className="py-1.5 px-2">
+                          <div className="flex gap-1.5">
+                            <button onClick={() => handleSave(ef)} className="text-teal hover:text-teal/80 transition-colors" title="Save">
+                              <Save size={14} />
+                            </button>
+                            <button onClick={() => setInlineEdit(null)} className="text-muted hover:text-rose transition-colors" title="Cancel">
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
                   return (
                     <tr key={row.id} className="border-b border-border/40 hover:bg-surface/50 transition-colors">
                       <td className="py-3 px-4 font-mono text-xs text-soft">{fmtDate(row.date)}</td>
@@ -391,11 +360,6 @@ export default function Investments() {
                       <td className="py-3 px-4 text-soft text-xs max-w-[160px]">
                         <div className="truncate">{row.instrument}</div>
                         {row.ticker && <div className="text-muted text-[10px]">{row.ticker}</div>}
-                        {returnPct !== null && row.side === 'BUY' && (
-                          <div className={`text-[10px] font-mono ${returnPct >= 0 ? 'text-teal' : 'text-rose'}`}>
-                            {returnPct >= 0 ? '+' : ''}{returnPct.toFixed(1)}%
-                          </div>
-                        )}
                       </td>
                       <td className="py-3 px-4">
                         <span className={`tag text-xs ${row.side === 'BUY' ? 'bg-teal/10 text-teal' : 'bg-rose/10 text-rose'}`}>
@@ -414,7 +378,7 @@ export default function Investments() {
                       <td className="py-3 px-4 text-soft text-xs">{row.broker || '—'}</td>
                       <td className="py-3 px-4">
                         <div className="flex gap-2">
-                          <button onClick={() => { setEditing(row); setShowForm(false); }} className="text-muted hover:text-accent transition-colors">
+                          <button onClick={() => setInlineEdit({ id: row.id, form: { ...row } })} className="text-muted hover:text-accent transition-colors">
                             <Edit2 size={14} />
                           </button>
                           <button onClick={() => handleDelete(row.id)} className="text-muted hover:text-rose transition-colors">
