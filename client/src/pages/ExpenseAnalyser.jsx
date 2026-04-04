@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import api from '../lib/api';
 import { fmt, fmtFull } from '../lib/utils';
-import { Plus, Trash2, ChevronDown, ChevronRight, FileText, Loader2 } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
+import { Plus, Trash2, ChevronDown, ChevronRight, FileText, Loader2, KeyRound } from 'lucide-react';
+
+/** Cashflow-style buckets (same family as monthly cashflow expense columns). */
+const CASHFLOW_BUCKETS = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips', 'Transfers'];
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const formatMonthLabel = (ym) => {
@@ -28,10 +32,24 @@ function loadPdfScript() {
   });
 }
 
-async function extractPdfText(file) {
+async function extractPdfText(file, password) {
   const pdfjsLib = await loadPdfScript();
   const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const loadingTask = pdfjsLib.getDocument({
+    data: buf,
+    ...(password ? { password: String(password) } : {}),
+  });
+  let pdf;
+  try {
+    pdf = await loadingTask.promise;
+  } catch (err) {
+    const name = err?.name || '';
+    const msg = String(err?.message || err);
+    if (name === 'PasswordException' || /password/i.test(msg)) {
+      throw new Error('PDF_PASSWORD_REQUIRED');
+    }
+    throw err;
+  }
   let text = '';
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
@@ -66,11 +84,12 @@ function robustParseJSON(raw) {
 
 function buildSingleFilePrompt(slot, statementMonth) {
   const monthLabel = formatMonthLabel(statementMonth);
-  const personName = slot.person === 'harsh' ? 'Harsh Kumar' : 'Kirti Verma';
-  return `You are a professional financial analyst. Analyze this single bank/credit card statement for ${personName}.
+  const personName = String(slot.person || '').trim() || 'Account holder';
+  const bucketList = CASHFLOW_BUCKETS.join(', ');
+  return `You are a professional financial analyst. Analyze this single bank or credit card statement for ${personName}.
 
 STATEMENT: ${slot.label}
-PERSON: ${personName}
+PERSON (exact string for JSON): ${personName}
 MONTH: ${monthLabel}
 
 --- STATEMENT TEXT START ---
@@ -81,9 +100,9 @@ Return ONLY a valid JSON object. No markdown, no code fences.
 
 {
   "statementLabel": "${slot.label}",
-  "person": "${slot.person}",
+  "person": "${personName.replace(/"/g, '\\"')}",
   "month": "${monthLabel}",
-  "accountType": "bank/credit_card",
+  "accountType": "bank or credit_card",
   "summary": {
     "totalSpend": 0,
     "totalCredits": 0,
@@ -96,17 +115,14 @@ Return ONLY a valid JSON object. No markdown, no code fences.
   "categories": [
     {"name": "Shopping", "amount": 0, "count": 0},
     {"name": "Food & Dining", "amount": 0, "count": 0},
-    {"name": "EMI Payments", "amount": 0, "count": 0},
-    {"name": "Insurance", "amount": 0, "count": 0},
-    {"name": "Travel", "amount": 0, "count": 0},
-    {"name": "Entertainment", "amount": 0, "count": 0},
-    {"name": "Investments/NPS", "amount": 0, "count": 0},
-    {"name": "Utilities/Recharge", "amount": 0, "count": 0},
-    {"name": "Transfers", "amount": 0, "count": 0},
     {"name": "Other", "amount": 0, "count": 0}
   ],
+  "cashflowSummary": [
+    {"bucket": "Regular", "amount": 0, "count": 0},
+    {"bucket": "Major", "amount": 0, "count": 0}
+  ],
   "transactions": [
-    {"date": "DD/MM/YYYY", "description": "...", "amount": 0, "type": "debit", "category": "Shopping"}
+    {"date": "DD/MM/YYYY", "description": "...", "amount": 0, "type": "debit", "category": "Food & Dining", "cashflowType": "Regular"}
   ],
   "redFlags": [
     {"severity": "high", "title": "...", "description": "...", "amount": 0}
@@ -114,25 +130,39 @@ Return ONLY a valid JSON object. No markdown, no code fences.
   "keyInsights": "2-3 sentence summary."
 }
 
-RULES: Extract ALL real transactions. "type" must be "debit" or "credit". All amounts numbers. JSON must be complete and valid.`;
+RULES:
+- Extract ALL real transactions. "type" must be "debit" or "credit". Amounts are positive numbers.
+- For EACH transaction set "cashflowType" to ONE of: ${bucketList}.
+  Map spending: groceries/subscriptions/utilities → Regular; large one-off → Major; rare discretionary → Non-Recurring; travel → Trips; loan/EMI → EMI; internal xfer → Transfers; salary/refund inflow → Income or Other Income as appropriate.
+- "cashflowSummary": one row per bucket you used; sum debits (and credits for Income buckets as appropriate).
+- "categories": merchant-style labels (detail); amounts should align with transactions.
+- JSON must be complete and valid.`;
 }
 
-function buildCompilePrompt(results, monthLabel) {
+function buildCompilePrompt(results, monthLabel, personNames) {
+  const names = Array.isArray(personNames) && personNames.length ? personNames : ['Household'];
+  const householdLine = names.join(', ');
+  const perPersonZero = names.reduce((o, n) => ({ ...o, [n]: 0 }), {});
+  const perPersonJson = JSON.stringify(perPersonZero);
+
   let prompt = `You are a financial analyst. Compile a HOUSEHOLD financial report from the individual statement analyses below.
 
-HOUSEHOLD: Harsh Kumar & Kirti Verma
+HOUSEHOLD MEMBERS: ${householdLine}
 MONTH: ${monthLabel}
 STATEMENTS ANALYZED: ${results.length}
+Use these EXACT person name strings in JSON: ${JSON.stringify(names)}
 
 `;
   results.forEach((r, i) => {
     const d = r.data;
-    prompt += `\n=== STATEMENT ${i + 1}: ${r.label} (${r.person === 'harsh' ? 'Harsh Kumar' : 'Kirti Verma'}) ===
+    const p = r.person || d.person || '';
+    prompt += `\n=== STATEMENT ${i + 1}: ${r.label} (person: ${p}) ===
 Summary: Spend=${d.summary?.totalSpend || 0}, CCDue=${d.summary?.creditCardDue || 0}, Balance=${d.summary?.closingBalance || 0}
 Key Insights: ${d.keyInsights || ''}
 Categories: ${JSON.stringify((d.categories || []).filter((c) => c.amount > 0))}
+Cashflow summary: ${JSON.stringify(d.cashflowSummary || [])}
 Red Flags: ${JSON.stringify(d.redFlags || [])}
-Top 20 Transactions: ${JSON.stringify((d.transactions || []).slice(0, 20))}
+Top 30 Transactions: ${JSON.stringify((d.transactions || []).slice(0, 30))}
 `;
   });
   prompt += `
@@ -143,35 +173,35 @@ Return ONLY valid JSON. No markdown.
   "summary": {
     "month": "${monthLabel}",
     "totalHouseholdSpend": 0,
+    "totalSpendByPerson": ${perPersonJson},
     "harshTotalSpend": 0,
     "kirtiTotalSpend": 0,
     "totalCreditCardDues": 0,
-    "cardDuesList": [{"card": "name", "person": "harsh", "due": 0}],
+    "cardDuesList": [{"card": "name", "person": "exact name from list", "due": 0}],
     "bankClosingBalance": 0,
     "topCategory": "",
     "topCategoryAmount": 0,
     "statementsAnalyzed": ${results.length}
   },
   "categories": [
-    {"name": "Shopping", "amount": 0, "harshAmount": 0, "kirtiAmount": 0, "count": 0},
-    {"name": "Food & Dining", "amount": 0, "harshAmount": 0, "kirtiAmount": 0, "count": 0},
-    {"name": "EMI Payments", "amount": 0, "harshAmount": 0, "kirtiAmount": 0, "count": 0},
-    {"name": "Insurance", "amount": 0, "harshAmount": 0, "kirtiAmount": 0, "count": 0},
-    {"name": "Travel", "amount": 0, "harshAmount": 0, "kirtiAmount": 0, "count": 0},
-    {"name": "Entertainment", "amount": 0, "harshAmount": 0, "kirtiAmount": 0, "count": 0},
-    {"name": "Investments/NPS", "amount": 0, "harshAmount": 0, "kirtiAmount": 0, "count": 0},
-    {"name": "Utilities/Recharge", "amount": 0, "harshAmount": 0, "kirtiAmount": 0, "count": 0},
-    {"name": "Transfers", "amount": 0, "harshAmount": 0, "kirtiAmount": 0, "count": 0},
-    {"name": "Other", "amount": 0, "harshAmount": 0, "kirtiAmount": 0, "count": 0}
+    {"name": "Shopping", "amount": 0, "perPersonAmounts": ${perPersonJson}, "count": 0}
+  ],
+  "cashflowSummary": [
+    {"bucket": "Regular", "amount": 0, "count": 0, "perPersonAmounts": ${perPersonJson}}
   ],
   "transactions": [],
-  "spendBySource": [{"source": "statement name", "person": "harsh", "amount": 0}],
+  "spendBySource": [{"source": "statement name", "person": "exact name", "amount": 0}],
   "redFlags": [{"severity": "high", "title": "...", "description": "...", "amount": 0}],
   "suggestions": [{"priority": 1, "text": "..."}],
   "aiNarrative": "4-5 paragraph household analysis with actual amounts."
 }
 
-Merge categories, combine transactions, deduplicate flags. transactions array = ALL from all statements.`;
+RULES:
+- Fill totalSpendByPerson with spend per member (debits). You may leave harshTotalSpend/kirtiTotalSpend as 0 if you use totalSpendByPerson.
+- Each category row MUST include perPersonAmounts with every name in ${JSON.stringify(names)} (use 0 if none).
+- cashflowSummary: merge buckets ${CASHFLOW_BUCKETS.join(', ')} across all statements; include perPersonAmounts per bucket.
+- transactions: include ALL transactions from all statements; each must have "person" matching one of ${JSON.stringify(names)}, plus "category" and "cashflowType".
+- Merge duplicate categories where sensible. Deduplicate red flags.`;
   return prompt;
 }
 
@@ -188,10 +218,12 @@ async function callClaude(prompt, maxTokens = 6000) {
 const CHART_COLORS = ['#2dd4bf', '#f0c040', '#f97316', '#a78bfa', '#34d399', '#60a5fa', '#fb7185', '#6b7280'];
 
 export default function ExpenseAnalyser() {
+  const { persons, token, fetchPersons } = useAuth();
   const [statementMonth, setStatementMonth] = useState(() => {
     const n = new Date();
     return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
   });
+  const [slotsPer, setSlotsPer] = useState(3);
   const [slots, setSlots] = useState({});
   const [results, setResults] = useState([]);
   const [finalData, setFinalData] = useState(null);
@@ -202,14 +234,85 @@ export default function ExpenseAnalyser() {
   const [queueStates, setQueueStates] = useState({}); // id -> 'pending' | 'analyzing' | 'done' | 'error'
   const [expandedCard, setExpandedCard] = useState(null);
   const slotIdRef = useRef(0);
+  const slotsBootstrapped = useRef(false);
+  const [expenseSettingsReady, setExpenseSettingsReady] = useState(false);
 
-  const addSlot = useCallback((person) => {
-    const id = `slot_${++slotIdRef.current}`;
+  const loadExpenseSettings = useCallback(() => {
+    api
+      .get('/settings')
+      .then((r) => {
+        setSlotsPer(r.data.expenseAnalyserSlotsPerProfile || 3);
+        setExpenseSettingsReady(true);
+      })
+      .catch(() => setExpenseSettingsReady(true));
+  }, []);
+
+  useEffect(() => {
+    loadExpenseSettings();
+  }, [loadExpenseSettings]);
+
+  useEffect(() => {
+    const on = () => loadExpenseSettings();
+    window.addEventListener('investtrack-settings', on);
+    return () => window.removeEventListener('investtrack-settings', on);
+  }, [loadExpenseSettings]);
+
+  useEffect(() => {
+    if (!token) return;
+    api
+      .get('/expense-analyser/snapshot')
+      .then(({ data }) => {
+        if (data.statementMonth) setStatementMonth(data.statementMonth);
+        if (Array.isArray(data.results) && data.results.length) setResults(data.results);
+        if (data.finalData) {
+          setFinalData(data.finalData);
+          setView('report');
+        }
+      })
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
+    if (!persons.length || !expenseSettingsReady || slotsBootstrapped.current) return;
+    const initial = Math.min(2, Math.max(1, slotsPer));
+    const next = {};
+    persons.forEach((p) => {
+      for (let i = 0; i < initial; i++) {
+        next[`slot_${++slotIdRef.current}`] = {
+          person: p,
+          file: null,
+          text: '',
+          label: '',
+          status: 'empty',
+          pdfPassword: '',
+        };
+      }
+    });
+    setSlots(next);
+    slotsBootstrapped.current = true;
+  }, [persons, slotsPer, expenseSettingsReady]);
+
+  const setSlotPdfPassword = useCallback((id, pdfPassword) => {
     setSlots((prev) => ({
       ...prev,
-      [id]: { person, file: null, text: '', label: '', status: 'empty' },
+      [id]: { ...prev[id], pdfPassword },
     }));
   }, []);
+
+  const addSlot = useCallback(
+    (person) => {
+      setSlots((prev) => {
+        const n = Object.values(prev).filter((s) => s.person === person).length;
+        if (n >= slotsPer) return prev;
+        const sid = `slot_${++slotIdRef.current}`;
+        return {
+          ...prev,
+          [sid]: { person, file: null, text: '', label: '', status: 'empty', pdfPassword: '' },
+        };
+      });
+    },
+    [slotsPer]
+  );
 
   const removeSlot = useCallback((id) => {
     setSlots((prev) => {
@@ -219,26 +322,48 @@ export default function ExpenseAnalyser() {
     });
   }, []);
 
-  const handleFileChange = useCallback(async (id, file) => {
+  const readPdfIntoSlot = useCallback((id, file) => {
     if (!file) return;
-    setSlots((prev) => ({ ...prev, [id]: { ...prev[id], status: 'reading' } }));
-    try {
-      const text = await extractPdfText(file);
-      const label = file.name.replace(/\.pdf$/i, '');
-      setSlots((prev) => ({
-        ...prev,
-        [id]: {
-          ...prev[id],
-          file,
-          text,
-          label: label.length > 40 ? label.slice(0, 40) + '…' : label,
-          status: 'ready',
-        },
-      }));
-    } catch (err) {
-      setSlots((prev) => ({ ...prev, [id]: { ...prev[id], status: 'error', error: err.message } }));
-    }
+    setSlots((prev) => {
+      const slot = prev[id];
+      if (!slot) return prev;
+      const pwd = slot.pdfPassword || '';
+      (async () => {
+        try {
+          const text = await extractPdfText(file, pwd);
+          const label = file.name.replace(/\.pdf$/i, '');
+          setSlots((p) => ({
+            ...p,
+            [id]: {
+              ...p[id],
+              file,
+              text,
+              label: label.length > 40 ? label.slice(0, 40) + '…' : label,
+              status: 'ready',
+              error: null,
+            },
+          }));
+        } catch (err) {
+          const msg =
+            err.message === 'PDF_PASSWORD_REQUIRED'
+              ? 'This PDF is password-protected. Enter the password below, then choose the file again (or use Retry).'
+              : err.message;
+          setSlots((p) => ({
+            ...p,
+            [id]: { ...p[id], file, status: 'error', error: msg },
+          }));
+        }
+      })();
+      return { ...prev, [id]: { ...slot, file, status: 'reading', error: null } };
+    });
   }, []);
+
+  const handleFileChange = useCallback(
+    (id, file) => {
+      readPdfIntoSlot(id, file);
+    },
+    [readPdfIntoSlot]
+  );
 
   const runAnalysis = useCallback(async () => {
     const entries = Object.entries(slots).filter(([, s]) => s.text && s.status === 'ready');
@@ -282,27 +407,26 @@ export default function ExpenseAnalyser() {
     setCompiling(true);
     try {
       const monthLabel = formatMonthLabel(statementMonth);
-      const prompt = buildCompilePrompt(successResults, monthLabel);
+      const prompt = buildCompilePrompt(successResults, monthLabel, persons);
       const raw = await callClaude(prompt, 10000);
       const data = robustParseJSON(raw);
       setFinalData(data);
       setView('report');
+      try {
+        await api.put('/expense-analyser/snapshot', {
+          statementMonth,
+          finalData: data,
+          results,
+        });
+      } catch (e) {
+        console.error('Failed to save expense report snapshot', e);
+      }
     } catch (err) {
       alert('Compilation error: ' + err.message);
     } finally {
       setCompiling(false);
     }
-  }, [results, statementMonth]);
-
-  const initialized = useRef(false);
-  useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-    addSlot('harsh');
-    addSlot('harsh');
-    addSlot('kirti');
-    addSlot('kirti');
-  }, [addSlot]);
+  }, [results, statementMonth, persons]);
 
   const slotEntries = Object.entries(slots);
   const filledCount = slotEntries.filter(([, s]) => s.status === 'ready').length;
@@ -314,8 +438,23 @@ export default function ExpenseAnalyser() {
         finalData={finalData}
         statementMonth={statementMonth}
         results={results}
+        personNames={persons}
         onBack={() => setView('upload')}
       />
+    );
+  }
+
+  if (!persons.length) {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <h1 className="font-display text-2xl font-bold text-white">Expense Analyser</h1>
+        <div className="card max-w-lg">
+          <p className="text-soft text-sm mb-4">Add people under Settings → People first. Upload slots per profile are set there too.</p>
+          <button type="button" className="btn-primary text-sm" onClick={() => fetchPersons?.()}>
+            Refresh profiles
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -324,52 +463,48 @@ export default function ExpenseAnalyser() {
       <div>
         <h1 className="font-display text-2xl font-bold text-white">Expense Analyser</h1>
         <p className="text-muted text-sm mt-0.5">
-          Upload bank or credit card PDF statements. AI analyses each file, then compile a household report.
+          Upload bank or credit card PDFs (password-supported). AI categorises spend into cashflow-style buckets, then compile a household summary.
+          Saved report persists after refresh — change upload slots per profile in Settings.
         </p>
       </div>
 
-      {/* Upload cards — same UI style as Portfolio/Investments */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="card">
-          <p className="stat-label mb-2 flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-teal-400" /> Harsh
-          </p>
-          <p className="text-muted text-xs mb-3">Bank statements and credit card bills</p>
-          <div className="space-y-2">
-            {slotEntries.filter(([, s]) => s.person === 'harsh').map(([id, slot]) => (
-              <FileSlotRow
-                key={id}
-                id={id}
-                slot={slot}
-                onFileChange={(file) => handleFileChange(id, file)}
-                onRemove={() => removeSlot(id)}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {persons.map((person, pi) => (
+          <div key={person} className="card">
+            <p className="stat-label mb-2 flex items-center gap-2">
+              <span
+                className="inline-block w-2 h-2 rounded-full shrink-0"
+                style={{ background: CHART_COLORS[pi % CHART_COLORS.length] }}
               />
-            ))}
+              {person}
+            </p>
+            <p className="text-muted text-xs mb-3">
+              Up to {slotsPer} statements · encrypted PDF: enter password, then upload or Retry
+            </p>
+            <div className="space-y-2">
+              {slotEntries
+                .filter(([, s]) => s.person === person)
+                .map(([id, slot]) => (
+                  <FileSlotRow
+                    key={id}
+                    slot={slot}
+                    onFileChange={(file) => handleFileChange(id, file)}
+                    onPdfPasswordChange={(v) => setSlotPdfPassword(id, v)}
+                    onRetry={() => slot.file && readPdfIntoSlot(id, slot.file)}
+                    onRemove={() => removeSlot(id)}
+                  />
+                ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => addSlot(person)}
+              disabled={slotEntries.filter(([, s]) => s.person === person).length >= slotsPer}
+              className="btn-ghost w-full mt-2 flex items-center justify-center gap-2 text-sm disabled:opacity-40"
+            >
+              <Plus size={14} /> Add statement
+            </button>
           </div>
-          <button type="button" onClick={() => addSlot('harsh')} className="btn-ghost w-full mt-2 flex items-center justify-center gap-2 text-sm">
-            <Plus size={14} /> Add statement
-          </button>
-        </div>
-        <div className="card">
-          <p className="stat-label mb-2 flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-amber-400" /> Kirti
-          </p>
-          <p className="text-muted text-xs mb-3">Bank statements and credit card bills</p>
-          <div className="space-y-2">
-            {slotEntries.filter(([, s]) => s.person === 'kirti').map(([id, slot]) => (
-              <FileSlotRow
-                key={id}
-                id={id}
-                slot={slot}
-                onFileChange={(file) => handleFileChange(id, file)}
-                onRemove={() => removeSlot(id)}
-              />
-            ))}
-          </div>
-          <button type="button" onClick={() => addSlot('kirti')} className="btn-ghost w-full mt-2 flex items-center justify-center gap-2 text-sm">
-            <Plus size={14} /> Add statement
-          </button>
-        </div>
+        ))}
       </div>
 
       <div className="card max-w-md">
@@ -477,40 +612,58 @@ export default function ExpenseAnalyser() {
   );
 }
 
-function FileSlotRow({ id, slot, onFileChange, onRemove }) {
+function FileSlotRow({ slot, onFileChange, onPdfPasswordChange, onRetry, onRemove }) {
   const inputRef = useRef(null);
   return (
     <div
-      className={`flex items-center gap-2 p-3 rounded-lg border transition-colors ${
+      className={`flex flex-col gap-2 p-3 rounded-lg border transition-colors ${
         slot.status === 'ready' ? 'border-green-500/40 bg-green-500/5' : 'border-border bg-surface'
       }`}
     >
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".pdf"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onFileChange(f);
-          e.target.value = '';
-        }}
-      />
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        className="flex-1 min-w-0 text-left text-sm text-soft truncate"
-      >
-        {slot.status === 'reading' && 'Reading PDF…'}
-        {slot.status === 'ready' && (slot.label || 'PDF ready')}
-        {slot.status === 'error' && (slot.error || 'Error')}
-        {slot.status === 'empty' && 'Click to upload PDF'}
-      </button>
-      {slot.status !== 'empty' && (
-        <button type="button" onClick={onRemove} className="text-muted hover:text-rose shrink-0 p-1">
-          <Trash2 size={14} />
+      <div className="flex items-center gap-2">
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onFileChange(f);
+            e.target.value = '';
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="flex-1 min-w-0 text-left text-sm text-soft truncate"
+        >
+          {slot.status === 'reading' && 'Reading PDF…'}
+          {slot.status === 'ready' && (slot.label || 'PDF ready')}
+          {slot.status === 'error' && (slot.error || 'Error')}
+          {slot.status === 'empty' && 'Click to upload PDF'}
         </button>
-      )}
+        {slot.status !== 'empty' && (
+          <button type="button" onClick={onRemove} className="text-muted hover:text-rose shrink-0 p-1">
+            <Trash2 size={14} />
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <KeyRound size={12} className="text-muted shrink-0" />
+        <input
+          type="password"
+          className="input flex-1 text-xs py-1.5"
+          placeholder="PDF password (if protected)"
+          value={slot.pdfPassword || ''}
+          onChange={(e) => onPdfPasswordChange?.(e.target.value)}
+          autoComplete="off"
+        />
+        {slot.status === 'error' && slot.file && (
+          <button type="button" onClick={onRetry} className="btn-ghost text-xs py-1 px-2 shrink-0">
+            Retry
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -545,7 +698,7 @@ function ResultCard({ result, index, expanded, onToggle }) {
         <div className="flex-1 min-w-0">
           <p className="font-medium text-white truncate">{label}</p>
           <p className="text-muted text-xs mt-0.5">
-            {person === 'harsh' ? 'Harsh' : 'Kirti'} · {data?.month || ''} · {(data?.transactions || []).length} txns
+            {person || data?.person || '—'} · {data?.month || ''} · {(data?.transactions || []).length} txns
             {flags.filter((f) => f.severity === 'high').length ? ` · ${flags.filter((f) => f.severity === 'high').length} red flag(s)` : ''}
           </p>
         </div>
@@ -636,6 +789,7 @@ function ResultCard({ result, index, expanded, onToggle }) {
                       <th className="text-left py-2">Date</th>
                       <th className="text-left py-2">Description</th>
                       <th className="text-left py-2">Category</th>
+                      <th className="text-left py-2">Cashflow</th>
                       <th className="text-right py-2">Amount</th>
                     </tr>
                   </thead>
@@ -645,6 +799,7 @@ function ResultCard({ result, index, expanded, onToggle }) {
                         <td className="py-1.5 text-muted">{t.date}</td>
                         <td className="py-1.5 text-soft truncate max-w-[180px]">{t.description}</td>
                         <td className="py-1.5 text-muted text-xs">{t.category || 'Other'}</td>
+                        <td className="py-1.5 text-muted text-xs">{t.cashflowType || '—'}</td>
                         <td className={`py-1.5 text-right font-mono ${t.type === 'credit' ? 'text-green-400' : 'text-rose'}`}>
                           {t.type === 'credit' ? '+' : '−'}{fmtFull(Math.abs(Number(t.amount)))}
                         </td>
@@ -661,10 +816,33 @@ function ResultCard({ result, index, expanded, onToggle }) {
   );
 }
 
-function ExpenseReportView({ finalData, statementMonth, results, onBack }) {
+function personAmount(c, personName) {
+  const pp = c.perPersonAmounts;
+  if (pp && typeof pp === 'object' && personName in pp) return Number(pp[personName]) || 0;
+  if (personName === 'Harsh' || personName === 'harsh') return Number(c.harshAmount) || 0;
+  if (personName === 'Kirti' || personName === 'kirti') return Number(c.kirtiAmount) || 0;
+  return 0;
+}
+
+function spendSlicesFromSummary(s, personNames) {
+  const by = s.totalSpendByPerson;
+  if (by && typeof by === 'object' && !Array.isArray(by)) {
+    return Object.entries(by)
+      .map(([name, value]) => ({ name, value: Number(value) || 0 }))
+      .filter((d) => d.value > 0);
+  }
+  const legacy = [];
+  if (Number(s.harshTotalSpend) > 0) legacy.push({ name: 'Harsh', value: Number(s.harshTotalSpend) });
+  if (Number(s.kirtiTotalSpend) > 0) legacy.push({ name: 'Kirti', value: Number(s.kirtiTotalSpend) });
+  if (legacy.length) return legacy;
+  return (personNames || []).map((name) => ({ name, value: 0 })).filter((d) => d.value > 0);
+}
+
+function ExpenseReportView({ finalData, statementMonth, results, personNames = [], onBack }) {
   const [tab, setTab] = useState('overview');
   const s = finalData.summary || {};
   const categories = (finalData.categories || []).filter((c) => c.amount > 0).sort((a, b) => b.amount - a.amount);
+  const cashflowSummary = (finalData.cashflowSummary || []).filter((c) => Number(c.amount) > 0).sort((a, b) => b.amount - a.amount);
   const transactions = finalData.transactions || [];
   const redFlags = finalData.redFlags || [];
   const suggestions = finalData.suggestions || [];
@@ -674,13 +852,23 @@ function ExpenseReportView({ finalData, statementMonth, results, onBack }) {
   const totalDues = s.totalCreditCardDues || cardDues.reduce((a, c) => a + (Number(c.due) || 0), 0);
 
   const catChartData = categories.slice(0, 10).map((c) => ({ name: c.name, value: c.amount, amount: c.amount }));
-  const personPieData = [
-    { name: 'Harsh', value: s.harshTotalSpend || 0 },
-    { name: 'Kirti', value: s.kirtiTotalSpend || 0 },
-  ].filter((d) => d.value > 0);
+  const cfChartData = cashflowSummary.slice(0, 12).map((c) => ({
+    name: c.bucket,
+    value: c.amount,
+    amount: c.amount,
+  }));
+  const personPieData = spendSlicesFromSummary(s, personNames);
+
+  const nameCols =
+    personNames.length > 0
+      ? personNames
+      : personPieData.length
+        ? [...new Set(personPieData.map((p) => p.name))]
+        : ['Harsh', 'Kirti'];
 
   const TABS = [
     { id: 'overview', label: 'Overview' },
+    { id: 'cashflow', label: 'Cashflow buckets' },
     { id: 'categories', label: 'Categories' },
     { id: 'transactions', label: 'Transactions' },
     { id: 'flags', label: 'Alerts' },
@@ -720,14 +908,20 @@ function ExpenseReportView({ finalData, statementMonth, results, onBack }) {
           <span className="stat-label text-muted">Bank balance</span>
           <span className="font-mono text-xl font-bold text-green-400">{fmt(s.bankClosingBalance)}</span>
         </div>
-        <div className="flex items-baseline gap-2">
-          <span className="stat-label text-muted">Harsh</span>
-          <span className="font-mono text-lg text-white">{fmt(s.harshTotalSpend)}</span>
-        </div>
-        <div className="flex items-baseline gap-2">
-          <span className="stat-label text-muted">Kirti</span>
-          <span className="font-mono text-lg text-white">{fmt(s.kirtiTotalSpend)}</span>
-        </div>
+        {(s.totalSpendByPerson &&
+        typeof s.totalSpendByPerson === 'object' &&
+        Object.keys(s.totalSpendByPerson).length > 0
+          ? Object.entries(s.totalSpendByPerson)
+          : [
+              ['Harsh', s.harshTotalSpend],
+              ['Kirti', s.kirtiTotalSpend],
+            ].filter(([, v]) => Number(v) > 0)
+        ).map(([name, amt]) => (
+          <div key={name} className="flex items-baseline gap-2">
+            <span className="stat-label text-muted">{name}</span>
+            <span className="font-mono text-lg text-white">{fmt(Number(amt) || 0)}</span>
+          </div>
+        ))}
         {s.topCategory ? (
           <div className="flex items-baseline gap-2">
             <span className="stat-label text-muted">Top category</span>
@@ -769,7 +963,7 @@ function ExpenseReportView({ finalData, statementMonth, results, onBack }) {
           )}
           {personPieData.length > 0 && (
             <div className="card">
-              <p className="stat-label mb-3">Harsh vs Kirti spend</p>
+              <p className="stat-label mb-3">Spend by profile</p>
               <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
                   <Pie
@@ -801,6 +995,68 @@ function ExpenseReportView({ finalData, statementMonth, results, onBack }) {
         </div>
       )}
 
+      {tab === 'cashflow' && (
+        <div className="space-y-4">
+          {cfChartData.length > 0 ? (
+            <div className="card">
+              <p className="stat-label mb-3">Spending by cashflow bucket (Major, Regular, EMI, …)</p>
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={cfChartData} layout="vertical" margin={{ left: 100, right: 20 }}>
+                  <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={(v) => `${Number(v) / 1000}K`} />
+                  <YAxis type="category" dataKey="name" width={96} tick={{ fill: '#9ca3af', fontSize: 10 }} />
+                  <Tooltip
+                    formatter={(v) => [fmtFull(v), 'Amount']}
+                    contentStyle={{
+                      background: '#0f1117',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 12,
+                      fontSize: 12,
+                      color: '#e2e8f0',
+                    }}
+                  />
+                  <Bar dataKey="value" fill="#60a5fa" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="card text-muted text-sm">No cashflow bucket data in this report. Re-compile after uploading statements.</div>
+          )}
+          {cashflowSummary.length > 0 && (
+            <div className="card overflow-x-auto">
+              <p className="stat-label mb-3">Bucket detail</p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-muted text-xs uppercase">
+                    <th className="text-left py-2">Bucket</th>
+                    <th className="text-right py-2">Amount</th>
+                    <th className="text-right py-2">Count</th>
+                    {nameCols.map((n) => (
+                      <th key={n} className="text-right py-2">
+                        {n}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {cashflowSummary.map((c) => (
+                    <tr key={c.bucket} className="border-b border-border/50">
+                      <td className="py-2 text-soft">{c.bucket}</td>
+                      <td className="py-2 text-right font-mono">{fmt(c.amount)}</td>
+                      <td className="py-2 text-right text-muted">{c.count ?? '—'}</td>
+                      {nameCols.map((n) => (
+                        <td key={n} className="py-2 text-right font-mono text-xs">
+                          {fmt(personAmount(c, n))}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {tab === 'categories' && (
         <div className="card">
           <p className="stat-label mb-3">Category breakdown</p>
@@ -810,8 +1066,11 @@ function ExpenseReportView({ finalData, statementMonth, results, onBack }) {
                 <tr className="border-b border-border text-muted text-xs uppercase">
                   <th className="text-left py-3">Category</th>
                   <th className="text-right py-3">Total</th>
-                  <th className="text-right py-3">Harsh</th>
-                  <th className="text-right py-3">Kirti</th>
+                  {nameCols.map((n) => (
+                    <th key={n} className="text-right py-3">
+                      {n}
+                    </th>
+                  ))}
                   <th className="text-right py-3">Count</th>
                 </tr>
               </thead>
@@ -820,8 +1079,11 @@ function ExpenseReportView({ finalData, statementMonth, results, onBack }) {
                   <tr key={c.name} className="border-b border-border/50">
                     <td className="py-3 text-soft">{c.name}</td>
                     <td className="py-3 text-right font-mono">{fmt(c.amount)}</td>
-                    <td className="py-3 text-right font-mono text-teal-400">{fmt(c.harshAmount || 0)}</td>
-                    <td className="py-3 text-right font-mono text-amber-400">{fmt(c.kirtiAmount || 0)}</td>
+                    {nameCols.map((n) => (
+                      <td key={n} className="py-3 text-right font-mono text-xs">
+                        {fmt(personAmount(c, n))}
+                      </td>
+                    ))}
                     <td className="py-3 text-right text-muted">{c.count || 0}</td>
                   </tr>
                 ))}
@@ -842,6 +1104,7 @@ function ExpenseReportView({ finalData, statementMonth, results, onBack }) {
                   <th className="text-left py-2">Description</th>
                   <th className="text-left py-2">Person</th>
                   <th className="text-left py-2">Category</th>
+                  <th className="text-left py-2">Cashflow</th>
                   <th className="text-right py-2">Amount</th>
                 </tr>
               </thead>
@@ -850,8 +1113,11 @@ function ExpenseReportView({ finalData, statementMonth, results, onBack }) {
                   <tr key={i} className="border-b border-border/40">
                     <td className="py-2 text-muted">{t.date}</td>
                     <td className="py-2 text-soft truncate max-w-[200px]">{t.description}</td>
-                    <td className="py-2 text-muted text-xs">{t.person === 'harsh' ? 'Harsh' : 'Kirti'}</td>
+                    <td className="py-2 text-muted text-xs">
+                      {typeof t.person === 'string' && t.person.length ? t.person : '—'}
+                    </td>
                     <td className="py-2 text-muted text-xs">{t.category || 'Other'}</td>
+                    <td className="py-2 text-muted text-xs">{t.cashflowType || '—'}</td>
                     <td className={`py-2 text-right font-mono ${t.type === 'credit' ? 'text-green-400' : 'text-rose'}`}>
                       {t.type === 'credit' ? '+' : '−'}{fmtFull(Math.abs(Number(t.amount)))}
                     </td>

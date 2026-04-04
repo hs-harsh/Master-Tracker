@@ -40,6 +40,7 @@ export default function Settings() {
   const [sidebarFinanceEnabled,     setSidebarFinanceEnabled]     = useState(true);
   const [sidebarWellnessEnabled,    setSidebarWellnessEnabled]    = useState(true);
   const [sidebarLiveTradingEnabled, setSidebarLiveTradingEnabled] = useState(true);
+  const [expenseAnalyserSlotsPerProfile, setExpenseAnalyserSlotsPerProfile] = useState(3);
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(null);
 
@@ -56,6 +57,9 @@ export default function Settings() {
       setSidebarFinanceEnabled(d.sidebarFinanceEnabled !== false);
       setSidebarWellnessEnabled(d.sidebarWellnessEnabled !== false);
       setSidebarLiveTradingEnabled(d.sidebarLiveTradingEnabled !== false);
+      setExpenseAnalyserSlotsPerProfile(
+        typeof d.expenseAnalyserSlotsPerProfile === 'number' ? d.expenseAnalyserSlotsPerProfile : 3
+      );
       applyTheme(d.themeMode || 'dark', d.accent || 'gold');
     }).catch(() => {});
   };
@@ -121,6 +125,7 @@ export default function Settings() {
         sidebarFinanceEnabled,
         sidebarWellnessEnabled,
         sidebarLiveTradingEnabled,
+        expenseAnalyserSlotsPerProfile,
       };
       if (anthropicApiKeyTouched) body.anthropicApiKey = anthropicApiKeyInput.trim();
       await api.put('/settings', body);
@@ -223,6 +228,24 @@ export default function Settings() {
             className="btn-primary flex items-center gap-2 shrink-0">
             <UserPlus size={14} /> Add
           </button>
+        </div>
+
+        <div className="mt-6 pt-6 border-t border-border">
+          <label className="label">Expense Analyser — upload slots per profile</label>
+          <p className="text-xs text-muted mb-2">
+            Maximum bank / credit card PDFs each person can attach at once (1–10). Save below to apply.
+          </p>
+          <input
+            type="number"
+            min={1}
+            max={10}
+            className="input max-w-[120px]"
+            value={expenseAnalyserSlotsPerProfile}
+            onChange={(e) => {
+              const n = parseInt(e.target.value, 10);
+              setExpenseAnalyserSlotsPerProfile(Number.isFinite(n) ? Math.min(10, Math.max(1, n)) : 3);
+            }}
+          />
         </div>
       </div>
 
