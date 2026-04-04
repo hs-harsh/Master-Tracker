@@ -16,12 +16,12 @@ function normalizeInvestmentAmounts(body) {
   return { amount, qty, avg_price };
 }
 
-const PORTFOLIO_MKT_CACHE_KEY = 'portfolio_market_snapshot';
+const LEGACY_PORTFOLIO_MKT_KEY = 'portfolio_market_snapshot';
 
-async function readPortfolioMktDoc(poolRef, userId) {
+async function readLegacyPortfolioMktDoc(poolRef, userId) {
   const { rows } = await poolRef.query(
     'SELECT value FROM user_settings WHERE user_id = $1 AND key = $2',
-    [userId, PORTFOLIO_MKT_CACHE_KEY]
+    [userId, LEGACY_PORTFOLIO_MKT_KEY]
   );
   if (!rows[0]?.value) return { v: 1, byAccount: {} };
   try {
@@ -31,24 +31,64 @@ async function readPortfolioMktDoc(poolRef, userId) {
   return { v: 1, byAccount: {} };
 }
 
-async function mergePortfolioMktCache(poolRef, userId, account, asOf, prices) {
-  const doc = await readPortfolioMktDoc(poolRef, userId);
-  doc.byAccount[account] = { asOf, prices };
+async function writeLegacyPortfolioMktDoc(poolRef, userId, doc) {
   await poolRef.query(
     `INSERT INTO user_settings (user_id, key, value) VALUES ($1, $2, $3)
      ON CONFLICT (user_id, key) DO UPDATE SET value = $3`,
-    [userId, PORTFOLIO_MKT_CACHE_KEY, JSON.stringify(doc)]
+    [userId, LEGACY_PORTFOLIO_MKT_KEY, JSON.stringify(doc)]
   );
 }
 
-async function clearPortfolioMktCacheAccount(poolRef, userId, account) {
-  const doc = await readPortfolioMktDoc(poolRef, userId);
+/** Remove one account from legacy blob after migrating to portfolio_market_snapshots */
+async function stripLegacyPortfolioMktAccount(poolRef, userId, account) {
+  const doc = await readLegacyPortfolioMktDoc(poolRef, userId);
+  if (!doc.byAccount?.[account]) return;
   delete doc.byAccount[account];
+  await writeLegacyPortfolioMktDoc(poolRef, userId, doc);
+}
+
+async function upsertPortfolioMktSnapshot(poolRef, userId, account, asOf, prices) {
   await poolRef.query(
-    `INSERT INTO user_settings (user_id, key, value) VALUES ($1, $2, $3)
-     ON CONFLICT (user_id, key) DO UPDATE SET value = $3`,
-    [userId, PORTFOLIO_MKT_CACHE_KEY, JSON.stringify(doc)]
+    `INSERT INTO portfolio_market_snapshots (user_id, account, as_of, prices, updated_at)
+     VALUES ($1, $2, $3::date, $4::jsonb, NOW())
+     ON CONFLICT (user_id, account)
+     DO UPDATE SET as_of = EXCLUDED.as_of, prices = EXCLUDED.prices, updated_at = NOW()`,
+    [userId, account, asOf, JSON.stringify(prices)]
   );
+}
+
+async function deletePortfolioMktSnapshot(poolRef, userId, account) {
+  await poolRef.query(
+    'DELETE FROM portfolio_market_snapshots WHERE user_id = $1 AND account = $2',
+    [userId, account]
+  );
+  await stripLegacyPortfolioMktAccount(poolRef, userId, account);
+}
+
+/**
+ * Read snapshot from DB table; if missing, lazy-migrate from legacy user_settings and strip legacy entry.
+ */
+async function getPortfolioMktSnapshot(poolRef, userId, account) {
+  const { rows } = await poolRef.query(
+    `SELECT as_of::text AS as_of, prices FROM portfolio_market_snapshots
+     WHERE user_id = $1 AND account = $2`,
+    [userId, account]
+  );
+  const row = rows[0];
+  const prices = row?.prices;
+  if (prices && typeof prices === 'object' && Object.keys(prices).length) {
+    return { asOf: row.as_of, prices };
+  }
+  const doc = await readLegacyPortfolioMktDoc(poolRef, userId);
+  const entry = doc.byAccount?.[account];
+  const leg = entry?.prices;
+  if (leg && typeof leg === 'object' && Object.keys(leg).length) {
+    const asOf = entry.asOf || new Date().toISOString().slice(0, 10);
+    await upsertPortfolioMktSnapshot(poolRef, userId, account, asOf, leg);
+    await stripLegacyPortfolioMktAccount(poolRef, userId, account);
+    return { asOf, prices: leg };
+  }
+  return null;
 }
 
 // ── Yahoo Finance singleton (instantiated once per process) ──────────────────
@@ -325,12 +365,9 @@ router.post('/', auth, async (req, res) => {
 router.get('/market-cache', auth, async (req, res) => {
   try {
     const account = req.query.account != null ? String(req.query.account) : '';
-    const doc = await readPortfolioMktDoc(pool, req.user.id);
-    const entry = doc.byAccount[account];
-    if (!entry?.prices || typeof entry.prices !== 'object') {
-      return res.json({ asOf: null, prices: {} });
-    }
-    res.json({ asOf: entry.asOf || null, prices: entry.prices });
+    const snap = await getPortfolioMktSnapshot(pool, req.user.id, account);
+    if (!snap) return res.json({ asOf: null, prices: {} });
+    res.json({ asOf: snap.asOf || null, prices: snap.prices });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -348,7 +385,7 @@ router.put('/market-cache', auth, async (req, res) => {
       p => p && typeof p === 'object' && Number(p.price) > 0
     );
     if (!hasAny) {
-      await clearPortfolioMktCacheAccount(pool, req.user.id, account);
+      await deletePortfolioMktSnapshot(pool, req.user.id, account);
       return res.json({ asOf: null, prices: {} });
     }
     if (!asOf || !/^\d{4}-\d{2}-\d{2}$/.test(String(asOf))) {
@@ -356,7 +393,8 @@ router.put('/market-cache', auth, async (req, res) => {
     } else {
       asOf = String(asOf).slice(0, 10);
     }
-    await mergePortfolioMktCache(pool, req.user.id, account, asOf, prices);
+    await upsertPortfolioMktSnapshot(pool, req.user.id, account, asOf, prices);
+    await stripLegacyPortfolioMktAccount(pool, req.user.id, account);
     res.json({ asOf, prices });
   } catch (err) {
     res.status(500).json({ error: err.message });
