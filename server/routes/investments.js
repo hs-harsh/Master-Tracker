@@ -147,15 +147,55 @@ async function fetchPriceWithFallbacks(symbol, instrumentName) {
     } catch (e) { /* continue */ }
   }
 
-  // 3. NSE India direct scrape
+  // 3. Yahoo Finance search by instrument name → try top equity results
+  try {
+    const searchRes = await yf.search(instrumentName, { newsCount: 0, quotesCount: 10 });
+    const candidates = (searchRes?.quotes || []).filter(q => q.quoteType === 'EQUITY' && q.isYahooFinance);
+    for (const c of candidates) {
+      const csym = c.symbol || '';
+      // Prefer Indian exchange listings
+      if (!csym.endsWith('.NS') && !csym.endsWith('.BO')) continue;
+      try {
+        const quote = await yf.quote(csym);
+        if (quote?.regularMarketPrice) {
+          return {
+            price: quote.regularMarketPrice,
+            currency: quote.currency || 'INR',
+            symbol: csym,
+            name: quote.longName || quote.shortName || csym,
+          };
+        }
+      } catch (e) { /* continue */ }
+    }
+    // If no Indian match, try first US result
+    for (const c of candidates) {
+      const csym = c.symbol || '';
+      if (csym.endsWith('.NS') || csym.endsWith('.BO')) continue;
+      try {
+        const quote = await yf.quote(csym);
+        if (quote?.regularMarketPrice) {
+          return {
+            price: quote.regularMarketPrice,
+            currency: quote.currency || 'USD',
+            symbol: csym,
+            name: quote.longName || quote.shortName || csym,
+          };
+        }
+      } catch (e) { /* continue */ }
+    }
+  } catch (e) {
+    console.warn('[YF search fallback]', instrumentName, e.message);
+  }
+
+  // 4. NSE India direct scrape
   const nseResult = await fetchFromNSE(cleanSym);
   if (nseResult) return nseResult;
 
-  // 4. MFAPI — Indian mutual fund NAV
+  // 5. MFAPI — Indian mutual fund NAV
   const mfResult = await fetchFromMFAPI(instrumentName);
   if (mfResult) return mfResult;
 
-  // 5. Nothing worked — ask user to enter manually
+  // 6. Nothing worked — ask user to enter manually
   return { needsManualPrice: true, symbol: sym };
 }
 
