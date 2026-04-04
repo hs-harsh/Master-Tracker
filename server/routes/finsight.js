@@ -15,6 +15,8 @@ router.post('/', async (req, res) => {
   }
 
   const body = { ...req.body, model: MODEL };
+  const controller = new AbortController();
+  const kill = setTimeout(() => controller.abort(), 180000);
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -24,11 +26,28 @@ router.post('/', async (req, res) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
-    const data = await r.json();
+    clearTimeout(kill);
+    const text = await r.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return res.status(r.ok ? 502 : r.status).json({
+        error: r.ok ? 'Anthropic returned non-JSON response' : text.slice(0, 800),
+      });
+    }
     if (!r.ok) return res.status(r.status).json(data);
     res.json(data);
   } catch (err) {
+    clearTimeout(kill);
+    if (err.name === 'AbortError') {
+      return res.status(504).json({
+        error:
+          'AI request timed out (3 min). Try again, use a shorter statement, or split multi-month PDFs.',
+      });
+    }
     res.status(502).json({ error: 'Upstream error: ' + err.message });
   }
 });

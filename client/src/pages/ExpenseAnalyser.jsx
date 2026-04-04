@@ -8,12 +8,23 @@ import { Plus, Trash2, ChevronDown, ChevronRight, FileText, Loader2, KeyRound } 
 /** Cashflow-style buckets (same family as monthly cashflow expense columns). */
 const CASHFLOW_BUCKETS = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips', 'Transfers'];
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const formatMonthLabel = (ym) => {
-  if (!ym) return 'Current Month';
-  const [y, m] = String(ym).split('-');
-  return `${MONTHS[+(m || 1) - 1]} ${y || ''}`;
-};
+const PDF_TEXT_MAX = 22000;
+
+function formatApiError(err) {
+  const d = err?.response?.data;
+  if (!d) return err?.message || 'Request failed';
+  if (typeof d.error === 'string') return d.error;
+  if (d.error && typeof d.error === 'object' && d.error.message) return String(d.error.message);
+  if (d.type === 'error' && d.error && typeof d.error === 'object' && d.error.message) {
+    return String(d.error.message);
+  }
+  if (typeof d.message === 'string') return d.message;
+  try {
+    return JSON.stringify(d);
+  } catch {
+    return err?.message || 'Request failed';
+  }
+}
 
 function loadPdfScript() {
   return new Promise((resolve) => {
@@ -82,18 +93,16 @@ function robustParseJSON(raw) {
   throw new Error('Could not parse AI response.');
 }
 
-function buildSingleFilePrompt(slot, statementMonth) {
-  const monthLabel = formatMonthLabel(statementMonth);
+function buildSingleFilePrompt(slot) {
   const personName = String(slot.person || '').trim() || 'Account holder';
   const bucketList = CASHFLOW_BUCKETS.join(', ');
   return `You are a professional financial analyst. Analyze this single bank or credit card statement for ${personName}.
 
 STATEMENT: ${slot.label}
 PERSON (exact string for JSON): ${personName}
-MONTH: ${monthLabel}
 
 --- STATEMENT TEXT START ---
-${slot.text.substring(0, 18000)}
+${slot.text.substring(0, PDF_TEXT_MAX)}
 --- STATEMENT TEXT END ---
 
 Return ONLY a valid JSON object. No markdown, no code fences.
@@ -101,7 +110,7 @@ Return ONLY a valid JSON object. No markdown, no code fences.
 {
   "statementLabel": "${slot.label}",
   "person": "${personName.replace(/"/g, '\\"')}",
-  "month": "${monthLabel}",
+  "month": "Infer statement period from the text (e.g. Dec 2025 or 01/12/2025–31/12/2025)",
   "accountType": "bank or credit_card",
   "summary": {
     "totalSpend": 0,
@@ -112,17 +121,24 @@ Return ONLY a valid JSON object. No markdown, no code fences.
     "utilizationPct": 0,
     "transactionCount": 0
   },
+  "categoryHierarchy": [
+    {
+      "parent": "Food & Dining",
+      "amount": 0,
+      "count": 0,
+      "subcategories": [{"name": "Restaurants", "amount": 0, "count": 0}, {"name": "Groceries", "amount": 0, "count": 0}]
+    }
+  ],
   "categories": [
-    {"name": "Shopping", "amount": 0, "count": 0},
-    {"name": "Food & Dining", "amount": 0, "count": 0},
-    {"name": "Other", "amount": 0, "count": 0}
+    {"name": "Restaurants", "parentCategory": "Food & Dining", "amount": 0, "count": 0},
+    {"name": "Shopping", "parentCategory": "Shopping", "amount": 0, "count": 0}
   ],
   "cashflowSummary": [
     {"bucket": "Regular", "amount": 0, "count": 0},
     {"bucket": "Major", "amount": 0, "count": 0}
   ],
   "transactions": [
-    {"date": "DD/MM/YYYY", "description": "...", "amount": 0, "type": "debit", "category": "Food & Dining", "cashflowType": "Regular"}
+    {"date": "DD/MM/YYYY", "description": "...", "amount": 0, "type": "debit", "category": "Restaurants", "parentCategory": "Food & Dining", "subcategory": "Restaurants", "cashflowType": "Regular"}
   ],
   "redFlags": [
     {"severity": "high", "title": "...", "description": "...", "amount": 0}
@@ -135,11 +151,11 @@ RULES:
 - For EACH transaction set "cashflowType" to ONE of: ${bucketList}.
   Map spending: groceries/subscriptions/utilities → Regular; large one-off → Major; rare discretionary → Non-Recurring; travel → Trips; loan/EMI → EMI; internal xfer → Transfers; salary/refund inflow → Income or Other Income as appropriate.
 - "cashflowSummary": one row per bucket you used; sum debits (and credits for Income buckets as appropriate).
-- "categories": merchant-style labels (detail); amounts should align with transactions.
+- "categoryHierarchy": parents are broad groups (Food & Dining, Travel, Bills…); "subcategories" sum to parent "amount". Keep "categories" as flat rows with parentCategory for charts (amounts must match hierarchy).
 - JSON must be complete and valid.`;
 }
 
-function buildCompilePrompt(results, monthLabel, personNames) {
+function buildCompilePrompt(results, personNames) {
   const names = Array.isArray(personNames) && personNames.length ? personNames : ['Household'];
   const householdLine = names.join(', ');
   const perPersonZero = names.reduce((o, n) => ({ ...o, [n]: 0 }), {});
@@ -148,9 +164,9 @@ function buildCompilePrompt(results, monthLabel, personNames) {
   let prompt = `You are a financial analyst. Compile a HOUSEHOLD financial report from the individual statement analyses below.
 
 HOUSEHOLD MEMBERS: ${householdLine}
-MONTH: ${monthLabel}
 STATEMENTS ANALYZED: ${results.length}
 Use these EXACT person name strings in JSON: ${JSON.stringify(names)}
+Infer overall reporting period from statement dates and set summary.month (e.g. "Dec 2025" or date range).
 
 `;
   results.forEach((r, i) => {
@@ -159,10 +175,11 @@ Use these EXACT person name strings in JSON: ${JSON.stringify(names)}
     prompt += `\n=== STATEMENT ${i + 1}: ${r.label} (person: ${p}) ===
 Summary: Spend=${d.summary?.totalSpend || 0}, CCDue=${d.summary?.creditCardDue || 0}, Balance=${d.summary?.closingBalance || 0}
 Key Insights: ${d.keyInsights || ''}
-Categories: ${JSON.stringify((d.categories || []).filter((c) => c.amount > 0))}
+Category hierarchy: ${JSON.stringify(d.categoryHierarchy || [])}
+Categories (flat): ${JSON.stringify((d.categories || []).filter((c) => c.amount > 0))}
 Cashflow summary: ${JSON.stringify(d.cashflowSummary || [])}
 Red Flags: ${JSON.stringify(d.redFlags || [])}
-Top 30 Transactions: ${JSON.stringify((d.transactions || []).slice(0, 30))}
+Top 25 Transactions: ${JSON.stringify((d.transactions || []).slice(0, 25))}
 `;
   });
   prompt += `
@@ -171,7 +188,7 @@ Return ONLY valid JSON. No markdown.
 
 {
   "summary": {
-    "month": "${monthLabel}",
+    "month": "Period label from statements",
     "totalHouseholdSpend": 0,
     "totalSpendByPerson": ${perPersonJson},
     "harshTotalSpend": 0,
@@ -183,8 +200,17 @@ Return ONLY valid JSON. No markdown.
     "topCategoryAmount": 0,
     "statementsAnalyzed": ${results.length}
   },
+  "categoryHierarchy": [
+    {
+      "parent": "Food & Dining",
+      "amount": 0,
+      "count": 0,
+      "perPersonAmounts": ${perPersonJson},
+      "subcategories": [{"name": "Restaurants", "amount": 0, "count": 0, "perPersonAmounts": ${perPersonJson}}]
+    }
+  ],
   "categories": [
-    {"name": "Shopping", "amount": 0, "perPersonAmounts": ${perPersonJson}, "count": 0}
+    {"name": "Shopping", "parentCategory": "Shopping", "amount": 0, "perPersonAmounts": ${perPersonJson}, "count": 0}
   ],
   "cashflowSummary": [
     {"bucket": "Regular", "amount": 0, "count": 0, "perPersonAmounts": ${perPersonJson}}
@@ -198,31 +224,32 @@ Return ONLY valid JSON. No markdown.
 
 RULES:
 - Fill totalSpendByPerson with spend per member (debits). You may leave harshTotalSpend/kirtiTotalSpend as 0 if you use totalSpendByPerson.
-- Each category row MUST include perPersonAmounts with every name in ${JSON.stringify(names)} (use 0 if none).
+- "categoryHierarchy": merge parents across statements; subcategory amounts sum to parent; each parent and subcategory MUST include perPersonAmounts for every name in ${JSON.stringify(names)}.
+- Flat "categories" should stay consistent with hierarchy (for charts); each row needs perPersonAmounts.
 - cashflowSummary: merge buckets ${CASHFLOW_BUCKETS.join(', ')} across all statements; include perPersonAmounts per bucket.
-- transactions: include ALL transactions from all statements; each must have "person" matching one of ${JSON.stringify(names)}, plus "category" and "cashflowType".
+- transactions: include ALL transactions from all statements; each must have "person" matching one of ${JSON.stringify(names)}, plus "category", optional parentCategory/subcategory, and "cashflowType".
 - Merge duplicate categories where sensible. Deduplicate red flags.`;
   return prompt;
 }
 
 async function callClaude(prompt, maxTokens = 6000) {
-  const res = await api.post('/chat', {
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: maxTokens,
-    messages: [{ role: 'user', content: prompt }],
-  });
-  const content = res.data.content || [];
-  return content.map((c) => c.text || '').join('');
+  try {
+    const res = await api.post('/chat', {
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const content = res.data.content || [];
+    return content.map((c) => c.text || '').join('');
+  } catch (e) {
+    throw new Error(formatApiError(e));
+  }
 }
 
 const CHART_COLORS = ['#2dd4bf', '#f0c040', '#f97316', '#a78bfa', '#34d399', '#60a5fa', '#fb7185', '#6b7280'];
 
 export default function ExpenseAnalyser() {
   const { persons, token, fetchPersons } = useAuth();
-  const [statementMonth, setStatementMonth] = useState(() => {
-    const n = new Date();
-    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
-  });
   const [slotsPer, setSlotsPer] = useState(3);
   const [slots, setSlots] = useState({});
   const [results, setResults] = useState([]);
@@ -262,7 +289,6 @@ export default function ExpenseAnalyser() {
     api
       .get('/expense-analyser/snapshot')
       .then(({ data }) => {
-        if (data.statementMonth) setStatementMonth(data.statementMonth);
         if (Array.isArray(data.results) && data.results.length) setResults(data.results);
         if (data.finalData) {
           setFinalData(data.finalData);
@@ -383,7 +409,7 @@ export default function ExpenseAnalyser() {
       setQueueProgress({ current: i + 1, total: entries.length, label: slot.label });
       setQueueStates((prev) => ({ ...prev, [id]: 'analyzing' }));
       try {
-        const prompt = buildSingleFilePrompt(slot, statementMonth);
+        const prompt = buildSingleFilePrompt(slot);
         const raw = await callClaude(prompt);
         const data = robustParseJSON(raw);
         newResults.push({ slotId: id, label: slot.label, person: slot.person, data });
@@ -396,7 +422,7 @@ export default function ExpenseAnalyser() {
     }
     setAnalyzing(false);
     setQueueProgress({ current: entries.length, total: entries.length, label: 'Done' });
-  }, [slots, statementMonth]);
+  }, [slots]);
 
   const compileReport = useCallback(async () => {
     const successResults = results.filter((r) => r.data);
@@ -406,15 +432,14 @@ export default function ExpenseAnalyser() {
     }
     setCompiling(true);
     try {
-      const monthLabel = formatMonthLabel(statementMonth);
-      const prompt = buildCompilePrompt(successResults, monthLabel, persons);
+      const prompt = buildCompilePrompt(successResults, persons);
       const raw = await callClaude(prompt, 10000);
       const data = robustParseJSON(raw);
       setFinalData(data);
       setView('report');
       try {
         await api.put('/expense-analyser/snapshot', {
-          statementMonth,
+          statementMonth: '',
           finalData: data,
           results,
         });
@@ -422,11 +447,11 @@ export default function ExpenseAnalyser() {
         console.error('Failed to save expense report snapshot', e);
       }
     } catch (err) {
-      alert('Compilation error: ' + err.message);
+      alert('Compilation error: ' + (err?.message || String(err)));
     } finally {
       setCompiling(false);
     }
-  }, [results, statementMonth, persons]);
+  }, [results, persons]);
 
   const slotEntries = Object.entries(slots);
   const filledCount = slotEntries.filter(([, s]) => s.status === 'ready').length;
@@ -436,7 +461,6 @@ export default function ExpenseAnalyser() {
     return (
       <ExpenseReportView
         finalData={finalData}
-        statementMonth={statementMonth}
         results={results}
         personNames={persons}
         onBack={() => setView('upload')}
@@ -505,16 +529,6 @@ export default function ExpenseAnalyser() {
             </button>
           </div>
         ))}
-      </div>
-
-      <div className="card max-w-md">
-        <label className="label">Statement month</label>
-        <input
-          type="month"
-          value={statementMonth}
-          onChange={(e) => setStatementMonth(e.target.value)}
-          className="input"
-        />
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
@@ -668,12 +682,20 @@ function FileSlotRow({ slot, onFileChange, onPdfPasswordChange, onRetry, onRemov
   );
 }
 
+function txnCategoryLabel(t) {
+  const p = t.parentCategory || t.parent;
+  const s = t.subcategory || t.sub;
+  if (p && s && String(p) !== String(s)) return `${p} → ${s}`;
+  if (t.category) return String(t.category);
+  return 'Other';
+}
+
 function ResultCard({ result, index, expanded, onToggle }) {
   const { label, person, data, error } = result;
   const s = data?.summary || {};
   const txns = (data?.transactions || []).slice(0, 15);
   const flags = data?.redFlags || [];
-  const topCats = (data?.categories || []).filter((c) => c.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 5);
+  const catGroups = normalizeStatementCategoryHierarchy(data);
 
   if (error) {
     return (
@@ -753,17 +775,10 @@ function ResultCard({ result, index, expanded, onToggle }) {
               </div>
             ) : null}
           </div>
-          {topCats.length > 0 && (
+          {catGroups.length > 0 && (
             <div>
-              <p className="text-xs text-muted uppercase mb-2">Top categories</p>
-              <div className="space-y-1">
-                {topCats.map((c, i) => (
-                  <div key={c.name} className="flex justify-between text-sm">
-                    <span className="text-soft">{c.name}</span>
-                    <span className="font-mono">{fmt(c.amount)}</span>
-                  </div>
-                ))}
-              </div>
+              <p className="text-xs text-muted uppercase mb-2">Categories</p>
+              <CategoryHierarchyCollapsible groups={catGroups} nameCols={[]} />
             </div>
           )}
           {flags.length > 0 && (
@@ -798,7 +813,7 @@ function ResultCard({ result, index, expanded, onToggle }) {
                       <tr key={i} className="border-b border-border/50">
                         <td className="py-1.5 text-muted">{t.date}</td>
                         <td className="py-1.5 text-soft truncate max-w-[180px]">{t.description}</td>
-                        <td className="py-1.5 text-muted text-xs">{t.category || 'Other'}</td>
+                        <td className="py-1.5 text-muted text-xs">{txnCategoryLabel(t)}</td>
                         <td className="py-1.5 text-muted text-xs">{t.cashflowType || '—'}</td>
                         <td className={`py-1.5 text-right font-mono ${t.type === 'credit' ? 'text-green-400' : 'text-rose'}`}>
                           {t.type === 'credit' ? '+' : '−'}{fmtFull(Math.abs(Number(t.amount)))}
@@ -816,12 +831,196 @@ function ResultCard({ result, index, expanded, onToggle }) {
   );
 }
 
+function mergePerPerson(target, src) {
+  if (!src || typeof src !== 'object') return;
+  for (const [k, v] of Object.entries(src)) {
+    target[k] = (Number(target[k]) || 0) + (Number(v) || 0);
+  }
+}
+
+function normalizeStatementCategoryHierarchy(data) {
+  if (!data) return [];
+  const ch = data.categoryHierarchy;
+  if (Array.isArray(ch) && ch.length) {
+    return ch
+      .map((h) => ({
+        parent: String(h.parent || h.name || 'Other'),
+        amount: Number(h.amount) || 0,
+        count: h.count,
+        subs: (Array.isArray(h.subcategories) ? h.subcategories : Array.isArray(h.subs) ? h.subs : []).map((s) => ({
+          name: String(s.name || s.subcategory || '—'),
+          amount: Number(s.amount) || 0,
+          count: s.count,
+        })),
+      }))
+      .filter((g) => g.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
+  }
+  const flat = (data.categories || []).filter((c) => Number(c.amount) > 0);
+  const map = new Map();
+  for (const c of flat) {
+    const amt = Number(c.amount) || 0;
+    const parent = c.parentCategory || c.parent;
+    const sub = c.subcategory || c.sub;
+    if (parent && sub) {
+      if (!map.has(parent)) map.set(parent, { parent, amount: 0, count: 0, subs: [] });
+      const g = map.get(parent);
+      g.amount += amt;
+      g.count = (g.count || 0) + (Number(c.count) || 0);
+      g.subs.push({ name: sub, amount: amt, count: c.count });
+    } else {
+      const pname = String(c.name || 'Other');
+      if (!map.has(pname)) map.set(pname, { parent: pname, amount: 0, count: 0, subs: [] });
+      const g = map.get(pname);
+      g.amount += amt;
+      g.count = (g.count || 0) + (Number(c.count) || 0);
+    }
+  }
+  return [...map.values()].sort((a, b) => b.amount - a.amount);
+}
+
+function normalizeCategoryHierarchy(finalData) {
+  const ch = finalData?.categoryHierarchy;
+  if (Array.isArray(ch) && ch.length) {
+    return ch
+      .map((h) => ({
+        parent: String(h.parent || h.name || 'Other'),
+        amount: Number(h.amount) || 0,
+        count: h.count,
+        perPersonAmounts: h.perPersonAmounts && typeof h.perPersonAmounts === 'object' ? { ...h.perPersonAmounts } : {},
+        subs: (Array.isArray(h.subcategories) ? h.subcategories : Array.isArray(h.subs) ? h.subs : []).map((s) => ({
+          name: String(s.name || s.subcategory || '—'),
+          amount: Number(s.amount) || 0,
+          count: s.count,
+          perPersonAmounts: s.perPersonAmounts && typeof s.perPersonAmounts === 'object' ? { ...s.perPersonAmounts } : {},
+        })),
+      }))
+      .filter((g) => g.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
+  }
+  const flat = (finalData?.categories || []).filter((c) => Number(c.amount) > 0);
+  const map = new Map();
+  for (const c of flat) {
+    const amt = Number(c.amount) || 0;
+    const parent = c.parentCategory || c.parent;
+    const sub = c.subcategory || c.sub;
+    if (parent && sub) {
+      if (!map.has(parent)) {
+        map.set(parent, { parent, amount: 0, count: 0, subs: [], perPersonAmounts: {} });
+      }
+      const g = map.get(parent);
+      g.amount += amt;
+      g.count = (g.count || 0) + (Number(c.count) || 0);
+      g.subs.push({
+        name: sub,
+        amount: amt,
+        count: c.count,
+        perPersonAmounts: c.perPersonAmounts && typeof c.perPersonAmounts === 'object' ? { ...c.perPersonAmounts } : {},
+      });
+      mergePerPerson(g.perPersonAmounts, c.perPersonAmounts);
+    } else {
+      const pname = String(c.name || 'Other');
+      if (!map.has(pname)) {
+        map.set(pname, { parent: pname, amount: 0, count: 0, subs: [], perPersonAmounts: {} });
+      }
+      const g = map.get(pname);
+      g.amount += amt;
+      g.count = (g.count || 0) + (Number(c.count) || 0);
+      mergePerPerson(g.perPersonAmounts, c.perPersonAmounts);
+    }
+  }
+  return [...map.values()].sort((a, b) => b.amount - a.amount);
+}
+
 function personAmount(c, personName) {
   const pp = c.perPersonAmounts;
   if (pp && typeof pp === 'object' && personName in pp) return Number(pp[personName]) || 0;
   if (personName === 'Harsh' || personName === 'harsh') return Number(c.harshAmount) || 0;
   if (personName === 'Kirti' || personName === 'kirti') return Number(c.kirtiAmount) || 0;
   return 0;
+}
+
+function CategoryHierarchyCollapsible({ groups, nameCols = [] }) {
+  const [open, setOpen] = useState(() => new Set());
+  const showPeople = nameCols.length > 0;
+  const toggle = (key) => {
+    setOpen((prev) => {
+      const n = new Set(prev);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
+  };
+  if (!groups.length) {
+    return <p className="text-muted text-sm">No category data in this report.</p>;
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 px-3 text-xs text-muted uppercase">
+        <span className="flex-1 min-w-0">Category</span>
+        {showPeople
+          ? nameCols.map((n) => (
+              <span key={n} className="w-14 shrink-0 text-right hidden sm:inline">
+                {n.length > 8 ? `${n.slice(0, 7)}…` : n}
+              </span>
+            ))
+          : null}
+        <span className="w-24 shrink-0 text-right">Total</span>
+        <span className="w-8 shrink-0 text-right">#</span>
+      </div>
+      {groups.map((g) => {
+        const key = g.parent;
+        const hasSubs = g.subs && g.subs.length > 0;
+        const isOpen = open.has(key);
+        return (
+          <div key={key} className="rounded-lg border border-border/60 overflow-hidden bg-card/40">
+            <button
+              type="button"
+              onClick={() => hasSubs && toggle(key)}
+              className={`w-full flex items-center gap-2 px-3 py-2.5 text-left ${hasSubs ? 'hover:bg-surface/50' : ''}`}
+              aria-expanded={hasSubs ? isOpen : undefined}
+            >
+              <span className="flex items-center gap-2 flex-1 min-w-0">
+                {hasSubs ? (
+                  isOpen ? <ChevronDown size={16} className="text-muted shrink-0" /> : <ChevronRight size={16} className="text-muted shrink-0" />
+                ) : (
+                  <span className="w-4 shrink-0 inline-block" />
+                )}
+                <span className="text-soft font-medium truncate">{g.parent}</span>
+              </span>
+              {showPeople
+                ? nameCols.map((n) => (
+                    <span key={n} className="w-14 shrink-0 text-right font-mono text-xs text-muted hidden sm:inline">
+                      {fmt(personAmount(g, n))}
+                    </span>
+                  ))
+                : null}
+              <span className="w-24 shrink-0 text-right font-mono text-sm">{fmt(g.amount)}</span>
+              <span className="w-8 shrink-0 text-right text-muted text-xs">{g.count ?? '—'}</span>
+            </button>
+            {hasSubs && isOpen && (
+              <div className="border-t border-border/40 bg-surface/20 px-3 py-2 space-y-1.5">
+                {g.subs.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <span className="flex-1 min-w-0 pl-6 text-muted truncate">{s.name}</span>
+                    {showPeople
+                      ? nameCols.map((n) => (
+                          <span key={n} className="w-14 shrink-0 text-right font-mono text-xs text-muted hidden sm:inline">
+                            {fmt(personAmount(s, n))}
+                          </span>
+                        ))
+                      : null}
+                    <span className="w-24 shrink-0 text-right font-mono">{fmt(s.amount)}</span>
+                    <span className="w-8 shrink-0 text-right text-muted text-xs">{s.count ?? '—'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function spendSlicesFromSummary(s, personNames) {
@@ -838,10 +1037,11 @@ function spendSlicesFromSummary(s, personNames) {
   return (personNames || []).map((name) => ({ name, value: 0 })).filter((d) => d.value > 0);
 }
 
-function ExpenseReportView({ finalData, statementMonth, results, personNames = [], onBack }) {
+function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
   const [tab, setTab] = useState('overview');
   const s = finalData.summary || {};
   const categories = (finalData.categories || []).filter((c) => c.amount > 0).sort((a, b) => b.amount - a.amount);
+  const hierarchyGroups = normalizeCategoryHierarchy(finalData);
   const cashflowSummary = (finalData.cashflowSummary || []).filter((c) => Number(c.amount) > 0).sort((a, b) => b.amount - a.amount);
   const transactions = finalData.transactions || [];
   const redFlags = finalData.redFlags || [];
@@ -851,7 +1051,13 @@ function ExpenseReportView({ finalData, statementMonth, results, personNames = [
 
   const totalDues = s.totalCreditCardDues || cardDues.reduce((a, c) => a + (Number(c.due) || 0), 0);
 
-  const catChartData = categories.slice(0, 10).map((c) => ({ name: c.name, value: c.amount, amount: c.amount }));
+  const catChartData = (
+    hierarchyGroups.length
+      ? hierarchyGroups
+      : categories.map((c) => ({ parent: c.name, amount: c.amount }))
+  )
+    .slice(0, 10)
+    .map((c) => ({ name: c.parent || c.name, value: c.amount, amount: c.amount }));
   const cfChartData = cashflowSummary.slice(0, 12).map((c) => ({
     name: c.bucket,
     value: c.amount,
@@ -881,7 +1087,8 @@ function ExpenseReportView({ finalData, statementMonth, results, personNames = [
         <div>
           <h1 className="font-display text-2xl font-bold text-white">Household report</h1>
           <p className="text-muted text-sm mt-0.5">
-            {formatMonthLabel(statementMonth)} · {s.statementsAnalyzed || results.length} statements · {transactions.length} transactions
+            {s.month ? `${s.month} · ` : ''}
+            {s.statementsAnalyzed || results.length} statements · {transactions.length} transactions
           </p>
         </div>
         <div className="flex gap-2">
@@ -1060,36 +1267,8 @@ function ExpenseReportView({ finalData, statementMonth, results, personNames = [
       {tab === 'categories' && (
         <div className="card">
           <p className="stat-label mb-3">Category breakdown</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-muted text-xs uppercase">
-                  <th className="text-left py-3">Category</th>
-                  <th className="text-right py-3">Total</th>
-                  {nameCols.map((n) => (
-                    <th key={n} className="text-right py-3">
-                      {n}
-                    </th>
-                  ))}
-                  <th className="text-right py-3">Count</th>
-                </tr>
-              </thead>
-              <tbody>
-                {categories.map((c) => (
-                  <tr key={c.name} className="border-b border-border/50">
-                    <td className="py-3 text-soft">{c.name}</td>
-                    <td className="py-3 text-right font-mono">{fmt(c.amount)}</td>
-                    {nameCols.map((n) => (
-                      <td key={n} className="py-3 text-right font-mono text-xs">
-                        {fmt(personAmount(c, n))}
-                      </td>
-                    ))}
-                    <td className="py-3 text-right text-muted">{c.count || 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <p className="text-muted text-xs mb-4">Expand a parent row to see subcategories.</p>
+          <CategoryHierarchyCollapsible groups={hierarchyGroups.length ? hierarchyGroups : categories.map((c) => ({ parent: c.name, amount: c.amount, count: c.count, subs: [], perPersonAmounts: c.perPersonAmounts }))} nameCols={nameCols} />
         </div>
       )}
 
@@ -1116,7 +1295,7 @@ function ExpenseReportView({ finalData, statementMonth, results, personNames = [
                     <td className="py-2 text-muted text-xs">
                       {typeof t.person === 'string' && t.person.length ? t.person : '—'}
                     </td>
-                    <td className="py-2 text-muted text-xs">{t.category || 'Other'}</td>
+                    <td className="py-2 text-muted text-xs">{txnCategoryLabel(t)}</td>
                     <td className="py-2 text-muted text-xs">{t.cashflowType || '—'}</td>
                     <td className={`py-2 text-right font-mono ${t.type === 'credit' ? 'text-green-400' : 'text-rose'}`}>
                       {t.type === 'credit' ? '+' : '−'}{fmtFull(Math.abs(Number(t.amount)))}
