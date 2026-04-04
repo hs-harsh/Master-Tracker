@@ -378,7 +378,7 @@ export default function Investments() {
                       <td className="py-3 px-4 text-soft text-xs">{row.broker || '—'}</td>
                       <td className="py-3 px-4">
                         <div className="flex gap-2">
-                          <button onClick={() => setInlineEdit({ id: row.id, form: { ...row } })} className="text-muted hover:text-accent transition-colors">
+                          <button onClick={() => setInlineEdit({ id: row.id, form: { ...row, date: row.date?.slice(0, 10) || '' } })} className="text-muted hover:text-accent transition-colors">
                             <Edit2 size={14} />
                           </button>
                           <button onClick={() => handleDelete(row.id)} className="text-muted hover:text-rose transition-colors">

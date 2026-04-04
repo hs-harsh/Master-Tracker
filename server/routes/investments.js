@@ -53,8 +53,20 @@ async function fetchFromNSE(symbol) {
   return null;
 }
 
-// ── Fallback: MFAPI for Indian mutual funds ──────────────────────────────────
+// ── Fallback: MFAPI for Indian mutual funds (not ETFs) ───────────────────────
+// Computes word overlap to avoid returning wrong fund (e.g. different scheme)
+function nameSimilarity(query, candidate) {
+  const words = s => new Set(s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean));
+  const qw = words(query), cw = words(candidate);
+  let overlap = 0;
+  qw.forEach(w => { if (cw.has(w)) overlap++; });
+  return overlap / Math.max(qw.size, 1);
+}
+
 async function fetchFromMFAPI(instrumentName) {
+  // ETFs are listed on exchange — Yahoo / NSE will find them. Skip MFAPI to avoid wrong NAV.
+  if (/\betf\b/i.test(instrumentName)) return null;
+
   try {
     const searchRes = await fetch(
       `https://api.mfapi.in/mf/search?q=${encodeURIComponent(instrumentName)}`,
@@ -63,8 +75,16 @@ async function fetchFromMFAPI(instrumentName) {
     if (searchRes.ok) {
       const funds = await searchRes.json();
       if (funds?.length > 0) {
-        const fund = funds[0];
-        const navRes = await fetch(`https://api.mfapi.in/mf/${fund.schemeCode}/latest`, {
+        // Pick the best-matching scheme (highest name overlap), require ≥30% match
+        const ranked = funds
+          .map(f => ({ ...f, sim: nameSimilarity(instrumentName, f.schemeName) }))
+          .sort((a, b) => b.sim - a.sim);
+        const best = ranked[0];
+        if (best.sim < 0.3) {
+          console.warn('[MFAPI] low similarity for', instrumentName, '→', best.schemeName, `(${(best.sim * 100).toFixed(0)}%)`);
+          return null;
+        }
+        const navRes = await fetch(`https://api.mfapi.in/mf/${best.schemeCode}/latest`, {
           signal: AbortSignal.timeout(5000),
         });
         if (navRes.ok) {
@@ -74,8 +94,8 @@ async function fetchFromMFAPI(instrumentName) {
             return {
               price: parseFloat(nav),
               currency: 'INR',
-              symbol: `MF:${fund.schemeCode}`,
-              name: fund.schemeName,
+              symbol: `MF:${best.schemeCode}`,
+              name: best.schemeName,
               source: 'MFAPI',
             };
           }
@@ -262,8 +282,14 @@ router.post('/fetch-prices', auth, async (req, res) => {
         const apiKey = keyRows[0]?.value || process.env.ANTHROPIC_API_KEY;
         if (apiKey) {
           const prompt = `Map these investment instrument names to their Yahoo Finance ticker symbols.
-Return ONLY valid JSON like: {"Reliance Industries": "RELIANCE.NS", "Nifty 50 Index Fund": "^NSEI", "Gold": "GC=F"}
-For Indian NSE stocks, append .NS. For BSE, append .BO. For Indian mutual funds, use the closest ETF/index symbol.
+Return ONLY valid JSON like: {"Reliance Industries": "RELIANCE.NS", "Nifty 50 Index Fund": "^NSEI", "Gold": "GC=F", "Nippon India ETF Nifty IT": "NETFIT.NS"}
+Rules:
+- Indian NSE stocks/ETFs: append .NS (e.g. RELIANCE.NS, NETFIT.NS, GOLDBEES.NS)
+- Indian BSE stocks: append .BO
+- ETFs listed on NSE use their NSE trading symbol + .NS — do NOT use mutual fund codes
+- Indian indices: ^NSEI (Nifty50), ^NSEBANK (BankNifty), ^CNXIT (IT), ^CNXPHARMA
+- Gold futures: GC=F, Silver: SI=F
+- Cash/FD/Splitwise: skip (return empty string "")
 Instruments: ${needAI.map(i => i.instrument).join(', ')}`;
 
           const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -295,7 +321,12 @@ Instruments: ${needAI.map(i => i.instrument).join(', ')}`;
     const results = {};
 
     await Promise.allSettled(
-      instruments.map(async ({ instrument, ticker }) => {
+      instruments.map(async ({ instrument, ticker, asset_class }) => {
+        // Cash instruments always have a value of ₹1 (amount = market value)
+        if (asset_class === 'Cash' || /\bcash\b/i.test(instrument)) {
+          results[instrument] = { price: 1, currency: 'INR', symbol: instrument, name: instrument, source: 'Cash' };
+          return;
+        }
         const symbol = ticker || aiSymbols[instrument] || instrument;
         results[instrument] = await fetchPriceWithFallbacks(symbol, instrument);
       })

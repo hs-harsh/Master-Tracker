@@ -187,13 +187,14 @@ export default function Portfolio() {
   const totalAbs  = equityVal + debtVal + goldVal + cashVal || 1;
 
   const instrumentList = useMemo(() =>
-    Array.from(new Map(enriched.map(r => [r.instrument, { instrument: r.instrument, ticker: r.ticker }])).values()),
+    Array.from(new Map(enriched.map(r => [r.instrument, { instrument: r.instrument, ticker: r.ticker, asset_class: r.asset_class }])).values()),
     [enriched]
   );
 
   const handleFetchPrices = async () => {
     if (!instrumentList.length) return;
-    // Initialise all as loading
+    // Reset all previous market data so stale values don't persist
+    setMarketPrices({});
     const init = {};
     instrumentList.forEach(({ instrument }) => { init[instrument] = { status: 'loading' }; });
     setPriceStatus(init);
@@ -207,7 +208,9 @@ export default function Portfolio() {
       instrumentList.forEach(({ instrument }) => {
         const info = prices[instrument];
         if (info?.price) {
-          next[instrument] = { status: 'ok', price: info.price, symbol: info.symbol, name: info.name };
+          next[instrument] = { status: 'ok', price: info.price, symbol: info.symbol, name: info.name, source: info.source };
+        } else if (info?.needsManualPrice) {
+          next[instrument] = { status: 'manual', symbol: info.symbol || instrument };
         } else {
           next[instrument] = { status: 'error', symbol: info?.symbol || instrument, error: info?.error || 'Not found' };
         }
@@ -234,6 +237,8 @@ export default function Portfolio() {
     setMarketPrices(confirmed);
     setShowPricePanel(false);
   };
+
+  const appliedCount = Object.values(priceStatus).filter(s => s.status === 'ok' || (s.status === 'manual' && priceEdits[Object.keys(priceStatus).find(k => priceStatus[k] === s)])).length;
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -308,34 +313,42 @@ export default function Portfolio() {
                       </td>
                       <td className="py-2 px-2 text-right">
                         {s?.status === 'loading' && <span className="animate-pulse text-muted">…</span>}
-                        {s?.status === 'error' && <span className="text-rose text-[10px]">{s.error}</span>}
-                        {s?.status === 'ok' && (
+                        {(s?.status === 'ok' || s?.status === 'error' || s?.status === 'manual') && (
                           isEditing ? (
                             <div className="flex items-center justify-end gap-1">
                               <input
                                 type="number"
                                 step="0.01"
                                 className="input py-0.5 px-1.5 w-24 text-right text-xs"
-                                value={priceEdits[instrument] ?? s.price}
+                                value={priceEdits[instrument] ?? (s.price || '')}
                                 onChange={e => setPriceEdits(p => ({ ...p, [instrument]: e.target.value }))}
+                                placeholder="Enter price"
                                 autoFocus
                               />
                               <button onClick={() => setEditingInst(null)} className="text-teal hover:text-white"><Check size={12} /></button>
                             </div>
                           ) : (
                             <div className="flex items-center justify-end gap-1">
-                              <span className="font-mono text-accent">
-                                ₹{(priceEdits[instrument] ?? s.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                              </span>
-                              <button onClick={() => setEditingInst(instrument)} className="text-muted hover:text-accent"><Edit3 size={10} /></button>
+                              {priceEdits[instrument] || s.price ? (
+                                <span className="font-mono text-accent">
+                                  ₹{Number(priceEdits[instrument] ?? s.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                </span>
+                              ) : (
+                                <span className="text-muted text-[10px]">{s.error || 'not found — click to enter'}</span>
+                              )}
+                              <button onClick={() => setEditingInst(instrument)} className="text-muted hover:text-accent" title="Edit price"><Edit3 size={10} /></button>
                             </div>
                           )
                         )}
                       </td>
                       <td className="py-2 px-2 text-center">
                         {s?.status === 'loading' && <span className="text-muted animate-pulse">●</span>}
-                        {s?.status === 'ok'      && <CheckCircle2 size={13} className="text-teal mx-auto" />}
-                        {s?.status === 'error'   && <XCircle size={13} className="text-rose mx-auto" />}
+                        {s?.status === 'ok'     && !priceEdits[instrument] && <CheckCircle2 size={13} className="text-teal mx-auto" />}
+                        {s?.status === 'ok'     && priceEdits[instrument]  && <Edit3 size={13} className="text-accent mx-auto" />}
+                        {s?.status === 'manual' && !priceEdits[instrument] && <XCircle size={13} className="text-amber-400 mx-auto" />}
+                        {s?.status === 'manual' && priceEdits[instrument]  && <CheckCircle2 size={13} className="text-teal mx-auto" />}
+                        {s?.status === 'error'  && !priceEdits[instrument] && <XCircle size={13} className="text-rose mx-auto" />}
+                        {s?.status === 'error'  && priceEdits[instrument]  && <CheckCircle2 size={13} className="text-teal mx-auto" />}
                       </td>
                     </tr>
                   );
@@ -347,7 +360,7 @@ export default function Portfolio() {
           {fetchStatus === 'done' && (
             <div className="flex items-center gap-3 pt-1">
               <button onClick={handleApplyPrices} className="btn-primary text-sm flex items-center gap-2">
-                <Check size={13} /> Apply {Object.values(priceStatus).filter(s => s.status === 'ok').length} Prices
+                <Check size={13} /> Apply {Object.entries(priceStatus).filter(([inst, s]) => s.status === 'ok' || ((s.status === 'manual' || s.status === 'error') && priceEdits[inst])).length} Prices
               </button>
               <button onClick={() => setShowPricePanel(false)} className="btn-ghost text-sm">Dismiss</button>
               <span className="text-muted text-xs ml-auto">
@@ -424,21 +437,22 @@ export default function Portfolio() {
           </ResponsiveContainer>
         </div>
 
-        {/* Invested vs Market Value */}
+        {/* Invested vs Market Value — horizontal bars by asset class */}
         <div className="card">
           <p className="stat-label mb-3">{hasMktData ? 'Invested vs Market Value (₹L)' : 'By Asset Class (₹L)'}</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={assetCompare} margin={{ top: 4, right: 4, bottom: 20, left: 0 }}>
-              <XAxis dataKey="name" tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} />
+          <ResponsiveContainer width="100%" height={Math.max(assetCompare.length * 48 + 20, 100)}>
+            <BarChart data={assetCompare} layout="vertical" margin={{ top: 2, right: 50, bottom: 2, left: 4 }}>
+              <XAxis type="number" tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false}
+                tickFormatter={v => `${v}L`} />
+              <YAxis type="category" dataKey="name" width={76} tick={{ fill: '#e5e7eb', fontSize: 11 }} tickLine={false} axisLine={false} />
               <Tooltip contentStyle={TT} content={({ active, payload }) => active && payload?.length ? (
                 <div style={{ padding: '6px 10px', ...TT }}>
                   <div className="font-bold mb-1">{payload[0]?.payload?.name}</div>
-                  {payload.map(p => <div key={p.name}><span style={{ color: p.color }}>{p.name}</span>: {p.value.toFixed(2)} L</div>)}
+                  {payload.map(p => <div key={p.name}><span style={{ color: p.color }}>{p.name}</span>: ₹{(p.value * 100000).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>)}
                 </div>
               ) : null} />
-              <Bar dataKey="Invested" fill="#60a5fa" radius={[3, 3, 0, 0]} />
-              {hasMktData && <Bar dataKey="MarketValue" fill="#2dd4bf" radius={[3, 3, 0, 0]} />}
+              <Bar dataKey="Invested" fill="#60a5fa" radius={[0, 3, 3, 0]} barSize={14} />
+              {hasMktData && <Bar dataKey="MarketValue" fill="#2dd4bf" radius={[0, 3, 3, 0]} barSize={14} />}
               {hasMktData && <Legend iconType="circle" iconSize={8} formatter={v => <span style={{ color: '#e5e7eb', fontSize: 11 }}>{v}</span>} />}
             </BarChart>
           </ResponsiveContainer>
