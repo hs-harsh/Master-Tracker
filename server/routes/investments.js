@@ -16,6 +16,41 @@ function normalizeInvestmentAmounts(body) {
   return { amount, qty, avg_price };
 }
 
+const PORTFOLIO_MKT_CACHE_KEY = 'portfolio_market_snapshot';
+
+async function readPortfolioMktDoc(poolRef, userId) {
+  const { rows } = await poolRef.query(
+    'SELECT value FROM user_settings WHERE user_id = $1 AND key = $2',
+    [userId, PORTFOLIO_MKT_CACHE_KEY]
+  );
+  if (!rows[0]?.value) return { v: 1, byAccount: {} };
+  try {
+    const parsed = JSON.parse(rows[0].value);
+    if (parsed && typeof parsed.byAccount === 'object') return parsed;
+  } catch (_) { /* ignore */ }
+  return { v: 1, byAccount: {} };
+}
+
+async function mergePortfolioMktCache(poolRef, userId, account, asOf, prices) {
+  const doc = await readPortfolioMktDoc(poolRef, userId);
+  doc.byAccount[account] = { asOf, prices };
+  await poolRef.query(
+    `INSERT INTO user_settings (user_id, key, value) VALUES ($1, $2, $3)
+     ON CONFLICT (user_id, key) DO UPDATE SET value = $3`,
+    [userId, PORTFOLIO_MKT_CACHE_KEY, JSON.stringify(doc)]
+  );
+}
+
+async function clearPortfolioMktCacheAccount(poolRef, userId, account) {
+  const doc = await readPortfolioMktDoc(poolRef, userId);
+  delete doc.byAccount[account];
+  await poolRef.query(
+    `INSERT INTO user_settings (user_id, key, value) VALUES ($1, $2, $3)
+     ON CONFLICT (user_id, key) DO UPDATE SET value = $3`,
+    [userId, PORTFOLIO_MKT_CACHE_KEY, JSON.stringify(doc)]
+  );
+}
+
 // ── Yahoo Finance singleton (instantiated once per process) ──────────────────
 const YahooFinance = require('yahoo-finance2').default;
 const yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
@@ -385,6 +420,50 @@ Instruments: ${needAI.map(i => i.instrument).join(', ')}`;
     res.json(results);
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ── GET /api/investments/market-cache?account= ───────────────────────────────
+// Saved portfolio live prices (per profile account) so values survive tab changes.
+router.get('/market-cache', auth, async (req, res) => {
+  try {
+    const account = req.query.account != null ? String(req.query.account) : '';
+    const doc = await readPortfolioMktDoc(pool, req.user.id);
+    const entry = doc.byAccount[account];
+    if (!entry?.prices || typeof entry.prices !== 'object') {
+      return res.json({ asOf: null, prices: {} });
+    }
+    res.json({ asOf: entry.asOf || null, prices: entry.prices });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUT /api/investments/market-cache ────────────────────────────────────────
+// Body: { account?: string, asOf: 'YYYY-MM-DD', prices: { [instrument]: { price, symbol?, name? } } }
+router.put('/market-cache', auth, async (req, res) => {
+  try {
+    const account = req.body.account != null ? String(req.body.account) : '';
+    let { asOf, prices } = req.body;
+    if (!prices || typeof prices !== 'object' || Array.isArray(prices)) {
+      return res.status(400).json({ error: 'prices object required' });
+    }
+    const hasAny = Object.values(prices).some(
+      p => p && typeof p === 'object' && Number(p.price) > 0
+    );
+    if (!hasAny) {
+      await clearPortfolioMktCacheAccount(pool, req.user.id, account);
+      return res.json({ asOf: null, prices: {} });
+    }
+    if (!asOf || !/^\d{4}-\d{2}-\d{2}$/.test(String(asOf))) {
+      asOf = new Date().toISOString().slice(0, 10);
+    } else {
+      asOf = String(asOf).slice(0, 10);
+    }
+    await mergePortfolioMktCache(pool, req.user.id, account, asOf, prices);
+    res.json({ asOf, prices });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -31,6 +31,7 @@ export default function Portfolio() {
   const [goalFilter, setGoalFilter] = useState('');
   const [brokerFilter, setBrokerFilter] = useState('');
   const [marketPrices, setMarketPrices] = useState({});
+  const [mktAsOf, setMktAsOf] = useState(null); // YYYY-MM-DD from last saved refresh (DB)
   // Price fetch panel state
   const [showPricePanel, setShowPricePanel] = useState(false);
   const [fetchStatus, setFetchStatus] = useState('idle'); // idle | fetching | done
@@ -48,6 +49,31 @@ export default function Portfolio() {
   };
 
   useEffect(() => { load(); }, [currentPerson, dataVersion]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const account = currentPerson || '';
+    api
+      .get(`/investments/market-cache?account=${encodeURIComponent(account)}`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const p = data?.prices;
+        if (p && typeof p === 'object' && Object.keys(p).length) {
+          setMarketPrices(p);
+          setMktAsOf(data.asOf || null);
+        } else {
+          setMarketPrices({});
+          setMktAsOf(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMarketPrices({});
+          setMktAsOf(null);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [currentPerson, dataVersion]);
 
   const goals   = useMemo(() => Array.from(new Set(data.map(d => d.goal))).sort(), [data]);
   const brokers = useMemo(() => Array.from(new Set(data.map(d => d.broker || '').filter(Boolean))).sort(), [data]);
@@ -201,8 +227,6 @@ export default function Portfolio() {
 
   const handleFetchPrices = async () => {
     if (!instrumentList.length) return;
-    // Reset all previous market data so stale values don't persist
-    setMarketPrices({});
     const init = {};
     instrumentList.forEach(({ instrument }) => { init[instrument] = { status: 'loading' }; });
     setPriceStatus(init);
@@ -233,7 +257,7 @@ export default function Portfolio() {
     }
   };
 
-  const handleApplyPrices = () => {
+  const handleApplyPrices = async () => {
     const confirmed = {};
     Object.entries(priceStatus).forEach(([instrument, info]) => {
       const override = priceEdits[instrument];
@@ -244,6 +268,18 @@ export default function Portfolio() {
     });
     setMarketPrices(confirmed);
     setShowPricePanel(false);
+    const asOf = new Date().toISOString().slice(0, 10);
+    try {
+      const { data } = await api.put('/investments/market-cache', {
+        account: currentPerson || '',
+        asOf,
+        prices: confirmed,
+      });
+      if (!Object.keys(confirmed).length) setMktAsOf(null);
+      else setMktAsOf(data?.asOf || asOf);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const appliedCount = Object.values(priceStatus).filter(s => s.status === 'ok' || (s.status === 'manual' && priceEdits[Object.keys(priceStatus).find(k => priceStatus[k] === s)])).length;
@@ -259,14 +295,29 @@ export default function Portfolio() {
             </h1>
             <p className="text-muted text-sm mt-0.5">View by account and filter by goal</p>
           </div>
-          <button
-            onClick={handleFetchPrices}
-            disabled={fetchStatus === 'fetching' || loading}
-            className="btn-ghost flex items-center gap-2 text-sm"
-          >
-            {fetchStatus === 'fetching' ? <Loader2 size={14} className="animate-spin" /> : <TrendingUp size={14} />}
-            Refresh Market Values
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            {mktAsOf && Object.keys(marketPrices).length > 0 && (
+              <p className="text-muted text-xs max-w-[220px] text-right leading-snug">
+                Market values as of{' '}
+                <time dateTime={mktAsOf}>
+                  {new Date(`${mktAsOf}T12:00:00`).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  })}
+                </time>
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={handleFetchPrices}
+              disabled={fetchStatus === 'fetching' || loading}
+              className="btn-ghost flex items-center gap-2 text-sm"
+            >
+              {fetchStatus === 'fetching' ? <Loader2 size={14} className="animate-spin" /> : <TrendingUp size={14} />}
+              Refresh Market Values
+            </button>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
