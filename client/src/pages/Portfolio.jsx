@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, Legend, ComposedChart, Line, CartesianGrid,
+  ReferenceLine,
 } from 'recharts';
-import { PieChart as PieIcon, Target, Wallet, TrendingUp, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { PieChart as PieIcon, Target, Wallet, TrendingUp, Loader2, ChevronDown, ChevronUp, CheckCircle2, XCircle, Edit3, Check, X } from 'lucide-react';
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 import TradeFeedbackCard from '../components/TradeFeedbackCard';
@@ -30,8 +31,13 @@ export default function Portfolio() {
   const [goalFilter, setGoalFilter] = useState('');
   const [brokerFilter, setBrokerFilter] = useState('');
   const [marketPrices, setMarketPrices] = useState({});
-  const [fetchingPrices, setFetchingPrices] = useState(false);
   const [expandedAsset, setExpandedAsset] = useState(null);
+  // Price fetch panel state
+  const [showPricePanel, setShowPricePanel] = useState(false);
+  const [fetchStatus, setFetchStatus] = useState('idle'); // idle | fetching | done
+  const [priceStatus, setPriceStatus] = useState({}); // {instrument: {status, price, symbol, name, error}}
+  const [priceEdits, setPriceEdits] = useState({});    // user overrides keyed by instrument
+  const [editingInst, setEditingInst] = useState(null);
 
   const currentPerson = activePerson || personName;
 
@@ -150,6 +156,23 @@ export default function Portfolio() {
     }).filter((r, i, arr) => i === arr.length - 1 || r.date !== arr[i + 1]?.date);
   }, [data]);
 
+  // Per-instrument return chart data (only positions with market data, sorted by return%)
+  const returnChartData = useMemo(() =>
+    enriched
+      .filter(r => r.returnPct !== null)
+      .map(r => ({
+        name: r.instrument.length > 20 ? r.instrument.slice(0, 18) + '…' : r.instrument,
+        fullName: r.instrument,
+        returnPct: +r.returnPct.toFixed(1),
+        returnAmt: r.returnAmt,
+        invested: r.net,
+        mktValue: r.mktValue,
+        asset_class: r.asset_class,
+      }))
+      .sort((a, b) => b.returnPct - a.returnPct),
+    [enriched]
+  );
+
   // Per-asset-class holdings
   const byAssetClass = useMemo(() => {
     const map = {};
@@ -163,20 +186,53 @@ export default function Portfolio() {
   const cashVal   = Math.max(0, assetBuckets.Cash || 0);
   const totalAbs  = equityVal + debtVal + goldVal + cashVal || 1;
 
+  const instrumentList = useMemo(() =>
+    Array.from(new Map(enriched.map(r => [r.instrument, { instrument: r.instrument, ticker: r.ticker }])).values()),
+    [enriched]
+  );
+
   const handleFetchPrices = async () => {
-    const instruments = Array.from(
-      new Map(enriched.map(r => [r.instrument, { instrument: r.instrument, ticker: r.ticker }])).values()
-    );
-    if (!instruments.length) return;
-    setFetchingPrices(true);
+    if (!instrumentList.length) return;
+    // Initialise all as loading
+    const init = {};
+    instrumentList.forEach(({ instrument }) => { init[instrument] = { status: 'loading' }; });
+    setPriceStatus(init);
+    setPriceEdits({});
+    setEditingInst(null);
+    setShowPricePanel(true);
+    setFetchStatus('fetching');
     try {
-      const { data: prices } = await api.post('/investments/fetch-prices', { instruments });
-      setMarketPrices(prices);
+      const { data: prices } = await api.post('/investments/fetch-prices', { instruments: instrumentList });
+      const next = {};
+      instrumentList.forEach(({ instrument }) => {
+        const info = prices[instrument];
+        if (info?.price) {
+          next[instrument] = { status: 'ok', price: info.price, symbol: info.symbol, name: info.name };
+        } else {
+          next[instrument] = { status: 'error', symbol: info?.symbol || instrument, error: info?.error || 'Not found' };
+        }
+      });
+      setPriceStatus(next);
+      setFetchStatus('done');
     } catch (err) {
-      alert('Failed to fetch prices: ' + (err.response?.data?.error || err.message));
-    } finally {
-      setFetchingPrices(false);
+      const errStatus = {};
+      instrumentList.forEach(({ instrument }) => { errStatus[instrument] = { status: 'error', error: err.message }; });
+      setPriceStatus(errStatus);
+      setFetchStatus('done');
     }
+  };
+
+  const handleApplyPrices = () => {
+    const confirmed = {};
+    Object.entries(priceStatus).forEach(([instrument, info]) => {
+      const override = priceEdits[instrument];
+      const finalPrice = override ? Number(override) : info.price;
+      if (finalPrice > 0) {
+        confirmed[instrument] = { price: finalPrice, symbol: info.symbol, name: info.name };
+      }
+    });
+    setMarketPrices(confirmed);
+    setShowPricePanel(false);
   };
 
   return (
@@ -192,10 +248,10 @@ export default function Portfolio() {
           </div>
           <button
             onClick={handleFetchPrices}
-            disabled={fetchingPrices || loading}
+            disabled={fetchStatus === 'fetching' || loading}
             className="btn-ghost flex items-center gap-2 text-sm"
           >
-            {fetchingPrices ? <Loader2 size={14} className="animate-spin" /> : <TrendingUp size={14} />}
+            {fetchStatus === 'fetching' ? <Loader2 size={14} className="animate-spin" /> : <TrendingUp size={14} />}
             Refresh Market Values
           </button>
         </div>
@@ -216,6 +272,92 @@ export default function Portfolio() {
           </div>
         </div>
       </div>
+
+      {/* ── Price fetch status panel ────────────────────────────────────── */}
+      {showPricePanel && (
+        <div className="card space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {fetchStatus === 'fetching'
+                ? <><Loader2 size={14} className="animate-spin text-accent" /><span className="text-sm font-medium text-white">Fetching prices for {instrumentList.length} instrument{instrumentList.length !== 1 ? 's' : ''}…</span></>
+                : <><CheckCircle2 size={14} className="text-teal" /><span className="text-sm font-medium text-white">Price lookup complete — verify &amp; apply</span></>
+              }
+            </div>
+            <button onClick={() => setShowPricePanel(false)} className="text-muted hover:text-white"><X size={15} /></button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border text-muted">
+                  <th className="text-left py-2 px-2">Instrument</th>
+                  <th className="text-left py-2 px-2">Symbol found</th>
+                  <th className="text-right py-2 px-2">Price</th>
+                  <th className="text-center py-2 px-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {instrumentList.map(({ instrument }) => {
+                  const s = priceStatus[instrument];
+                  const isEditing = editingInst === instrument;
+                  return (
+                    <tr key={instrument} className="border-b border-border/30">
+                      <td className="py-2 px-2 text-soft max-w-[160px] truncate">{instrument}</td>
+                      <td className="py-2 px-2 text-muted font-mono text-[10px]">
+                        {s?.status === 'loading' ? <span className="animate-pulse">—</span> : (s?.symbol || '—')}
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        {s?.status === 'loading' && <span className="animate-pulse text-muted">…</span>}
+                        {s?.status === 'error' && <span className="text-rose text-[10px]">{s.error}</span>}
+                        {s?.status === 'ok' && (
+                          isEditing ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                type="number"
+                                step="0.01"
+                                className="input py-0.5 px-1.5 w-24 text-right text-xs"
+                                value={priceEdits[instrument] ?? s.price}
+                                onChange={e => setPriceEdits(p => ({ ...p, [instrument]: e.target.value }))}
+                                autoFocus
+                              />
+                              <button onClick={() => setEditingInst(null)} className="text-teal hover:text-white"><Check size={12} /></button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1">
+                              <span className="font-mono text-accent">
+                                ₹{(priceEdits[instrument] ?? s.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                              </span>
+                              <button onClick={() => setEditingInst(instrument)} className="text-muted hover:text-accent"><Edit3 size={10} /></button>
+                            </div>
+                          )
+                        )}
+                      </td>
+                      <td className="py-2 px-2 text-center">
+                        {s?.status === 'loading' && <span className="text-muted animate-pulse">●</span>}
+                        {s?.status === 'ok'      && <CheckCircle2 size={13} className="text-teal mx-auto" />}
+                        {s?.status === 'error'   && <XCircle size={13} className="text-rose mx-auto" />}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {fetchStatus === 'done' && (
+            <div className="flex items-center gap-3 pt-1">
+              <button onClick={handleApplyPrices} className="btn-primary text-sm flex items-center gap-2">
+                <Check size={13} /> Apply {Object.values(priceStatus).filter(s => s.status === 'ok').length} Prices
+              </button>
+              <button onClick={() => setShowPricePanel(false)} className="btn-ghost text-sm">Dismiss</button>
+              <span className="text-muted text-xs ml-auto">
+                {Object.values(priceStatus).filter(s => s.status === 'error').length > 0 &&
+                  `${Object.values(priceStatus).filter(s => s.status === 'error').length} not found — add Yahoo ticker in Investments tab`}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Key metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -341,14 +483,70 @@ export default function Portfolio() {
         </div>
       )}
 
+      {/* Return % per instrument (when market data available) */}
+      {returnChartData.length > 0 && (
+        <div className="card">
+          <p className="stat-label mb-3">Return % by Instrument</p>
+          <ResponsiveContainer width="100%" height={Math.max(160, returnChartData.length * 36)}>
+            <BarChart
+              data={returnChartData}
+              layout="vertical"
+              margin={{ top: 4, right: 70, bottom: 4, left: 8 }}
+            >
+              <XAxis
+                type="number"
+                tick={{ fill: '#6b7280', fontSize: 10 }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={v => `${v > 0 ? '+' : ''}${v}%`}
+              />
+              <YAxis
+                type="category"
+                dataKey="name"
+                width={130}
+                tick={{ fill: '#9ca3af', fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+              />
+              <ReferenceLine x={0} stroke="#374151" strokeWidth={1} />
+              <Tooltip
+                contentStyle={TT}
+                content={({ active, payload }) => {
+                  if (!active || !payload?.[0]) return null;
+                  const d = payload[0].payload;
+                  return (
+                    <div style={{ padding: '8px 12px', ...TT }}>
+                      <div className="font-bold text-white mb-1">{d.fullName}</div>
+                      <div className="space-y-0.5">
+                        <div>Return: <span className={d.returnPct >= 0 ? 'text-teal' : 'text-rose'}>{d.returnPct >= 0 ? '+' : ''}{d.returnPct}%</span></div>
+                        <div className="text-muted">Invested: ₹{d.invested?.toLocaleString('en-IN')}</div>
+                        <div className="text-muted">Market: ₹{d.mktValue?.toLocaleString('en-IN')}</div>
+                        <div>P&amp;L: <span className={d.returnAmt >= 0 ? 'text-teal' : 'text-rose'}>{d.returnAmt >= 0 ? '+' : ''}₹{Math.abs(d.returnAmt)?.toLocaleString('en-IN')}</span></div>
+                      </div>
+                    </div>
+                  );
+                }}
+              />
+              <Bar dataKey="returnPct" radius={[0, 3, 3, 0]} minPointSize={2}>
+                {returnChartData.map((d, i) => (
+                  <Cell key={i} fill={d.returnPct >= 0 ? '#2dd4bf' : '#fb7185'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
       {/* Per asset-class expandable breakup */}
       <div className="space-y-2">
         <p className="text-muted text-xs uppercase tracking-wider">Holdings by Asset Class</p>
         {Object.entries(byAssetClass).map(([assetClass, rows]) => {
-          const assetInvested = rows.reduce((s, r) => s + r.net, 0);
-          const assetMktVal   = rows.reduce((s, r) => s + (r.mktValue || r.net), 0);
-          const assetReturn   = hasMktData ? assetMktVal - assetInvested : null;
-          const assetRetPct   = assetReturn !== null && assetInvested > 0 ? (assetReturn / assetInvested * 100) : null;
+          const assetInvested   = rows.reduce((s, r) => s + r.net, 0);
+          const pricedRows      = rows.filter(r => r.mktValue !== null);
+          const assetPricedInv  = pricedRows.reduce((s, r) => s + r.net, 0);
+          const assetMktVal     = pricedRows.reduce((s, r) => s + r.mktValue, 0);
+          const assetReturn     = pricedRows.length > 0 ? assetMktVal - assetPricedInv : null;
+          const assetRetPct     = assetReturn !== null && assetPricedInv > 0 ? (assetReturn / assetPricedInv * 100) : null;
           const isOpen        = expandedAsset === assetClass;
           return (
             <div key={assetClass} className="card overflow-hidden">
