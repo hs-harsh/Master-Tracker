@@ -2,6 +2,20 @@ const router = require('express').Router();
 const pool = require('../db');
 const auth = require('../middleware/auth');
 
+/** When qty or avg_price is missing, derive from amount and the other field (AI parse often omits qty). */
+function normalizeInvestmentAmounts(body) {
+  const amount = Math.round(Number(body.amount) || 0);
+  const rawQty = body.qty;
+  const rawAvg = body.avg_price;
+  const hasQty = rawQty != null && rawQty !== '' && Number.isFinite(Number(rawQty)) && Number(rawQty) > 0;
+  const hasAvg = rawAvg != null && rawAvg !== '' && Number.isFinite(Number(rawAvg)) && Number(rawAvg) > 0;
+  let qty = hasQty ? +Number(rawQty).toFixed(4) : null;
+  let avg_price = hasAvg ? +Number(rawAvg).toFixed(4) : null;
+  if (!avg_price && qty && amount > 0) avg_price = +(amount / qty).toFixed(4);
+  if (!qty && avg_price && amount > 0) qty = +(amount / avg_price).toFixed(4);
+  return { amount, qty, avg_price };
+}
+
 // ── Yahoo Finance singleton (instantiated once per process) ──────────────────
 const YahooFinance = require('yahoo-finance2').default;
 const yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });
@@ -251,9 +265,7 @@ router.get('/', auth, async (req, res) => {
 router.post('/', auth, async (req, res) => {
   try {
     const { date, account, goal, asset_class, instrument, side, broker, ticker } = req.body;
-    const amount    = Math.round(Number(req.body.amount) || 0);
-    const qty       = req.body.qty       ? +Number(req.body.qty).toFixed(4)       : null;
-    const avg_price = req.body.avg_price ? +Number(req.body.avg_price).toFixed(4) : (qty && amount ? +(amount / qty).toFixed(4) : null);
+    const { amount, qty, avg_price } = normalizeInvestmentAmounts(req.body);
 
     const check = await pool.query(
       'SELECT 1 FROM user_persons WHERE user_id = $1 AND person_name = $2',
@@ -276,9 +288,7 @@ router.post('/', auth, async (req, res) => {
 router.put('/:id', auth, async (req, res) => {
   try {
     const { date, account, goal, asset_class, instrument, side, broker, ticker } = req.body;
-    const amount    = Math.round(Number(req.body.amount) || 0);
-    const qty       = req.body.qty       ? +Number(req.body.qty).toFixed(4)       : null;
-    const avg_price = req.body.avg_price ? +Number(req.body.avg_price).toFixed(4) : (qty && amount ? +(amount / qty).toFixed(4) : null);
+    const { amount, qty, avg_price } = normalizeInvestmentAmounts(req.body);
 
     const check = await pool.query(
       'SELECT 1 FROM user_persons WHERE user_id = $1 AND person_name = $2',

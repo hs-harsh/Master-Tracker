@@ -1,0 +1,15 @@
+---
+description: After implementing fixes or features, commit and push to origin
+alwaysApply: true
+---
+
+# Git: push after changes
+
+When you modify project source code (not only suggestions):
+
+1. **Commit** with a clear message summarizing what changed and why.
+2. **Push** to `origin` on the current branch (usually `main`) so the remote stays in sync.
+
+Do this in the same session as the edits unless the user explicitly asks not to commit or push. If push fails (auth, network), report the error and what remains locally.
+
+Do not commit unrelated junk (e.g. local editor folders, secrets) unless the user asked to include them.

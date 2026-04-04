@@ -66,8 +66,8 @@ Sides: ${INV_SIDES.join(', ')}
 RULES:
 - Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
 - Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "...", "asset_class": "...", "instrument": "...", "side": "BUY" or "SELL", "amount": <total_rupee_value>, "qty": <number_of_units_or_null>, "avg_price": <price_per_unit_or_null>, "broker": "..." }
-- qty: number of units/shares/lots bought or sold. If not mentioned, set null.
-- avg_price: price per unit. If not mentioned but qty and amount are known, compute avg_price = amount / qty. If neither is mentioned, set null.
+- qty: number of units/shares/lots. If stated, use it. If only amount and avg_price are known, set qty = amount / avg_price (not null).
+- avg_price: price per unit. If not stated but qty and amount are known, compute avg_price = amount / qty. If only amount and avg_price are known from the user, keep both and set qty as above.
 - amount: total rupee value (qty × avg_price). Must be a positive number. Strip ₹ and commas.
 - Infer asset class: stocks/shares/equity/mutual fund → Equity; bonds/fd/ppf/debt → Debt; gold/silver → Gold; crypto/bitcoin → Crypto; property/real estate → Real Estate
 - Use today's date if no date mentioned. If only month/year given (e.g. "March 2026"), use the 25th of that month.
@@ -359,9 +359,17 @@ router.post('/parse', auth, async (req, res) => {
     entries = entries.map(e => {
       const base = { ...e, account: persons.length ? resolveAccount(e.account, persons) : e.account };
       if (type === 'investments') {
-        const qty       = e.qty       ? Number(e.qty)       : null;
-        const avg_price = e.avg_price ? Number(e.avg_price) : (qty && e.amount ? Number(e.amount) / qty : null);
-        return { ...base, amount: Math.round(Number(e.amount) || 0), qty, avg_price: avg_price ? +avg_price.toFixed(4) : null };
+        const amount = Math.round(Number(e.amount) || 0);
+        let qty = e.qty != null && e.qty !== '' && Number.isFinite(Number(e.qty)) ? Number(e.qty) : null;
+        let avg_price = e.avg_price != null && e.avg_price !== '' && Number.isFinite(Number(e.avg_price)) ? Number(e.avg_price) : null;
+        if (!avg_price && qty && amount > 0) avg_price = amount / qty;
+        if (!qty && avg_price && amount > 0) qty = amount / avg_price;
+        return {
+          ...base,
+          amount,
+          qty: qty ? +Number(qty).toFixed(4) : null,
+          avg_price: avg_price ? +Number(avg_price).toFixed(4) : null,
+        };
       }
       return base;
     });
@@ -409,8 +417,8 @@ Use the INVESTED amount (the amount actually paid / buy value / cost), NOT the c
 OTHER RULES:
 - Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
 - Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "", "asset_class": "...", "instrument": "...", "side": "BUY", "amount": <invested_number>, "qty": <units_or_null>, "avg_price": <avg_buy_price_or_null>, "broker": "..." }
-- qty: extract number of units/shares from the screenshot (Qty, Units, Holdings column). If visible, include it.
-- avg_price: extract average buy price (Avg Buy, Avg Cost, WAP column). If qty and amount are known but avg_price not shown, compute avg_price = amount / qty.
+- qty: extract units from Qty/Units/Holdings when visible. If amount and avg_price are known but qty is not shown, set qty = amount / avg_price.
+- avg_price: extract average buy price (Avg Buy, Avg Cost, WAP). If qty and amount are known but avg_price not shown, compute avg_price = amount / qty.
 - If multiple screenshots are provided, extract holdings from ALL of them and combine into one list. De-duplicate if the same instrument appears in multiple images.
 - One entry per instrument/holding line.
 - Infer asset class from instrument name:
@@ -485,14 +493,17 @@ OTHER RULES:
     // Snap account names to real persons so the save never 403s
     // Round amounts to integers (investments.amount is BIGINT — no decimals allowed)
     entries = entries.map(e => {
-      const qty       = e.qty       ? Number(e.qty)       : null;
-      const avg_price = e.avg_price ? Number(e.avg_price) : (qty && e.amount ? Number(e.amount) / qty : null);
+      const amount = Math.round(Number(e.amount) || 0);
+      let qty = e.qty != null && e.qty !== '' && Number.isFinite(Number(e.qty)) ? Number(e.qty) : null;
+      let avg_price = e.avg_price != null && e.avg_price !== '' && Number.isFinite(Number(e.avg_price)) ? Number(e.avg_price) : null;
+      if (!avg_price && qty && amount > 0) avg_price = amount / qty;
+      if (!qty && avg_price && amount > 0) qty = amount / avg_price;
       return {
         ...e,
-        amount:    Math.round(Number(e.amount) || 0),
-        qty,
-        avg_price: avg_price ? +avg_price.toFixed(4) : null,
-        account:   persons.length ? resolveAccount(e.account, persons) : e.account,
+        amount,
+        qty: qty ? +Number(qty).toFixed(4) : null,
+        avg_price: avg_price ? +Number(avg_price).toFixed(4) : null,
+        account: persons.length ? resolveAccount(e.account, persons) : e.account,
       };
     });
 

@@ -97,19 +97,27 @@ export default function Portfolio() {
   const enriched = useMemo(() => aggregated.map(row => {
     const mkt = marketPrices[row.instrument];
     if (mkt?.price) {
-      // Use stored netQty; if missing, estimate from net / wavgPrice
-      const effectiveQty = row.netQty > 0
+      // Use stored netQty; if missing, estimate from net / wavgPrice; last resort: net / mktPrice
+      let effectiveQty = row.netQty > 0
         ? row.netQty
         : (row.wavgPrice > 0 ? row.net / row.wavgPrice : 0);
+      let estimatedWavg = row.wavgPrice;
+      let qtyEstimated = false;
+      // Last resort: if still no qty, estimate using current market price (assumes ~0% return)
+      if (effectiveQty <= 0 && row.net > 0 && mkt.price > 0) {
+        effectiveQty = row.net / mkt.price;
+        estimatedWavg = mkt.price;
+        qtyEstimated = true;
+      }
       if (effectiveQty > 0) {
         const mktValue  = mkt.price * effectiveQty;
         const returnAmt = mktValue - row.net;
         const returnPct = row.net > 0 ? (returnAmt / row.net * 100) : 0;
-        return { ...row, mktPrice: mkt.price, mktValue, returnAmt, returnPct, effectiveQty };
+        return { ...row, mktPrice: mkt.price, mktValue, returnAmt, returnPct, effectiveQty, estimatedWavg, qtyEstimated };
       }
-      return { ...row, mktPrice: mkt.price, mktValue: null, returnAmt: null, returnPct: null };
+      return { ...row, mktPrice: mkt.price, mktValue: null, returnAmt: null, returnPct: null, effectiveQty: 0, estimatedWavg: null, qtyEstimated: false };
     }
-    return { ...row, mktPrice: null, mktValue: null, returnAmt: null, returnPct: null };
+    return { ...row, mktPrice: null, mktValue: null, returnAmt: null, returnPct: null, effectiveQty: 0, estimatedWavg: null, qtyEstimated: false };
   }), [aggregated, marketPrices]);
 
   const totalNet       = goalInvestments.reduce((s, inv) => s + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)), 0);
@@ -550,64 +558,76 @@ export default function Portfolio() {
         </div>
       )}
 
-      {/* Holdings by Instrument — single flat bar chart, all asset classes, sorted by invested */}
+      {/* Holdings by Instrument — Equity and Non-Equity side by side */}
       {enriched.length > 0 && (() => {
-        const sorted = [...enriched].sort((a, b) => b.net - a.net);
-        const hasMkt = sorted.some(r => r.mktValue !== null);
-        const barData = sorted.map(r => ({
+        const equityRows = [...enriched].filter(r => r.asset_class === 'Equity' || r.asset_class === 'Crypto').sort((a, b) => b.net - a.net);
+        const nonEquityRows = [...enriched].filter(r => r.asset_class !== 'Equity' && r.asset_class !== 'Crypto').sort((a, b) => b.net - a.net);
+
+        const makeBarData = (rows) => rows.map(r => ({
           name: r.instrument.length > 14 ? r.instrument.slice(0, 13) + '…' : r.instrument,
           fullName: r.instrument,
           assetClass: r.asset_class,
           Invested: +(r.net / 100000).toFixed(2),
           ...(r.mktValue !== null ? { 'Mkt Value': +(r.mktValue / 100000).toFixed(2) } : {}),
           returnPct: r.returnPct,
-          wavgPrice: r.wavgPrice,
+          wavgPrice: r.wavgPrice || r.estimatedWavg,
           mktPrice: r.mktPrice,
           netQty: r.effectiveQty || r.netQty,
           broker: r.broker,
           color: ASSET_COLORS[r.asset_class] || '#9ca3af',
         }));
-        const chartH = Math.max(sorted.length * 52 + 60, 140);
+
+        const renderChart = (title, rows) => {
+          if (rows.length === 0) return null;
+          const barData = makeBarData(rows);
+          const hasMkt = barData.some(d => d['Mkt Value'] !== undefined);
+          const chartH = Math.max(rows.length * 52 + 80, 180);
+          return (
+            <div className="card">
+              <p className="text-muted text-xs uppercase tracking-wider mb-3">{title}</p>
+              <ResponsiveContainer width="100%" height={chartH}>
+                <BarChart data={barData} margin={{ top: 4, right: 8, bottom: 60, left: 0 }}>
+                  <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 9 }} tickLine={false} axisLine={false}
+                    angle={-40} textAnchor="end" interval={0} />
+                  <YAxis tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false}
+                    tickFormatter={v => `${v}L`} width={32} />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0].payload;
+                      return (
+                        <div style={{ padding: '8px 12px', background: '#1a1a2e', border: '1px solid #2d2d44', borderRadius: 8, fontSize: 11 }}>
+                          <div className="font-bold text-white mb-1">{d.fullName}</div>
+                          <div style={{ color: d.color }} className="text-xs mb-1">{d.assetClass}</div>
+                          {d.broker && <div className="text-muted text-xs">{d.broker}</div>}
+                          {d.netQty > 0 && <div className="text-soft text-xs">Qty: {Number(d.netQty).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</div>}
+                          {d.wavgPrice && <div className="text-soft text-xs">Avg: ₹{d.wavgPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>}
+                          {d.mktPrice && <div className="text-soft text-xs">Mkt Price: ₹{d.mktPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>}
+                          {payload.map(p => <div key={p.name} style={{ color: p.fill || p.color }} className="text-xs">{p.name}: ₹{(p.value * 100000).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>)}
+                          {d.returnPct !== null && d.returnPct !== undefined && (
+                            <div className={`text-xs font-mono mt-0.5 ${d.returnPct >= 0 ? 'text-teal' : 'text-rose'}`}>
+                              Return: {d.returnPct >= 0 ? '+' : ''}{d.returnPct.toFixed(1)}%
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }}
+                  />
+                  <Bar dataKey="Invested" radius={[3, 3, 0, 0]}>
+                    {barData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Bar>
+                  {hasMkt && <Bar dataKey="Mkt Value" fill="#2dd4bf" radius={[3, 3, 0, 0]} />}
+                  {hasMkt && <Legend iconType="circle" iconSize={8} formatter={v => <span style={{ color: '#e5e7eb', fontSize: 11 }}>{v}</span>} />}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          );
+        };
+
         return (
-          <div className="card">
-            <p className="text-muted text-xs uppercase tracking-wider mb-3">Holdings by Instrument</p>
-            <ResponsiveContainer width="100%" height={chartH}>
-              <BarChart data={barData} margin={{ top: 4, right: 8, bottom: 60, left: 0 }}>
-                <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 9 }} tickLine={false} axisLine={false}
-                  angle={-40} textAnchor="end" interval={0} />
-                <YAxis tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false}
-                  tickFormatter={v => `${v}L`} width={32} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const d = payload[0].payload;
-                    return (
-                      <div style={{ padding: '8px 12px', background: '#1a1a2e', border: '1px solid #2d2d44', borderRadius: 8, fontSize: 11 }}>
-                        <div className="font-bold text-white mb-1">{d.fullName}</div>
-                        <div style={{ color: d.color }} className="text-xs mb-1">{d.assetClass}</div>
-                        {d.broker && <div className="text-muted text-xs">{d.broker}</div>}
-                        {d.netQty > 0 && <div className="text-soft text-xs">Qty: {Number(d.netQty).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</div>}
-                        {d.wavgPrice && <div className="text-soft text-xs">Avg: ₹{d.wavgPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>}
-                        {d.mktPrice && <div className="text-soft text-xs">Mkt Price: ₹{d.mktPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>}
-                        {payload.map(p => <div key={p.name} style={{ color: p.fill || p.color }} className="text-xs">{p.name}: ₹{(p.value * 100000).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>)}
-                        {d.returnPct !== null && d.returnPct !== undefined && (
-                          <div className={`text-xs font-mono mt-0.5 ${d.returnPct >= 0 ? 'text-teal' : 'text-rose'}`}>
-                            Return: {d.returnPct >= 0 ? '+' : ''}{d.returnPct.toFixed(1)}%
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }}
-                />
-                <Bar dataKey="Invested" radius={[3, 3, 0, 0]}>
-                  {barData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                </Bar>
-                {hasMkt && (
-                  <Bar dataKey="Mkt Value" fill="#2dd4bf" radius={[3, 3, 0, 0]} />
-                )}
-                {hasMkt && <Legend iconType="circle" iconSize={8} formatter={v => <span style={{ color: '#e5e7eb', fontSize: 11 }}>{v}</span>} />}
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {renderChart('Equity Holdings', equityRows)}
+            {renderChart('Non-Equity Holdings (Debt, Gold, Cash, RE)', nonEquityRows)}
           </div>
         );
       })()}
@@ -626,9 +646,9 @@ export default function Portfolio() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
+                <tr><td colSpan={10} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
               ) : enriched.length === 0 ? (
-                <tr><td colSpan={9} className="py-8 text-center text-muted">{goalFilter || brokerFilter ? 'No positions for this filter' : 'No investments yet'}</td></tr>
+                <tr><td colSpan={10} className="py-8 text-center text-muted">{goalFilter || brokerFilter ? 'No positions for this filter' : 'No investments yet'}</td></tr>
               ) : (
                 enriched.map((row, i) => (
                   <tr key={i} className="border-b border-border/40 hover:bg-surface/40 transition-colors">
@@ -636,10 +656,14 @@ export default function Portfolio() {
                     <td className="py-3 px-4 text-xs text-soft max-w-[160px] truncate">{row.instrument}</td>
                     <td className="py-3 px-4 text-xs"><span className="tag bg-card/60">{row.asset_class}</span></td>
                     <td className="py-3 px-4 font-mono text-xs text-soft">
-                      {row.netQty > 0 ? row.netQty.toLocaleString('en-IN', { maximumFractionDigits: 3 }) : '—'}
+                      {row.effectiveQty > 0
+                        ? <span>{row.effectiveQty.toLocaleString('en-IN', { maximumFractionDigits: 3 })}{row.qtyEstimated && <span className="text-amber-400 ml-0.5" title="Estimated from invested ÷ mkt price">~</span>}</span>
+                        : '—'}
                     </td>
                     <td className="py-3 px-4 font-mono text-xs text-soft">
-                      {row.wavgPrice ? `₹${row.wavgPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}
+                      {(row.wavgPrice || row.estimatedWavg)
+                        ? <span>₹{(row.wavgPrice || row.estimatedWavg).toLocaleString('en-IN', { maximumFractionDigits: 2 })}{row.qtyEstimated && <span className="text-amber-400 ml-0.5" title="Estimated (= mkt price)">~</span>}</span>
+                        : '—'}
                     </td>
                     <td className="py-3 px-4 font-mono text-soft">{row.net >= 0 ? '' : '−'}{fmt(Math.abs(row.net))}</td>
                     <td className="py-3 px-4 font-mono text-xs text-soft">{row.mktPrice ? `₹${row.mktPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}</td>
