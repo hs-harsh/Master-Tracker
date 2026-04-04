@@ -320,6 +320,49 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
+// ── Market price cache MUST be registered before PUT /:id or "market-cache" is treated as an id.
+// ── GET /api/investments/market-cache?account= ───────────────────────────────
+router.get('/market-cache', auth, async (req, res) => {
+  try {
+    const account = req.query.account != null ? String(req.query.account) : '';
+    const doc = await readPortfolioMktDoc(pool, req.user.id);
+    const entry = doc.byAccount[account];
+    if (!entry?.prices || typeof entry.prices !== 'object') {
+      return res.json({ asOf: null, prices: {} });
+    }
+    res.json({ asOf: entry.asOf || null, prices: entry.prices });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUT /api/investments/market-cache ────────────────────────────────────────
+router.put('/market-cache', auth, async (req, res) => {
+  try {
+    const account = req.body.account != null ? String(req.body.account) : '';
+    let { asOf, prices } = req.body;
+    if (!prices || typeof prices !== 'object' || Array.isArray(prices)) {
+      return res.status(400).json({ error: 'prices object required' });
+    }
+    const hasAny = Object.values(prices).some(
+      p => p && typeof p === 'object' && Number(p.price) > 0
+    );
+    if (!hasAny) {
+      await clearPortfolioMktCacheAccount(pool, req.user.id, account);
+      return res.json({ asOf: null, prices: {} });
+    }
+    if (!asOf || !/^\d{4}-\d{2}-\d{2}$/.test(String(asOf))) {
+      asOf = new Date().toISOString().slice(0, 10);
+    } else {
+      asOf = String(asOf).slice(0, 10);
+    }
+    await mergePortfolioMktCache(pool, req.user.id, account, asOf, prices);
+    res.json({ asOf, prices });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.put('/:id', auth, async (req, res) => {
   try {
     const { date, account, goal, asset_class, instrument, side, broker, ticker } = req.body;
@@ -420,50 +463,6 @@ Instruments: ${needAI.map(i => i.instrument).join(', ')}`;
     res.json(results);
   } catch (e) {
     res.status(500).json({ error: e.message });
-  }
-});
-
-// ── GET /api/investments/market-cache?account= ───────────────────────────────
-// Saved portfolio live prices (per profile account) so values survive tab changes.
-router.get('/market-cache', auth, async (req, res) => {
-  try {
-    const account = req.query.account != null ? String(req.query.account) : '';
-    const doc = await readPortfolioMktDoc(pool, req.user.id);
-    const entry = doc.byAccount[account];
-    if (!entry?.prices || typeof entry.prices !== 'object') {
-      return res.json({ asOf: null, prices: {} });
-    }
-    res.json({ asOf: entry.asOf || null, prices: entry.prices });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── PUT /api/investments/market-cache ────────────────────────────────────────
-// Body: { account?: string, asOf: 'YYYY-MM-DD', prices: { [instrument]: { price, symbol?, name? } } }
-router.put('/market-cache', auth, async (req, res) => {
-  try {
-    const account = req.body.account != null ? String(req.body.account) : '';
-    let { asOf, prices } = req.body;
-    if (!prices || typeof prices !== 'object' || Array.isArray(prices)) {
-      return res.status(400).json({ error: 'prices object required' });
-    }
-    const hasAny = Object.values(prices).some(
-      p => p && typeof p === 'object' && Number(p.price) > 0
-    );
-    if (!hasAny) {
-      await clearPortfolioMktCacheAccount(pool, req.user.id, account);
-      return res.json({ asOf: null, prices: {} });
-    }
-    if (!asOf || !/^\d{4}-\d{2}-\d{2}$/.test(String(asOf))) {
-      asOf = new Date().toISOString().slice(0, 10);
-    } else {
-      asOf = String(asOf).slice(0, 10);
-    }
-    await mergePortfolioMktCache(pool, req.user.id, account, asOf, prices);
-    res.json({ asOf, prices });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
   }
 });
 

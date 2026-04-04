@@ -25,7 +25,7 @@ const riskForAsset = asset => {
 const TT = { background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' };
 
 export default function Portfolio() {
-  const { personName, activePerson, dataVersion } = useAuth();
+  const { personName, activePerson, persons, dataVersion, token } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [goalFilter, setGoalFilter] = useState('');
@@ -40,6 +40,11 @@ export default function Portfolio() {
   const [editingInst, setEditingInst] = useState(null);
 
   const currentPerson = activePerson || personName;
+  // Same key used for GET/PUT market cache — align with profile list (not JWT-only) to avoid wrong bucket after relogin.
+  const mktCacheAccount = useMemo(() => {
+    if (persons?.length > 0) return activePerson || persons[0] || '';
+    return currentPerson || '';
+  }, [persons, activePerson, currentPerson]);
 
   const load = () => {
     setLoading(true);
@@ -51,29 +56,58 @@ export default function Portfolio() {
   useEffect(() => { load(); }, [currentPerson, dataVersion]);
 
   useEffect(() => {
+    if (!token) {
+      setMarketPrices({});
+      setMktAsOf(null);
+      return;
+    }
+    if (!persons?.length) return;
+
     let cancelled = false;
-    const account = currentPerson || '';
-    api
-      .get(`/investments/market-cache?account=${encodeURIComponent(account)}`)
-      .then(({ data }) => {
+    const primary = activePerson || persons[0] || '';
+    const tryKeys = [...new Set([primary, '', personName].filter(k => k != null && k !== undefined))];
+
+    (async () => {
+      try {
+        let loaded = null;
+        let loadedKey = null;
+        for (const acc of tryKeys) {
+          if (cancelled) return;
+          const { data } = await api.get(
+            `/investments/market-cache?account=${encodeURIComponent(acc)}`
+          );
+          const p = data?.prices;
+          if (p && typeof p === 'object' && Object.keys(p).length) {
+            loaded = data;
+            loadedKey = acc;
+            break;
+          }
+        }
         if (cancelled) return;
-        const p = data?.prices;
+        if (loaded && loadedKey != null && loadedKey !== primary) {
+          try {
+            await api.put('/investments/market-cache', {
+              account: primary,
+              asOf: loaded.asOf || new Date().toISOString().slice(0, 10),
+              prices: loaded.prices,
+            });
+          } catch (_) { /* migrate best-effort */ }
+        }
+        const p = loaded?.prices;
         if (p && typeof p === 'object' && Object.keys(p).length) {
           setMarketPrices(p);
-          setMktAsOf(data.asOf || null);
+          setMktAsOf(loaded.asOf || null);
         } else {
           setMarketPrices({});
           setMktAsOf(null);
         }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setMarketPrices({});
-          setMktAsOf(null);
-        }
-      });
+      } catch {
+        if (!cancelled) { /* keep last UI state */ }
+      }
+    })();
+
     return () => { cancelled = true; };
-  }, [currentPerson, dataVersion]);
+  }, [token, persons, activePerson, personName, dataVersion]);
 
   const goals   = useMemo(() => Array.from(new Set(data.map(d => d.goal))).sort(), [data]);
   const brokers = useMemo(() => Array.from(new Set(data.map(d => d.broker || '').filter(Boolean))).sort(), [data]);
@@ -271,7 +305,7 @@ export default function Portfolio() {
     const asOf = new Date().toISOString().slice(0, 10);
     try {
       const { data } = await api.put('/investments/market-cache', {
-        account: currentPerson || '',
+        account: mktCacheAccount,
         asOf,
         prices: confirmed,
       });
