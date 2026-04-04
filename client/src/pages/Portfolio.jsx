@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Legend, ComposedChart, Line, CartesianGrid,
   ReferenceLine,
 } from 'recharts';
-import { PieChart as PieIcon, Target, Wallet, TrendingUp, Loader2, ChevronDown, ChevronUp, CheckCircle2, XCircle, Edit3, Check, X } from 'lucide-react';
+import { PieChart as PieIcon, Target, Wallet, TrendingUp, Loader2, CheckCircle2, XCircle, Edit3, Check, X } from 'lucide-react';
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 import TradeFeedbackCard from '../components/TradeFeedbackCard';
@@ -31,7 +31,6 @@ export default function Portfolio() {
   const [goalFilter, setGoalFilter] = useState('');
   const [brokerFilter, setBrokerFilter] = useState('');
   const [marketPrices, setMarketPrices] = useState({});
-  const [expandedAsset, setExpandedAsset] = useState(null);
   // Price fetch panel state
   const [showPricePanel, setShowPricePanel] = useState(false);
   const [fetchStatus, setFetchStatus] = useState('idle'); // idle | fetching | done
@@ -98,13 +97,16 @@ export default function Portfolio() {
   const enriched = useMemo(() => aggregated.map(row => {
     const mkt = marketPrices[row.instrument];
     if (mkt?.price) {
-      if (row.netQty > 0) {
-        const mktValue  = mkt.price * row.netQty;
+      // Use stored netQty; if missing, estimate from net / wavgPrice
+      const effectiveQty = row.netQty > 0
+        ? row.netQty
+        : (row.wavgPrice > 0 ? row.net / row.wavgPrice : 0);
+      if (effectiveQty > 0) {
+        const mktValue  = mkt.price * effectiveQty;
         const returnAmt = mktValue - row.net;
         const returnPct = row.net > 0 ? (returnAmt / row.net * 100) : 0;
-        return { ...row, mktPrice: mkt.price, mktValue, returnAmt, returnPct };
+        return { ...row, mktPrice: mkt.price, mktValue, returnAmt, returnPct, effectiveQty };
       }
-      // Price found but no qty — show price, cannot compute value/return
       return { ...row, mktPrice: mkt.price, mktValue: null, returnAmt: null, returnPct: null };
     }
     return { ...row, mktPrice: null, mktValue: null, returnAmt: null, returnPct: null };
@@ -177,12 +179,6 @@ export default function Portfolio() {
     [enriched]
   );
 
-  // Per-asset-class holdings
-  const byAssetClass = useMemo(() => {
-    const map = {};
-    enriched.forEach(r => { if (!map[r.asset_class]) map[r.asset_class] = []; map[r.asset_class].push(r); });
-    return map;
-  }, [enriched]);
 
   const equityVal = Math.max(0, assetBuckets.Equity || 0) + Math.max(0, assetBuckets.Crypto || 0);
   const debtVal   = Math.max(0, assetBuckets.Debt || 0);
@@ -554,97 +550,67 @@ export default function Portfolio() {
         </div>
       )}
 
-      {/* Per asset-class expandable breakup */}
-      <div className="space-y-2">
-        <p className="text-muted text-xs uppercase tracking-wider">Holdings by Asset Class</p>
-        {Object.entries(byAssetClass).map(([assetClass, rows]) => {
-          const assetInvested   = rows.reduce((s, r) => s + r.net, 0);
-          const pricedRows      = rows.filter(r => r.mktValue !== null);
-          const assetPricedInv  = pricedRows.reduce((s, r) => s + r.net, 0);
-          const assetMktVal     = pricedRows.reduce((s, r) => s + r.mktValue, 0);
-          const assetReturn     = pricedRows.length > 0 ? assetMktVal - assetPricedInv : null;
-          const assetRetPct     = assetReturn !== null && assetPricedInv > 0 ? (assetReturn / assetPricedInv * 100) : null;
-          const isOpen        = expandedAsset === assetClass;
-          return (
-            <div key={assetClass} className="card overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between p-0 text-left"
-                onClick={() => setExpandedAsset(isOpen ? null : assetClass)}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: ASSET_COLORS[assetClass] || '#9ca3af' }} />
-                  <span className="font-medium text-white text-sm">{assetClass}</span>
-                  <span className="text-muted text-xs">{rows.length} position{rows.length !== 1 ? 's' : ''}</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <div className="font-mono text-sm text-soft">{fmt(assetInvested)}</div>
-                    {assetRetPct !== null && (
-                      <div className={`text-xs font-mono ${assetReturn >= 0 ? 'text-teal' : 'text-rose'}`}>
-                        {assetReturn >= 0 ? '+' : ''}{fmt(assetReturn)} ({assetRetPct.toFixed(1)}%)
+      {/* Holdings by Instrument — single flat bar chart, all asset classes, sorted by invested */}
+      {enriched.length > 0 && (() => {
+        const sorted = [...enriched].sort((a, b) => b.net - a.net);
+        const hasMkt = sorted.some(r => r.mktValue !== null);
+        const barData = sorted.map(r => ({
+          name: r.instrument.length > 14 ? r.instrument.slice(0, 13) + '…' : r.instrument,
+          fullName: r.instrument,
+          assetClass: r.asset_class,
+          Invested: +(r.net / 100000).toFixed(2),
+          ...(r.mktValue !== null ? { 'Mkt Value': +(r.mktValue / 100000).toFixed(2) } : {}),
+          returnPct: r.returnPct,
+          wavgPrice: r.wavgPrice,
+          mktPrice: r.mktPrice,
+          netQty: r.effectiveQty || r.netQty,
+          broker: r.broker,
+          color: ASSET_COLORS[r.asset_class] || '#9ca3af',
+        }));
+        const chartH = Math.max(sorted.length * 52 + 60, 140);
+        return (
+          <div className="card">
+            <p className="text-muted text-xs uppercase tracking-wider mb-3">Holdings by Instrument</p>
+            <ResponsiveContainer width="100%" height={chartH}>
+              <BarChart data={barData} margin={{ top: 4, right: 8, bottom: 60, left: 0 }}>
+                <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 9 }} tickLine={false} axisLine={false}
+                  angle={-40} textAnchor="end" interval={0} />
+                <YAxis tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false}
+                  tickFormatter={v => `${v}L`} width={32} />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const d = payload[0].payload;
+                    return (
+                      <div style={{ padding: '8px 12px', background: '#1a1a2e', border: '1px solid #2d2d44', borderRadius: 8, fontSize: 11 }}>
+                        <div className="font-bold text-white mb-1">{d.fullName}</div>
+                        <div style={{ color: d.color }} className="text-xs mb-1">{d.assetClass}</div>
+                        {d.broker && <div className="text-muted text-xs">{d.broker}</div>}
+                        {d.netQty > 0 && <div className="text-soft text-xs">Qty: {Number(d.netQty).toLocaleString('en-IN', { maximumFractionDigits: 3 })}</div>}
+                        {d.wavgPrice && <div className="text-soft text-xs">Avg: ₹{d.wavgPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>}
+                        {d.mktPrice && <div className="text-soft text-xs">Mkt Price: ₹{d.mktPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>}
+                        {payload.map(p => <div key={p.name} style={{ color: p.fill || p.color }} className="text-xs">{p.name}: ₹{(p.value * 100000).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>)}
+                        {d.returnPct !== null && d.returnPct !== undefined && (
+                          <div className={`text-xs font-mono mt-0.5 ${d.returnPct >= 0 ? 'text-teal' : 'text-rose'}`}>
+                            Return: {d.returnPct >= 0 ? '+' : ''}{d.returnPct.toFixed(1)}%
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  {isOpen ? <ChevronUp size={14} className="text-muted" /> : <ChevronDown size={14} className="text-muted" />}
-                </div>
-              </button>
-
-              {isOpen && (() => {
-                const sorted = [...rows].sort((a, b) => b.net - a.net);
-                const barData = sorted.map(r => ({
-                  name: r.instrument.length > 18 ? r.instrument.slice(0, 16) + '…' : r.instrument,
-                  fullName: r.instrument,
-                  Invested: +(r.net / 100000).toFixed(2),
-                  ...(r.mktValue !== null ? { 'Mkt Value': +(r.mktValue / 100000).toFixed(2) } : {}),
-                  returnPct: r.returnPct,
-                  wavgPrice: r.wavgPrice,
-                  mktPrice: r.mktPrice,
-                  netQty: r.netQty,
-                  broker: r.broker,
-                }));
-                const chartH = Math.max(sorted.length * 44 + 20, 80);
-                const hasAssetMkt = sorted.some(r => r.mktValue !== null);
-                return (
-                  <div className="mt-3 pt-3 border-t border-border/50">
-                    <ResponsiveContainer width="100%" height={Math.max(sorted.length * 52 + 40, 100)}>
-                      <BarChart data={barData} margin={{ top: 4, right: 8, bottom: 48, left: 0 }}>
-                        <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 9 }} tickLine={false} axisLine={false}
-                          angle={-35} textAnchor="end" interval={0} />
-                        <YAxis tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false}
-                          tickFormatter={v => `${v}L`} width={32} />
-                        <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d44', borderRadius: 6, fontSize: 11 }}
-                          content={({ active, payload }) => {
-                            if (!active || !payload?.length) return null;
-                            const d = payload[0].payload;
-                            return (
-                              <div style={{ padding: '6px 10px', background: '#1a1a2e', border: '1px solid #2d2d44', borderRadius: 6, fontSize: 11 }}>
-                                <div className="font-bold text-white mb-1">{d.fullName}</div>
-                                {d.broker && <div className="text-muted">{d.broker}</div>}
-                                {d.netQty > 0 && <div className="text-soft">Qty: {d.netQty.toLocaleString('en-IN', { maximumFractionDigits: 3 })}</div>}
-                                {d.wavgPrice && <div className="text-soft">Avg: ₹{d.wavgPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>}
-                                {d.mktPrice && <div className="text-soft">Mkt: ₹{d.mktPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>}
-                                {payload.map(p => <div key={p.name} style={{ color: p.fill }}>{p.name}: ₹{(p.value * 100000).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>)}
-                                {d.returnPct !== null && d.returnPct !== undefined && (
-                                  <div className={d.returnPct >= 0 ? 'text-teal' : 'text-rose'}>
-                                    Return: {d.returnPct >= 0 ? '+' : ''}{d.returnPct.toFixed(1)}%
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          }}
-                        />
-                        <Bar dataKey="Invested" fill={ASSET_COLORS[assetClass] || '#60a5fa'} radius={[3, 3, 0, 0]} />
-                        {hasAssetMkt && <Bar dataKey="Mkt Value" fill="#2dd4bf" radius={[3, 3, 0, 0]} />}
-                        {hasAssetMkt && <Legend iconType="circle" iconSize={7} formatter={v => <span style={{ color: '#9ca3af', fontSize: 10 }}>{v}</span>} />}
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                );
-              })()}
-            </div>
-          );
-        })}
-      </div>
+                    );
+                  }}
+                />
+                <Bar dataKey="Invested" radius={[3, 3, 0, 0]}>
+                  {barData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                </Bar>
+                {hasMkt && (
+                  <Bar dataKey="Mkt Value" fill="#2dd4bf" radius={[3, 3, 0, 0]} />
+                )}
+                {hasMkt && <Legend iconType="circle" iconSize={8} formatter={v => <span style={{ color: '#e5e7eb', fontSize: 11 }}>{v}</span>} />}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      })()}
 
       {/* Full holdings table */}
       <div className="card overflow-hidden">
