@@ -212,8 +212,8 @@ router.post('/', auth, async (req, res) => {
   try {
     const { date, account, goal, asset_class, instrument, side, broker, ticker } = req.body;
     const amount    = Math.round(Number(req.body.amount) || 0);
-    const avg_price = req.body.avg_price ? Number(req.body.avg_price) : null;
-    const qty       = avg_price && amount ? +(amount / avg_price).toFixed(4) : (req.body.qty ? Number(req.body.qty) : null);
+    const qty       = req.body.qty       ? +Number(req.body.qty).toFixed(4)       : null;
+    const avg_price = req.body.avg_price ? +Number(req.body.avg_price).toFixed(4) : (qty && amount ? +(amount / qty).toFixed(4) : null);
 
     const check = await pool.query(
       'SELECT 1 FROM user_persons WHERE user_id = $1 AND person_name = $2',
@@ -237,8 +237,8 @@ router.put('/:id', auth, async (req, res) => {
   try {
     const { date, account, goal, asset_class, instrument, side, broker, ticker } = req.body;
     const amount    = Math.round(Number(req.body.amount) || 0);
-    const avg_price = req.body.avg_price ? Number(req.body.avg_price) : null;
-    const qty       = avg_price && amount ? +(amount / avg_price).toFixed(4) : (req.body.qty ? Number(req.body.qty) : null);
+    const qty       = req.body.qty       ? +Number(req.body.qty).toFixed(4)       : null;
+    const avg_price = req.body.avg_price ? +Number(req.body.avg_price).toFixed(4) : (qty && amount ? +(amount / qty).toFixed(4) : null);
 
     const check = await pool.query(
       'SELECT 1 FROM user_persons WHERE user_id = $1 AND person_name = $2',

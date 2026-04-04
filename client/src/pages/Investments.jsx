@@ -31,8 +31,8 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
     setForm(p => ({ ...p, [name]: value }));
   };
 
-  const computedQty = form.avg_price && Number(form.avg_price) > 0 && Number(form.amount) > 0
-    ? (Number(form.amount) / Number(form.avg_price)).toFixed(3)
+  const computedAvgPrice = form.qty && Number(form.qty) > 0 && Number(form.amount) > 0
+    ? (Number(form.amount) / Number(form.qty)).toFixed(4)
     : null;
 
   return (
@@ -82,20 +82,20 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
         </div>
         <div>
           <label className="label">
-            {form.side === 'SELL' ? 'Sell Price / NAV' : 'Buy Price / NAV'}
+            Qty / Units
             <span className="text-muted font-normal ml-1 text-xs">(optional)</span>
           </label>
           <input
             type="number"
-            name="avg_price"
-            value={form.avg_price}
+            name="qty"
+            value={form.qty || ''}
             onChange={onChange}
             className="input"
-            placeholder="Price per unit"
+            placeholder="No. of units / shares"
             step="0.0001"
           />
-          {computedQty && (
-            <p className="text-xs text-teal mt-1">≈ {computedQty} units</p>
+          {computedAvgPrice && (
+            <p className="text-xs text-teal mt-1">Avg price ≈ ₹{Number(computedAvgPrice).toLocaleString('en-IN', { maximumFractionDigits: 4 })}</p>
           )}
         </div>
         <div>
@@ -293,7 +293,7 @@ export default function Investments() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                {['Date', 'Account', 'Goal', 'Asset Class', 'Instrument', 'Side', 'Amount', 'Avg Price', 'Qty', 'Broker', ''].map(h => (
+                {['Date', 'Account', 'Goal', 'Asset Class', 'Instrument', 'Side', 'Amount', 'Qty', 'Avg Price', 'Broker', ''].map(h => (
                   <th key={h} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -309,9 +309,9 @@ export default function Investments() {
                   const ef = inlineEdit?.form || {};
 
                   if (isEditing) {
-                    const computedQty = ef.avg_price && Number(ef.avg_price) > 0 && Number(ef.amount) > 0
-                      ? (Number(ef.amount) / Number(ef.avg_price)).toFixed(3)
-                      : (row.qty ? Number(row.qty).toLocaleString('en-IN', { maximumFractionDigits: 3 }) : '—');
+                    const computedAvgP = ef.qty && Number(ef.qty) > 0 && Number(ef.amount) > 0
+                      ? (Number(ef.amount) / Number(ef.qty)).toFixed(2)
+                      : null;
                     const setEf = patch => setInlineEdit(prev => ({ ...prev, form: { ...prev.form, ...patch } }));
                     const ic = 'input text-xs py-0.5 px-1.5 h-7 w-full';
                     return (
@@ -335,8 +335,13 @@ export default function Investments() {
                           </select>
                         </td>
                         <td className="py-1.5 px-2 min-w-[90px]"><input type="number" value={ef.amount ?? ''} onChange={e => setEf({ amount: e.target.value })} className={`${ic} font-mono`} /></td>
-                        <td className="py-1.5 px-2 min-w-[90px]"><input type="number" value={ef.avg_price ?? ''} onChange={e => setEf({ avg_price: e.target.value })} placeholder="Price" className={`${ic} font-mono`} step="0.0001" /></td>
-                        <td className="py-1.5 px-2 text-xs text-muted font-mono whitespace-nowrap">{computedQty}</td>
+                        <td className="py-1.5 px-2 min-w-[90px]">
+                          <div className="flex flex-col gap-0.5">
+                            <input type="number" value={ef.qty ?? ''} onChange={e => setEf({ qty: e.target.value })} placeholder="Qty" className={`${ic} font-mono`} step="0.0001" />
+                            {computedAvgP && <span className="text-[10px] text-teal font-mono">₹{Number(computedAvgP).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/u</span>}
+                          </div>
+                        </td>
+                        <td className="py-1.5 px-2 text-xs text-muted font-mono whitespace-nowrap">{computedAvgP ? `₹${Number(computedAvgP).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}</td>
                         <td className="py-1.5 px-2 min-w-[90px]"><input type="text" value={ef.broker || ''} onChange={e => setEf({ broker: e.target.value })} placeholder="Broker" className={ic} /></td>
                         <td className="py-1.5 px-2">
                           <div className="flex gap-1.5">
@@ -371,10 +376,10 @@ export default function Investments() {
                         {row.side === 'SELL' ? '-' : ''}{fmt(row.amount)}
                       </td>
                       <td className="py-3 px-4 font-mono text-soft text-xs">
-                        {row.avg_price ? `₹${Number(row.avg_price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}
+                        {row.qty ? Number(row.qty).toLocaleString('en-IN', { maximumFractionDigits: 3 }) : '—'}
                       </td>
                       <td className="py-3 px-4 font-mono text-soft text-xs">
-                        {row.qty ? Number(row.qty).toLocaleString('en-IN', { maximumFractionDigits: 3 }) : '—'}
+                        {row.avg_price ? `₹${Number(row.avg_price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}
                       </td>
                       <td className="py-3 px-4 text-soft text-xs">{row.broker || '—'}</td>
                       <td className="py-3 px-4">

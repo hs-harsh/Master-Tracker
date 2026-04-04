@@ -97,13 +97,17 @@ export default function Portfolio() {
   // ── Enrich with live market prices ───────────────────────────────────────
   const enriched = useMemo(() => aggregated.map(row => {
     const mkt = marketPrices[row.instrument];
-    if (mkt?.price && row.netQty > 0) {
-      const mktValue  = mkt.price * row.netQty;
-      const returnAmt = mktValue - row.net;
-      const returnPct = row.net > 0 ? (returnAmt / row.net * 100) : 0;
-      return { ...row, mktPrice: mkt.price, mktValue, returnAmt, returnPct };
+    if (mkt?.price) {
+      if (row.netQty > 0) {
+        const mktValue  = mkt.price * row.netQty;
+        const returnAmt = mktValue - row.net;
+        const returnPct = row.net > 0 ? (returnAmt / row.net * 100) : 0;
+        return { ...row, mktPrice: mkt.price, mktValue, returnAmt, returnPct };
+      }
+      // Price found but no qty — show price, cannot compute value/return
+      return { ...row, mktPrice: mkt.price, mktValue: null, returnAmt: null, returnPct: null };
     }
-    return { ...row, mktValue: null, returnAmt: null, returnPct: null };
+    return { ...row, mktPrice: null, mktValue: null, returnAmt: null, returnPct: null };
   }), [aggregated, marketPrices]);
 
   const totalNet       = goalInvestments.reduce((s, inv) => s + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)), 0);
@@ -602,12 +606,12 @@ export default function Portfolio() {
                 const hasAssetMkt = sorted.some(r => r.mktValue !== null);
                 return (
                   <div className="mt-3 pt-3 border-t border-border/50">
-                    <ResponsiveContainer width="100%" height={chartH}>
-                      <BarChart data={barData} layout="vertical" margin={{ top: 2, right: 60, bottom: 2, left: 0 }}>
-                        <XAxis type="number" tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false}
-                          tickFormatter={v => `${v}L`} />
-                        <YAxis type="category" dataKey="name" width={120} tick={{ fill: '#e5e7eb', fontSize: 10 }}
-                          tickLine={false} axisLine={false} />
+                    <ResponsiveContainer width="100%" height={Math.max(sorted.length * 52 + 40, 100)}>
+                      <BarChart data={barData} margin={{ top: 4, right: 8, bottom: 48, left: 0 }}>
+                        <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 9 }} tickLine={false} axisLine={false}
+                          angle={-35} textAnchor="end" interval={0} />
+                        <YAxis tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false}
+                          tickFormatter={v => `${v}L`} width={32} />
                         <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid #2d2d44', borderRadius: 6, fontSize: 11 }}
                           content={({ active, payload }) => {
                             if (!active || !payload?.length) return null;
@@ -629,8 +633,8 @@ export default function Portfolio() {
                             );
                           }}
                         />
-                        <Bar dataKey="Invested" fill={ASSET_COLORS[assetClass] || '#60a5fa'} radius={[0, 3, 3, 0]} barSize={14} />
-                        {hasAssetMkt && <Bar dataKey="Mkt Value" fill="#2dd4bf" radius={[0, 3, 3, 0]} barSize={14} />}
+                        <Bar dataKey="Invested" fill={ASSET_COLORS[assetClass] || '#60a5fa'} radius={[3, 3, 0, 0]} />
+                        {hasAssetMkt && <Bar dataKey="Mkt Value" fill="#2dd4bf" radius={[3, 3, 0, 0]} />}
                         {hasAssetMkt && <Legend iconType="circle" iconSize={7} formatter={v => <span style={{ color: '#9ca3af', fontSize: 10 }}>{v}</span>} />}
                       </BarChart>
                     </ResponsiveContainer>
