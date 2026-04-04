@@ -437,22 +437,21 @@ export default function Portfolio() {
           </ResponsiveContainer>
         </div>
 
-        {/* Invested vs Market Value — horizontal bars by asset class */}
+        {/* Invested vs Market Value — vertical bars by asset class */}
         <div className="card">
           <p className="stat-label mb-3">{hasMktData ? 'Invested vs Market Value (₹L)' : 'By Asset Class (₹L)'}</p>
-          <ResponsiveContainer width="100%" height={Math.max(assetCompare.length * 48 + 20, 100)}>
-            <BarChart data={assetCompare} layout="vertical" margin={{ top: 2, right: 50, bottom: 2, left: 4 }}>
-              <XAxis type="number" tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false}
-                tickFormatter={v => `${v}L`} />
-              <YAxis type="category" dataKey="name" width={76} tick={{ fill: '#e5e7eb', fontSize: 11 }} tickLine={false} axisLine={false} />
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={assetCompare} margin={{ top: 4, right: 4, bottom: 20, left: 0 }}>
+              <XAxis dataKey="name" tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `${v}L`} />
               <Tooltip contentStyle={TT} content={({ active, payload }) => active && payload?.length ? (
                 <div style={{ padding: '6px 10px', ...TT }}>
                   <div className="font-bold mb-1">{payload[0]?.payload?.name}</div>
                   {payload.map(p => <div key={p.name}><span style={{ color: p.color }}>{p.name}</span>: ₹{(p.value * 100000).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>)}
                 </div>
               ) : null} />
-              <Bar dataKey="Invested" fill="#60a5fa" radius={[0, 3, 3, 0]} barSize={14} />
-              {hasMktData && <Bar dataKey="MarketValue" fill="#2dd4bf" radius={[0, 3, 3, 0]} barSize={14} />}
+              <Bar dataKey="Invested" fill="#60a5fa" radius={[3, 3, 0, 0]} />
+              {hasMktData && <Bar dataKey="MarketValue" fill="#2dd4bf" radius={[3, 3, 0, 0]} />}
               {hasMktData && <Legend iconType="circle" iconSize={8} formatter={v => <span style={{ color: '#e5e7eb', fontSize: 11 }}>{v}</span>} />}
             </BarChart>
           </ResponsiveContainer>
@@ -650,9 +649,7 @@ export default function Portfolio() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                {['Goal', 'Instrument', 'Asset', 'Qty', 'W.Avg', 'Net Invested',
-                  ...(hasMktData ? ['Mkt Price', 'Mkt Value', 'Return'] : []),
-                  'Broker'].map(h => (
+                {['Goal', 'Instrument', 'Asset', 'Qty', 'W.Avg', 'Net Invested', 'Mkt Price', 'Mkt Value', 'Return', 'Broker'].map(h => (
                   <th key={h} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -675,17 +672,15 @@ export default function Portfolio() {
                       {row.wavgPrice ? `₹${row.wavgPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}
                     </td>
                     <td className="py-3 px-4 font-mono text-soft">{row.net >= 0 ? '' : '−'}{fmt(Math.abs(row.net))}</td>
-                    {hasMktData && <td className="py-3 px-4 font-mono text-xs text-soft">{row.mktPrice ? `₹${row.mktPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}</td>}
-                    {hasMktData && <td className="py-3 px-4 font-mono text-soft">{row.mktValue ? fmt(row.mktValue) : '—'}</td>}
-                    {hasMktData && (
-                      <td className="py-3 px-4 font-mono text-xs">
-                        {row.returnPct !== null ? (
-                          <span className={row.returnPct >= 0 ? 'text-teal' : 'text-rose'}>
-                            {row.returnPct >= 0 ? '+' : ''}{row.returnPct.toFixed(1)}%
-                          </span>
-                        ) : '—'}
-                      </td>
-                    )}
+                    <td className="py-3 px-4 font-mono text-xs text-soft">{row.mktPrice ? `₹${row.mktPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}</td>
+                    <td className="py-3 px-4 font-mono text-soft">{row.mktValue ? fmt(row.mktValue) : '—'}</td>
+                    <td className="py-3 px-4 font-mono text-xs">
+                      {row.returnPct !== null ? (
+                        <span className={row.returnPct >= 0 ? 'text-teal' : 'text-rose'}>
+                          {row.returnPct >= 0 ? '+' : ''}{row.returnPct.toFixed(1)}%
+                        </span>
+                      ) : '—'}
+                    </td>
                     <td className="py-3 px-4 text-xs text-muted">{row.broker}</td>
                   </tr>
                 ))

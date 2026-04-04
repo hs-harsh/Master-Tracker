@@ -313,30 +313,31 @@ export default function Investments() {
                       ? (Number(ef.amount) / Number(ef.avg_price)).toFixed(3)
                       : (row.qty ? Number(row.qty).toLocaleString('en-IN', { maximumFractionDigits: 3 }) : '—');
                     const setEf = patch => setInlineEdit(prev => ({ ...prev, form: { ...prev.form, ...patch } }));
+                    const ic = 'input text-xs py-0.5 px-1.5 h-7 w-full';
                     return (
                       <tr key={row.id} className="border-b border-border/40 bg-surface/60">
-                        <td className="py-1.5 px-2"><input type="date" value={ef.date || ''} onChange={e => setEf({ date: e.target.value })} className="input text-xs py-0.5 px-1.5 h-7 w-28" /></td>
-                        <td className="py-1.5 px-2">
-                          <select value={ef.account || ''} onChange={e => setEf({ account: e.target.value })} className="input text-xs py-0.5 px-1.5 h-7">
+                        <td className="py-1.5 px-2 min-w-[110px]"><input type="date" value={ef.date || ''} onChange={e => setEf({ date: e.target.value })} className={ic} /></td>
+                        <td className="py-1.5 px-2 min-w-[90px]">
+                          <select value={ef.account || ''} onChange={e => setEf({ account: e.target.value })} className={ic}>
                             {(persons.length ? persons : [personName]).map(p => <option key={p} value={p}>{p}</option>)}
                           </select>
                         </td>
-                        <td className="py-1.5 px-2"><input type="text" value={ef.goal || ''} onChange={e => setEf({ goal: e.target.value })} placeholder="Goal" className="input text-xs py-0.5 px-1.5 h-7 w-28" /></td>
-                        <td className="py-1.5 px-2">
-                          <select value={ef.asset_class || ''} onChange={e => setEf({ asset_class: e.target.value })} className="input text-xs py-0.5 px-1.5 h-7">
+                        <td className="py-1.5 px-2 min-w-[100px]"><input type="text" value={ef.goal || ''} onChange={e => setEf({ goal: e.target.value })} placeholder="Goal" className={ic} /></td>
+                        <td className="py-1.5 px-2 min-w-[90px]">
+                          <select value={ef.asset_class || ''} onChange={e => setEf({ asset_class: e.target.value })} className={ic}>
                             {ASSET_CLASSES.map(a => <option key={a}>{a}</option>)}
                           </select>
                         </td>
-                        <td className="py-1.5 px-2"><input type="text" value={ef.instrument || ''} onChange={e => setEf({ instrument: e.target.value })} placeholder="Instrument" className="input text-xs py-0.5 px-1.5 h-7 w-36" /></td>
-                        <td className="py-1.5 px-2">
-                          <select value={ef.side || 'BUY'} onChange={e => setEf({ side: e.target.value })} className="input text-xs py-0.5 px-1.5 h-7">
+                        <td className="py-1.5 px-2 min-w-[130px]"><input type="text" value={ef.instrument || ''} onChange={e => setEf({ instrument: e.target.value })} placeholder="Instrument" className={ic} /></td>
+                        <td className="py-1.5 px-2 min-w-[70px]">
+                          <select value={ef.side || 'BUY'} onChange={e => setEf({ side: e.target.value })} className={ic}>
                             {SIDES.map(s => <option key={s}>{s}</option>)}
                           </select>
                         </td>
-                        <td className="py-1.5 px-2"><input type="number" value={ef.amount ?? ''} onChange={e => setEf({ amount: e.target.value })} className="input text-xs py-0.5 px-1.5 h-7 w-24 font-mono" /></td>
-                        <td className="py-1.5 px-2"><input type="number" value={ef.avg_price ?? ''} onChange={e => setEf({ avg_price: e.target.value })} placeholder="Price" className="input text-xs py-0.5 px-1.5 h-7 w-24 font-mono" step="0.0001" /></td>
-                        <td className="py-1.5 px-2 text-xs text-muted font-mono">{computedQty}</td>
-                        <td className="py-1.5 px-2"><input type="text" value={ef.broker || ''} onChange={e => setEf({ broker: e.target.value })} placeholder="Broker" className="input text-xs py-0.5 px-1.5 h-7 w-28" /></td>
+                        <td className="py-1.5 px-2 min-w-[90px]"><input type="number" value={ef.amount ?? ''} onChange={e => setEf({ amount: e.target.value })} className={`${ic} font-mono`} /></td>
+                        <td className="py-1.5 px-2 min-w-[90px]"><input type="number" value={ef.avg_price ?? ''} onChange={e => setEf({ avg_price: e.target.value })} placeholder="Price" className={`${ic} font-mono`} step="0.0001" /></td>
+                        <td className="py-1.5 px-2 text-xs text-muted font-mono whitespace-nowrap">{computedQty}</td>
+                        <td className="py-1.5 px-2 min-w-[90px]"><input type="text" value={ef.broker || ''} onChange={e => setEf({ broker: e.target.value })} placeholder="Broker" className={ic} /></td>
                         <td className="py-1.5 px-2">
                           <div className="flex gap-1.5">
                             <button onClick={() => handleSave(ef)} className="text-teal hover:text-teal/80 transition-colors" title="Save">
