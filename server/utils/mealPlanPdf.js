@@ -121,34 +121,41 @@ function measureBadgeBlock(doc, innerW, calorieLabel, macroLabels) {
   return { rows, height };
 }
 
+/** Meal-type label line height (must match drawMealCard for that row). */
+function measureMealTypeRowHeight(doc, innerW, mealKey) {
+  doc.font('Helvetica').fontSize(7.5);
+  const line = `${MEAL_ICONS[mealKey] || ''}  ${MEAL_LABELS[mealKey].toUpperCase()}`;
+  return doc.heightOfString(line, { width: innerW, lineGap: 0 }) + 3;
+}
+
 /**
- * Estimated height for one meal card (tight — must match drawMealCard).
+ * Estimated height for one meal card (pagination must not overshoot draw).
  */
-function measureCardHeight(doc, entry, innerW) {
-  const pad = 8;
+function measureCardHeight(doc, entry, innerW, mealKey) {
+  const pad = 6;
   let h = pad;
-  h += 10; // meal type row
+  h += measureMealTypeRowHeight(doc, innerW, mealKey);
   doc.font('Helvetica-Bold').fontSize(10);
   h += doc.heightOfString(entry.title, { width: innerW, lineGap: 0.75 });
-  h += 4;
+  h += 3;
   const { macroLabels, description } = parseMealNotes(entry.notes || '');
   const calLabel = entry.calories ? `${entry.calories} kcal` : null;
   const { height: badgeBlockH } = measureBadgeBlock(doc, innerW, calLabel, macroLabels);
   h += badgeBlockH;
-  if (badgeBlockH) h += 4;
+  if (badgeBlockH) h += 3;
   if (description) {
     doc.font('Helvetica').fontSize(7.5).fillColor(C.soft);
     h += doc.heightOfString(description, { width: innerW, lineGap: 1 });
   }
   h += pad;
-  return Math.ceil(h);
+  return Math.round(h);
 }
 
 function drawMealCard(doc, x, y, w, entry, mealKey) {
-  const pad = 8;
+  const pad = 6;
   const innerW = w - pad * 2;
   const { macroLabels, description } = parseMealNotes(entry.notes || '');
-  const cardH = measureCardHeight(doc, entry, innerW);
+  const cardH = measureCardHeight(doc, entry, innerW, mealKey);
 
   doc.save();
   doc.roundedRect(x, y, w, cardH, 6).fillColor(C.cardBg).strokeColor(C.border).lineWidth(0.5).fillAndStroke();
@@ -165,7 +172,7 @@ function drawMealCard(doc, x, y, w, entry, mealKey) {
     width: innerW,
     lineGap: 0.75,
   });
-  cy = doc.y + 4;
+  cy = doc.y + 3;
 
   const bx = x + pad;
   const maxInnerX = x + w - pad;
@@ -197,7 +204,7 @@ function drawMealCard(doc, x, y, w, entry, mealKey) {
     rowX += pillW + pillGap;
   }
 
-  cy = rowY + BADGE_H + (pills.length > 0 ? 4 : 0);
+  cy = rowY + BADGE_H + (pills.length > 0 ? 3 : 0);
 
   if (description) {
     doc.font('Helvetica').fontSize(7.5).fillColor(C.soft).text(description, x + pad, cy, {
@@ -221,7 +228,7 @@ function measureDayColumnHeight(doc, ds, colW, lookup, cardGap) {
   for (const mt of MEAL_TYPES) {
     const e = lookup[`${ds}_${mt}`];
     if (!e?.title) continue;
-    h += measureCardHeight(doc, e, colW) + cardGap;
+    h += measureCardHeight(doc, e, colW, mt) + cardGap;
   }
   return h;
 }
@@ -249,7 +256,7 @@ function drawDayColumn(doc, x, y, colW, ds, lookup, cardGap) {
  */
 function buildMealPlanPdf(personName, weekStart, entries, groceryLists) {
   return new Promise((resolve, reject) => {
-    const margin = 44;
+    const margin = 36;
     const doc = new PDFDocument({
       margin,
       size: 'A4',
@@ -277,8 +284,13 @@ function buildMealPlanPdf(personName, weekStart, entries, groceryLists) {
     let ph = doc.page.height;
     const contentW = pw - margin * 2;
 
+    /** Max Y for content bottom (avoid breaking pairs too early). */
+    function contentBottom() {
+      return ph - margin;
+    }
+
     function ensureSpace(needH) {
-      if (doc.y + needH > ph - margin) {
+      if (doc.y + needH > contentBottom()) {
         doc.addPage();
         ph = doc.page.height;
         doc.rect(0, 0, doc.page.width, ph).fill(C.pageBg);
@@ -292,29 +304,33 @@ function buildMealPlanPdf(personName, weekStart, entries, groceryLists) {
     doc.x = margin;
     doc.y = margin;
 
-    doc.fontSize(9).fillColor(C.dateGold).text('IT', { continued: true });
-    doc.fillColor(C.text).text('    InvestTrack', { continued: false });
-    doc.moveDown(0.6);
-    doc.fontSize(16).font('Helvetica-Bold').fillColor(C.text).text('Meal Plan', { width: contentW });
-    doc.font('Helvetica').fontSize(10).fillColor(C.muted);
-    const sub = [personName ? `Hey ${personName}!` : null, `Week of ${fmtWeekRange(weekStart)}`]
-      .filter(Boolean)
-      .join(' — ');
-    doc.text(sub, { width: contentW });
-    doc.moveDown(0.5);
-    if (totalCal > 0) {
-      doc.fontSize(9).fillColor(C.muted).text('Total week calories: ', { continued: true });
-      doc.fillColor(C.dateGold).font('Helvetica-Bold').text(`${totalCal.toLocaleString()} kcal`);
-      doc.font('Helvetica');
+    // Compact header — max vertical space for day pairs on page 1
+    doc.font('Helvetica').fontSize(8).fillColor(C.muted).text('InvestTrack', {
+      width: contentW,
+      continued: true,
+    });
+    doc.fillColor(C.dateGold).text(' · ', { continued: true });
+    doc.fillColor(C.text).font('Helvetica-Bold').text('Meal plan', { continued: true });
+    doc.font('Helvetica').fontSize(8).fillColor(C.muted).text(` · ${fmtWeekRange(weekStart)}`, {
+      width: contentW,
+    });
+    const metaParts = [];
+    if (personName) metaParts.push(personName);
+    if (totalCal > 0) metaParts.push(`${totalCal.toLocaleString()} kcal week total`);
+    if (metaParts.length) {
+      doc.moveDown(0.15);
+      doc.font('Helvetica').fontSize(7.5).fillColor(C.muted).text(metaParts.join(' · '), {
+        width: contentW,
+      });
     }
-    doc.moveDown(0.75);
+    doc.moveDown(0.35);
 
-    const cardGap = 4;
-    const colGutter = 10;
+    const cardGap = 3;
+    const colGutter = 8;
     const colW = (contentW - colGutter) / 2;
     const xL = margin;
     const xR = margin + colW + colGutter;
-    const pairFooter = 10;
+    const pairFooter = 4;
 
     let yCursor = doc.y;
 
