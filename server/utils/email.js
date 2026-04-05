@@ -2,6 +2,7 @@
 // otherwise Gmail SMTP via nodemailer (SMTP_USER + SMTP_PASS).
 
 const nodemailer = require('nodemailer');
+const { buildMealPlanPdf } = require('./mealPlanPdf');
 
 const RESEND_API = 'https://api.resend.com/emails';
 
@@ -22,26 +23,34 @@ function getTransport() {
 
 /**
  * Send one email. Prefers Resend when configured (works on hosts that block SMTP).
+ * @param {{ to: string, subject: string, html: string, text?: string, attachments?: Array<{ filename: string, content: Buffer }> }} opts
  */
-async function sendMail({ to, subject, html, text }) {
+async function sendMail({ to, subject, html, text, attachments = [] }) {
   if (!to || !String(to).trim()) throw new Error('Recipient email is required');
 
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM;
   if (apiKey && from) {
+    const body = {
+      from,
+      to: [String(to).trim()],
+      subject,
+      html,
+      text: text || subject,
+    };
+    if (attachments.length) {
+      body.attachments = attachments.map((a) => ({
+        filename: a.filename,
+        content: Buffer.isBuffer(a.content) ? a.content.toString('base64') : String(a.content),
+      }));
+    }
     const resp = await fetch(RESEND_API, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        from,
-        to: [String(to).trim()],
-        subject,
-        html,
-        text: text || subject,
-      }),
+      body: JSON.stringify(body),
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
@@ -52,13 +61,20 @@ async function sendMail({ to, subject, html, text }) {
 
   const smtpFrom = process.env.SMTP_USER;
   const transport = getTransport();
-  await transport.sendMail({
+  const mailOpts = {
     from: `InvestTrack <${smtpFrom}>`,
     to: String(to).trim(),
     subject,
     html,
     text: text || subject,
-  });
+  };
+  if (attachments.length) {
+    mailOpts.attachments = attachments.map((a) => ({
+      filename: a.filename,
+      content: a.content,
+    }));
+  }
+  await transport.sendMail(mailOpts);
 }
 
 async function sendAdminOtp(toEmail, otp) {
@@ -401,8 +417,12 @@ async function sendMealPlanEmail(toEmail, personName, { weekStart, entries, groc
         <div style="width:34px;height:34px;background:#f0c040;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;color:#0f0f0f;">IT</div>
         <span style="font-size:15px;font-weight:700;color:#fff;">InvestTrack</span>
       </div>
-      <h1 style="margin:0;font-size:20px;font-weight:700;color:#fff;">🥗 Meal Plan Accepted</h1>
+      <h1 style="margin:0;font-size:20px;font-weight:700;color:#fff;">🥗 Meal Plan</h1>
       <p style="margin:6px 0 0;font-size:13px;color:#888;">${personName ? `Hey ${personName}! ` : ''}Week of ${fmtWeekRange(weekStart)}</p>
+    </div>
+
+    <div style="padding:12px 28px; background:#121826; border-bottom:1px solid #2a2a2a; font-size:12px; color:#94a3b8;">
+      A structured <strong style="color:#e2e8f0;">PDF</strong> of this week (meals + grocery lists) is attached.
     </div>
 
     ${totalCal > 0 ? `
@@ -455,12 +475,22 @@ async function sendMealPlanEmail(toEmail, personName, { weekStart, entries, groc
     }
   }
   if (totalCal > 0) textLines.push(`Total week: ${totalCal.toLocaleString()} kcal`);
+  textLines.push('', 'A PDF copy of this plan is attached.');
+
+  let attachments = [];
+  try {
+    const pdfBuf = await buildMealPlanPdf(personName || '', weekStart, entries || [], groceryLists);
+    attachments = [{ filename: `meal-plan-${weekStart}.pdf`, content: pdfBuf }];
+  } catch (err) {
+    console.error('buildMealPlanPdf failed:', err.message);
+  }
 
   await sendMail({
     to: toEmail,
     subject: `${personName ? personName + "'s " : ''}meal plan for ${fmtWeekRange(weekStart)} is set ✓`,
     html,
     text: textLines.join('\n'),
+    attachments,
   });
 }
 

@@ -7,6 +7,13 @@ const { getAnthropicApiKey } = require('../utils/anthropicKey');
 
 router.use(auth);
 
+/** Resend sandbox: single fixed inbox. Override with MEAL_PLAN_EMAIL_TO on the server. */
+function getMealPlanNotifyEmail() {
+  const env = (process.env.MEAL_PLAN_EMAIL_TO || '').trim();
+  if (env && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env)) return env;
+  return 'harshsingh.iitd@gmail.com';
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 /** Return the Monday (YYYY-MM-DD) of the week containing dateStr */
@@ -128,42 +135,24 @@ router.post('/week/:id/accept', async (req, res) => {
 
     const plan = rows[0];
 
-    // Send email in background — don't block the response
+    // Send email in background — don't block the response (fixed recipient for Resend testing tier)
     (async () => {
       try {
-        const [personRes, userRes, entriesRes] = await Promise.all([
-          pool.query(
-            `SELECT person_name, email FROM user_persons WHERE user_id=$1 AND person_name=$2`,
-            [req.user.id, plan.person_name]
-          ),
-          pool.query(
-            `SELECT username FROM users WHERE id=$1`,
-            [req.user.id]
-          ),
-          pool.query(
-            `SELECT entry_date::text AS entry_date, meal_type, title, notes, calories
-             FROM meal_entries WHERE meal_plan_id=$1 ORDER BY entry_date, meal_type`,
-            [planId]
-          ),
-        ]);
-        // Person profile email, else login email (stored as users.username)
-        const toEmail = (personRes.rows[0]?.email || '').trim() || (userRes.rows[0]?.username || '').trim();
+        const entriesRes = await pool.query(
+          `SELECT entry_date::text AS entry_date, meal_type, title, notes, calories
+           FROM meal_entries WHERE meal_plan_id=$1 ORDER BY entry_date, meal_type`,
+          [planId]
+        );
+        const toEmail = getMealPlanNotifyEmail();
         const personName = plan.person_name;
-        console.log(`Meal plan email: person=${personName}, toEmail=${toEmail ? '(set)' : '(missing)'}, entries=${entriesRes.rows.length}`);
-        if (toEmail) {
-          const groceryLists = entriesRes.rows.length
-            ? await generateGroceryLists(entriesRes.rows)
-            : null;
-          console.log('Grocery lists generated:', groceryLists ? 'yes' : 'null');
-          await sendMealPlanEmail(toEmail, personName, {
-            weekStart: plan.week_start,
-            entries:   entriesRes.rows,
-            groceryLists,
-          });
-          console.log('Meal plan email sent to', toEmail);
-        } else {
-          console.log('Meal plan email skipped: no recipient (add profile email in Settings or use login email)');
-        }
+        console.log(`Meal plan accept email: person=${personName}, toEmail=${toEmail}, entries=${entriesRes.rows.length}`);
+        const groceryLists = entriesRes.rows.length ? await generateGroceryLists(entriesRes.rows) : null;
+        await sendMealPlanEmail(toEmail, personName, {
+          weekStart: plan.week_start,
+          entries: entriesRes.rows,
+          groceryLists,
+        });
+        console.log('Meal plan email sent to', toEmail);
       } catch (emailErr) {
         console.error('Meal plan email failed (non-fatal):', emailErr.message, emailErr.stack);
       }
@@ -428,20 +417,37 @@ router.post('/nutrition-breakdown', async (req, res) => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 2048,
-        system: `You estimate nutrition for home-cooked / typical restaurant meals.
-Return ONLY valid JSON, no markdown:
+        max_tokens: 4096,
+        system: `You estimate nutrition for home-cooked / typical Indian and international meals.
+Return ONLY valid JSON, no markdown, no code fences:
 {
   "items": [
-    { "name": "ingredient or component", "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number }
+    {
+      "name": "main component (e.g. Masoor dal)",
+      "portion": "typical serving, e.g. 1 cup cooked / 2 roti / 150g",
+      "calories": number,
+      "protein_g": number,
+      "carbs_g": number,
+      "fat_g": number,
+      "tags": ["protein rich", "fibre rich"],
+      "components": [
+        { "name": "ghee", "portion": "1 tsp", "calories": 45, "protein_g": 0, "carbs_g": 0, "fat_g": 5 }
+      ]
+    }
   ],
   "mealTotal": { "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number }
 }
-Split the meal into sensible components (e.g. dal, rice, roti, sabzi). Numbers are approximate; use integers for calories, one decimal max for grams.`,
+
+Rules:
+- Each MAIN row must include "portion" and full macros + calories.
+- Use "components" only for small add-ons (oil, ghee, chutney, dressing); include at least calories there (macros when meaningful).
+- "tags": pick from this set ONLY when clearly justified (lowercase): "protein rich", "fibre rich", "healthy fats", "iron rich", "calcium rich", "complex carbs", "vitamin c rich". Use 0–3 tags per main item. Star items that are especially high in protein or fibre should include those tags.
+- mealTotal must equal the sum of all main "items" (include component calories inside their parent item's row totals, or add separate component lines—be consistent so mealTotal matches).
+- Integers for calories; grams to one decimal max.`,
         messages: [
           {
             role: 'user',
-            content: `Meal name: ${title}\n\nNotes / ingredients:\n${notes || '(none)'}\n\nProvide per-component breakdown and mealTotal as the sum of items.`,
+            content: `Meal name: ${title}\n\nNotes / ingredients:\n${notes || '(none)'}\n\nReturn structured items with portions, optional small-portion components with calories, tags for standout nutrients, and mealTotal.`,
           },
         ],
       }),
@@ -462,7 +468,26 @@ Split the meal into sensible components (e.g. dal, rice, roti, sabzi). Numbers a
     } catch {
       return res.status(502).json({ error: 'Could not parse nutrition response. Try again.' });
     }
-    const items = Array.isArray(parsed.items) ? parsed.items : [];
+    const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+    const items = rawItems.map((it) => ({
+      name: String(it.name || 'Item'),
+      portion: it.portion != null ? String(it.portion) : '',
+      calories: it.calories,
+      protein_g: it.protein_g,
+      carbs_g: it.carbs_g,
+      fat_g: it.fat_g,
+      tags: Array.isArray(it.tags) ? it.tags.map((t) => String(t)) : [],
+      components: Array.isArray(it.components)
+        ? it.components.map((c) => ({
+            name: String(c.name || ''),
+            portion: c.portion != null ? String(c.portion) : '',
+            calories: c.calories,
+            protein_g: c.protein_g,
+            carbs_g: c.carbs_g,
+            fat_g: c.fat_g,
+          }))
+        : [],
+    }));
     const mealTotal = parsed.mealTotal && typeof parsed.mealTotal === 'object' ? parsed.mealTotal : null;
     res.json({ items, mealTotal });
   } catch (e) {
@@ -471,15 +496,10 @@ Split the meal into sensible components (e.g. dal, rice, roti, sabzi). Numbers a
   }
 });
 
-function isValidEmail(s) {
-  return typeof s === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
-}
-
 // ── POST /api/meals/week/:id/send-email — email current plan (draft or accepted) ─
 router.post('/week/:id/send-email', async (req, res) => {
   try {
     const planId = parseInt(req.params.id, 10);
-    const overrideEmail = (req.body && req.body.email) || '';
 
     const { rows: planRows } = await pool.query(
       `SELECT id, user_id, person_name, week_start::text AS week_start, status
@@ -496,26 +516,7 @@ router.post('/week/:id/send-email', async (req, res) => {
       [planId]
     );
 
-    let toEmail = '';
-    if (isValidEmail(overrideEmail)) {
-      toEmail = overrideEmail.trim();
-    } else {
-      const [personRes, userRes] = await Promise.all([
-        pool.query(
-          `SELECT email FROM user_persons WHERE user_id=$1 AND person_name=$2`,
-          [req.user.id, plan.person_name]
-        ),
-        pool.query(`SELECT username FROM users WHERE id=$1`, [req.user.id]),
-      ]);
-      toEmail = (personRes.rows[0]?.email || '').trim() || (userRes.rows[0]?.username || '').trim();
-    }
-
-    if (!isValidEmail(toEmail)) {
-      return res.status(400).json({
-        error:
-          'No email on file. Add an email for this profile in Settings, use your login email, or enter a custom address below.',
-      });
-    }
+    const toEmail = getMealPlanNotifyEmail();
 
     const groceryLists = entriesRows.length ? await generateGroceryLists(entriesRows) : null;
     await sendMealPlanEmail(toEmail, plan.person_name, {
@@ -524,7 +525,7 @@ router.post('/week/:id/send-email', async (req, res) => {
       groceryLists,
     });
 
-    res.json({ ok: true, sentTo: toEmail.replace(/(^.).*(@.*$)/, '$1***$2') });
+    res.json({ ok: true, sentTo: toEmail });
   } catch (e) {
     console.error('POST /meals/week/:id/send-email', e);
     res.status(500).json({ error: e.message || 'Server error' });

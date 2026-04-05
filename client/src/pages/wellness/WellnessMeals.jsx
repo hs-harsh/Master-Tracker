@@ -98,9 +98,23 @@ function dateRangeFor(period) {
   return { from: d.toISOString().slice(0, 10), to };
 }
 
+function nutritionTagClass(tag) {
+  const t = String(tag).toLowerCase();
+  if (t.includes('protein')) return 'bg-teal-500/15 text-teal-300 border-teal-500/30';
+  if (t.includes('fibre') || t.includes('fiber')) return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+  if (t.includes('healthy fat')) return 'bg-amber-500/15 text-amber-200 border-amber-500/30';
+  if (t.includes('iron')) return 'bg-rose-500/15 text-rose-200 border-rose-500/30';
+  if (t.includes('calcium')) return 'bg-sky-500/15 text-sky-200 border-sky-500/30';
+  if (t.includes('complex') || t.includes('carb')) return 'bg-violet-500/15 text-violet-200 border-violet-500/30';
+  if (t.includes('vitamin')) return 'bg-lime-500/15 text-lime-200 border-lime-500/30';
+  return 'bg-white/5 text-muted border-white/10';
+}
+
 // ─── component ────────────────────────────────────────────────────────────────
+const MEAL_NOTIFY_EMAIL = 'harshsingh.iitd@gmail.com';
+
 export default function WellnessMeals() {
-  const { personName, activePerson, token } = useAuth();
+  const { personName, activePerson } = useAuth();
   const currentPerson = activePerson || personName;
 
   // planner state
@@ -128,9 +142,6 @@ export default function WellnessMeals() {
   const [editMode, setEditMode] = useState(false);
   const [nutritionByKey, setNutritionByKey] = useState({});
   const [nutritionLoadingKey, setNutritionLoadingKey] = useState(null);
-  const [profileRows, setProfileRows] = useState([]);
-  const [emailMode, setEmailMode] = useState('profile');
-  const [emailCustom, setEmailCustom] = useState('');
   const [emailSending, setEmailSending] = useState(false);
 
   // analytics state — shared period across all wellness tabs via localStorage
@@ -168,17 +179,6 @@ export default function WellnessMeals() {
   }, []);
 
   useEffect(() => { loadWeek(weekStart, currentPerson); }, [weekStart, currentPerson, loadWeek]);
-
-  useEffect(() => {
-    if (!token) return;
-    api
-      .get('/settings/profile')
-      .then(({ data }) => setProfileRows(data.profiles || []))
-      .catch(() => setProfileRows([]));
-  }, [token]);
-
-  const profileEmailForPerson =
-    profileRows.find((r) => r.person_name === currentPerson)?.email?.trim() || '';
 
   // ── load analytics ─────────────────────────────────────────────────────────
   const loadAnalytics = useCallback(async (p, person) => {
@@ -318,12 +318,8 @@ export default function WellnessMeals() {
     setEmailSending(true);
     try {
       if (plan.status !== 'accepted') await saveEntries();
-      const payload =
-        emailMode === 'custom' && emailCustom.trim()
-          ? { email: emailCustom.trim() }
-          : {};
-      const { data } = await api.post(`/meals/week/${plan.id}/send-email`, payload);
-      alert(`Meal plan emailed to ${data.sentTo || 'your address'}.`);
+      const { data } = await api.post(`/meals/week/${plan.id}/send-email`, {});
+      alert(`Meal plan emailed to ${data.sentTo || MEAL_NOTIFY_EMAIL} (PDF attached).`);
     } catch (err) {
       alert(err.response?.data?.error || err.message || 'Failed to send email');
     } finally {
@@ -466,40 +462,16 @@ export default function WellnessMeals() {
             </div>
             <div className="flex flex-wrap items-center gap-2 justify-end rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
               <Mail size={14} className="text-muted shrink-0" />
-              <span className="text-[10px] text-muted uppercase tracking-wider font-mono shrink-0">Email plan</span>
-              <div className="flex rounded-lg overflow-hidden border border-white/10 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setEmailMode('profile')}
-                  className={`px-2.5 py-1 font-medium ${emailMode === 'profile' ? 'bg-accent text-ink' : 'text-soft hover:text-white'}`}
-                >
-                  Profile
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEmailMode('custom')}
-                  className={`px-2.5 py-1 font-medium ${emailMode === 'custom' ? 'bg-accent text-ink' : 'text-soft hover:text-white'}`}
-                >
-                  Custom
-                </button>
-              </div>
-              {emailMode === 'custom' ? (
-                <input
-                  type="email"
-                  className="input flex-1 min-w-[160px] text-xs py-1.5"
-                  placeholder="name@example.com"
-                  value={emailCustom}
-                  onChange={(e) => setEmailCustom(e.target.value)}
-                />
-              ) : (
-                <span className="text-xs text-soft truncate max-w-[200px]" title={profileEmailForPerson || 'Uses login email if empty'}>
-                  {profileEmailForPerson || 'Profile email (Settings) or login email'}
+              <div className="text-left min-w-0 flex-1">
+                <span className="text-[10px] text-muted uppercase tracking-wider font-mono block">Email plan + PDF</span>
+                <span className="text-xs text-soft break-all" title="Set MEAL_PLAN_EMAIL_TO on the server to override">
+                  Sends to {MEAL_NOTIFY_EMAIL}
                 </span>
-              )}
+              </div>
               <button
                 type="button"
                 onClick={sendMealPlanEmail}
-                disabled={emailSending || (emailMode === 'custom' && !emailCustom.trim())}
+                disabled={emailSending}
                 className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 shrink-0 disabled:opacity-40"
               >
                 <Mail size={12} />
@@ -845,7 +817,7 @@ export default function WellnessMeals() {
                   {nutLoading ? 'Fetching nutrition…' : 'Fetch nutrition (AI)'}
                 </button>
                 <p className="text-[10px] text-muted leading-snug">
-                  Estimates per ingredient or component (protein, carbs, fat, calories). Run after your plan is generated or edited.
+                  Portions, macros, small add-ons (e.g. ghee), and nutrient tags (protein / fibre rich, etc.). Approximate values.
                 </p>
                 {nut?.items?.length > 0 && (
                   <div className="overflow-x-auto rounded-lg border border-white/10 mt-2">
@@ -853,22 +825,55 @@ export default function WellnessMeals() {
                       <thead>
                         <tr className="text-muted uppercase border-b border-white/10">
                           <th className="py-2 pr-2 pl-2">Item</th>
+                          <th className="py-2 pr-2">Portion</th>
+                          <th className="py-2 pr-2 min-w-[100px]">Tags</th>
                           <th className="py-2 pr-2 text-right">kcal</th>
-                          <th className="py-2 pr-2 text-right">P (g)</th>
-                          <th className="py-2 pr-2 text-right">C (g)</th>
-                          <th className="py-2 pr-2 text-right">F (g)</th>
+                          <th className="py-2 pr-2 text-right">P</th>
+                          <th className="py-2 pr-2 text-right">C</th>
+                          <th className="py-2 pr-2 text-right">F</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {nut.items.map((row, i) => (
-                          <tr key={i} className="border-b border-white/5">
-                            <td className="py-1.5 pr-2 pl-2 text-soft">{row.name}</td>
-                            <td className="py-1.5 pr-2 text-right font-mono">{row.calories ?? '—'}</td>
-                            <td className="py-1.5 pr-2 text-right font-mono">{row.protein_g ?? '—'}</td>
-                            <td className="py-1.5 pr-2 text-right font-mono">{row.carbs_g ?? '—'}</td>
-                            <td className="py-1.5 pr-2 text-right font-mono">{row.fat_g ?? '—'}</td>
-                          </tr>
-                        ))}
+                        {nut.items.flatMap((row, i) => {
+                          const comps = Array.isArray(row.components) ? row.components : [];
+                          const main = (
+                            <tr key={`m-${i}`} className="border-b border-white/5 bg-white/[0.03]">
+                              <td className="py-1.5 pr-2 pl-2 text-soft font-medium">{row.name}</td>
+                              <td className="py-1.5 pr-2 text-muted max-w-[120px]">{row.portion || '—'}</td>
+                              <td className="py-1.5 pr-2">
+                                <div className="flex flex-wrap gap-1">
+                                  {(row.tags || []).map((tg, j) => (
+                                    <span
+                                      key={j}
+                                      className={`px-1.5 py-0.5 rounded border text-[10px] leading-tight ${nutritionTagClass(tg)}`}
+                                    >
+                                      {tg}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="py-1.5 pr-2 text-right font-mono">{row.calories ?? '—'}</td>
+                              <td className="py-1.5 pr-2 text-right font-mono">{row.protein_g ?? '—'}</td>
+                              <td className="py-1.5 pr-2 text-right font-mono">{row.carbs_g ?? '—'}</td>
+                              <td className="py-1.5 pr-2 text-right font-mono">{row.fat_g ?? '—'}</td>
+                            </tr>
+                          );
+                          const sub = comps.map((c, k) => (
+                            <tr key={`c-${i}-${k}`} className="border-b border-white/5">
+                              <td className="py-1 pr-2 pl-5 text-muted text-[11px]">
+                                <span className="text-muted/60 mr-1">↳</span>
+                                {c.name}
+                              </td>
+                              <td className="py-1 pr-2 text-muted text-[11px]">{c.portion || '—'}</td>
+                              <td className="py-1 pr-2 text-muted/50 text-[10px]">—</td>
+                              <td className="py-1 pr-2 text-right font-mono text-[11px]">{c.calories ?? '—'}</td>
+                              <td className="py-1 pr-2 text-right font-mono text-[11px]">{c.protein_g ?? '—'}</td>
+                              <td className="py-1 pr-2 text-right font-mono text-[11px]">{c.carbs_g ?? '—'}</td>
+                              <td className="py-1 pr-2 text-right font-mono text-[11px]">{c.fat_g ?? '—'}</td>
+                            </tr>
+                          ));
+                          return [main, ...sub];
+                        })}
                       </tbody>
                     </table>
                   </div>
