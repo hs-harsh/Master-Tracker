@@ -331,6 +331,10 @@ export default function WellnessMeals() {
   const weekDays = getWeekDays(weekStart);
   const isAccepted = plan?.status === 'accepted';
 
+  const hasPlanContent = weekDays.some((ds) =>
+    MEAL_TYPES.some((mt) => (entries[eKey(ds, mt.key)]?.title || '').trim().length > 0),
+  );
+
   // ── analytics helpers ──────────────────────────────────────────────────────
   function buildMealAnalytics(entries) {
     if (!entries?.length) return null;
@@ -434,7 +438,7 @@ export default function WellnessMeals() {
             </button>
           </div>
           <div className="flex flex-col items-stretch gap-3 sm:items-end">
-            <div className="flex gap-2 flex-wrap justify-end">
+            <div className="flex gap-2 flex-wrap justify-end items-center">
               {isAccepted ? (
                 <>
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
@@ -446,6 +450,18 @@ export default function WellnessMeals() {
                       border border-white/15 text-soft hover:text-white hover:border-white/30 transition-colors disabled:opacity-50">
                     <RefreshCw size={12} />{resetting ? 'Resetting…' : 'Reset Plan'}
                   </button>
+                  {hasPlanContent && (
+                    <button
+                      type="button"
+                      onClick={sendMealPlanEmail}
+                      disabled={emailSending}
+                      title={`Email plan + PDF to ${MEAL_NOTIFY_EMAIL}`}
+                      className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 shrink-0 disabled:opacity-40"
+                    >
+                      <Mail size={12} />
+                      {emailSending ? 'Sending…' : 'Send email'}
+                    </button>
+                  )}
                 </>
               ) : (
                 <>
@@ -457,27 +473,32 @@ export default function WellnessMeals() {
                     className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5">
                     <Check size={13} />{accepting ? 'Saving…' : 'Accept Plan'}
                   </button>
+                  {hasPlanContent && (
+                    <button
+                      type="button"
+                      onClick={sendMealPlanEmail}
+                      disabled={emailSending}
+                      title={`Email plan + PDF to ${MEAL_NOTIFY_EMAIL}`}
+                      className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 shrink-0 disabled:opacity-40"
+                    >
+                      <Mail size={12} />
+                      {emailSending ? 'Sending…' : 'Send email'}
+                    </button>
+                  )}
                 </>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2 justify-end rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
-              <Mail size={14} className="text-muted shrink-0" />
-              <div className="text-left min-w-0 flex-1">
-                <span className="text-[10px] text-muted uppercase tracking-wider font-mono block">Email plan + PDF</span>
-                <span className="text-xs text-soft break-all" title="Set MEAL_PLAN_EMAIL_TO on the server to override">
-                  Sends to {MEAL_NOTIFY_EMAIL}
-                </span>
+            {hasPlanContent && (
+              <div className="flex flex-wrap items-center gap-2 justify-end rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 w-full sm:w-auto sm:max-w-md">
+                <Mail size={14} className="text-muted shrink-0" />
+                <div className="text-left min-w-0 flex-1">
+                  <span className="text-[10px] text-muted uppercase tracking-wider font-mono block">Email plan + PDF</span>
+                  <span className="text-xs text-soft break-all" title="Set MEAL_PLAN_EMAIL_TO on the server to override">
+                    Sends to {MEAL_NOTIFY_EMAIL}
+                  </span>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={sendMealPlanEmail}
-                disabled={emailSending}
-                className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 shrink-0 disabled:opacity-40"
-              >
-                <Mail size={12} />
-                {emailSending ? 'Sending…' : 'Send'}
-              </button>
-            </div>
+            )}
           </div>
         </div>
 
