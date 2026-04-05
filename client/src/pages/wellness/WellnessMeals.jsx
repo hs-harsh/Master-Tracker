@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight,
   Plus, X, Check, Save, Sparkles,
   Coffee, Sun, Moon, Apple, AlertTriangle,
-  ChevronDown, ChevronUp, RefreshCw,
+  ChevronDown, ChevronUp, RefreshCw, Mail,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -100,7 +100,7 @@ function dateRangeFor(period) {
 
 // ─── component ────────────────────────────────────────────────────────────────
 export default function WellnessMeals() {
-  const { personName, activePerson } = useAuth();
+  const { personName, activePerson, token } = useAuth();
   const currentPerson = activePerson || personName;
 
   // planner state
@@ -126,6 +126,12 @@ export default function WellnessMeals() {
   const [editCell, setEditCell] = useState(null);
   const [editData, setEditData] = useState({ title: '', notes: '', calories: '' });
   const [editMode, setEditMode] = useState(false);
+  const [nutritionByKey, setNutritionByKey] = useState({});
+  const [nutritionLoadingKey, setNutritionLoadingKey] = useState(null);
+  const [profileRows, setProfileRows] = useState([]);
+  const [emailMode, setEmailMode] = useState('profile');
+  const [emailCustom, setEmailCustom] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
 
   // analytics state — shared period across all wellness tabs via localStorage
   const [period, setPeriodRaw] = useState(() => localStorage.getItem(WELLNESS_PERIOD_KEY) || '1M');
@@ -162,6 +168,17 @@ export default function WellnessMeals() {
   }, []);
 
   useEffect(() => { loadWeek(weekStart, currentPerson); }, [weekStart, currentPerson, loadWeek]);
+
+  useEffect(() => {
+    if (!token) return;
+    api
+      .get('/settings/profile')
+      .then(({ data }) => setProfileRows(data.profiles || []))
+      .catch(() => setProfileRows([]));
+  }, [token]);
+
+  const profileEmailForPerson =
+    profileRows.find((r) => r.person_name === currentPerson)?.email?.trim() || '';
 
   // ── load analytics ─────────────────────────────────────────────────────────
   const loadAnalytics = useCallback(async (p, person) => {
@@ -257,25 +274,61 @@ export default function WellnessMeals() {
   }
 
   function openCell(date, mealType) {
-    if (plan?.status === 'accepted') return;
     const existing = entries[eKey(date, mealType)];
-    setEditCell({ date, mealType });
+    if (plan?.status === 'accepted' && !existing?.title) return;
+    const readOnly = plan?.status === 'accepted';
+    setEditCell({ date, mealType, readOnly });
     setEditData(existing || { title: '', notes: '', calories: '' });
-    setEditMode(!existing?.title);
+    setEditMode(!existing?.title && !readOnly);
   }
 
   function saveCell() {
-    if (!editCell) return;
+    if (!editCell || editCell.readOnly) return;
     const key  = eKey(editCell.date, editCell.mealType);
     const next = { ...entries, [key]: { ...editData } };
     setEntries(next); setEditCell(null);
   }
 
   function clearCell() {
-    if (!editCell) return;
+    if (!editCell || editCell.readOnly) return;
     const key  = eKey(editCell.date, editCell.mealType);
     const next = { ...entries }; delete next[key];
     setEntries(next); setEditCell(null);
+  }
+
+  async function fetchNutritionBreakdown() {
+    if (!editCell || !editData.title?.trim()) return;
+    const key = eKey(editCell.date, editCell.mealType);
+    setNutritionLoadingKey(key);
+    try {
+      const { data } = await api.post('/meals/nutrition-breakdown', {
+        title: editData.title.trim(),
+        notes: editData.notes || '',
+      });
+      setNutritionByKey((prev) => ({ ...prev, [key]: data }));
+    } catch (err) {
+      alert(err.response?.data?.error || err.message || 'Could not fetch nutrition');
+    } finally {
+      setNutritionLoadingKey(null);
+    }
+  }
+
+  async function sendMealPlanEmail() {
+    if (!plan) return;
+    setEmailSending(true);
+    try {
+      if (plan.status !== 'accepted') await saveEntries();
+      const payload =
+        emailMode === 'custom' && emailCustom.trim()
+          ? { email: emailCustom.trim() }
+          : {};
+      const { data } = await api.post(`/meals/week/${plan.id}/send-email`, payload);
+      alert(`Meal plan emailed to ${data.sentTo || 'your address'}.`);
+    } catch (err) {
+      alert(err.response?.data?.error || err.message || 'Failed to send email');
+    } finally {
+      setEmailSending(false);
+    }
   }
 
   const today    = todayStr();
@@ -384,31 +437,75 @@ export default function WellnessMeals() {
               <ChevronRight size={18} />
             </button>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {isAccepted ? (
-              <>
-                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
-                  <Check size={13} /> Plan Accepted — saved to calendar
+          <div className="flex flex-col items-stretch gap-3 sm:items-end">
+            <div className="flex gap-2 flex-wrap justify-end">
+              {isAccepted ? (
+                <>
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
+                    <Check size={13} /> Plan Accepted — saved to calendar
+                  </span>
+                  <button onClick={resetPlan} disabled={resetting}
+                    title="Reset to draft so you can edit or regenerate"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                      border border-white/15 text-soft hover:text-white hover:border-white/30 transition-colors disabled:opacity-50">
+                    <RefreshCw size={12} />{resetting ? 'Resetting…' : 'Reset Plan'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => saveEntries()} disabled={saving}
+                    className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5">
+                    <Save size={13} />{saving ? 'Saving…' : 'Save Draft'}
+                  </button>
+                  <button onClick={acceptPlan} disabled={accepting || saving}
+                    className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5">
+                    <Check size={13} />{accepting ? 'Saving…' : 'Accept Plan'}
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 justify-end rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
+              <Mail size={14} className="text-muted shrink-0" />
+              <span className="text-[10px] text-muted uppercase tracking-wider font-mono shrink-0">Email plan</span>
+              <div className="flex rounded-lg overflow-hidden border border-white/10 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setEmailMode('profile')}
+                  className={`px-2.5 py-1 font-medium ${emailMode === 'profile' ? 'bg-accent text-ink' : 'text-soft hover:text-white'}`}
+                >
+                  Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEmailMode('custom')}
+                  className={`px-2.5 py-1 font-medium ${emailMode === 'custom' ? 'bg-accent text-ink' : 'text-soft hover:text-white'}`}
+                >
+                  Custom
+                </button>
+              </div>
+              {emailMode === 'custom' ? (
+                <input
+                  type="email"
+                  className="input flex-1 min-w-[160px] text-xs py-1.5"
+                  placeholder="name@example.com"
+                  value={emailCustom}
+                  onChange={(e) => setEmailCustom(e.target.value)}
+                />
+              ) : (
+                <span className="text-xs text-soft truncate max-w-[200px]" title={profileEmailForPerson || 'Uses login email if empty'}>
+                  {profileEmailForPerson || 'Profile email (Settings) or login email'}
                 </span>
-                <button onClick={resetPlan} disabled={resetting}
-                  title="Reset to draft so you can edit or regenerate"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
-                    border border-white/15 text-soft hover:text-white hover:border-white/30 transition-colors disabled:opacity-50">
-                  <RefreshCw size={12} />{resetting ? 'Resetting…' : 'Reset Plan'}
-                </button>
-              </>
-            ) : (
-              <>
-                <button onClick={() => saveEntries()} disabled={saving}
-                  className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5">
-                  <Save size={13} />{saving ? 'Saving…' : 'Save Draft'}
-                </button>
-                <button onClick={acceptPlan} disabled={accepting || saving}
-                  className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5">
-                  <Check size={13} />{accepting ? 'Saving…' : 'Accept Plan'}
-                </button>
-              </>
-            )}
+              )}
+              <button
+                type="button"
+                onClick={sendMealPlanEmail}
+                disabled={emailSending || (emailMode === 'custom' && !emailCustom.trim())}
+                className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 shrink-0 disabled:opacity-40"
+              >
+                <Mail size={12} />
+                {emailSending ? 'Sending…' : 'Send'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -511,26 +608,30 @@ export default function WellnessMeals() {
                   const key   = eKey(ds, mt.key);
                   const entry = entries[key];
                   const isT   = ds === today;
+                  const cellInteractive = !isAccepted || !!entry?.title;
                   return (
                     <div key={ds} onClick={() => openCell(ds, mt.key)}
-                      className={`group relative p-2 border-l border-white/5 min-h-[80px] transition-colors
+                      className={`group relative p-2 border-l border-white/5 min-h-[120px] align-top transition-colors
                         ${isT ? 'bg-accent/5' : ''}
-                        ${!isAccepted ? 'cursor-pointer hover:bg-white/[0.04]' : 'cursor-default'}`}>
+                        ${cellInteractive ? 'cursor-pointer hover:bg-white/[0.04]' : 'cursor-default'}`}>
                       {entry?.title ? (
-                        <div>
-                          <p className="text-white text-xs font-medium leading-snug line-clamp-2">{entry.title}</p>
-                          {entry.notes &&
-                            <p className="text-muted text-xs mt-0.5 line-clamp-1">{entry.notes}</p>}
-                          {entry.calories &&
-                            <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-xs font-mono ${mt.ring} ${mt.color}`}>
+                        <div className="pr-0.5">
+                          <p className="text-white text-xs font-medium leading-snug break-words">{entry.title}</p>
+                          {entry.notes && (
+                            <p className="text-muted text-xs mt-1 leading-relaxed whitespace-pre-line break-words">{entry.notes}</p>
+                          )}
+                          {entry.calories && (
+                            <span className={`inline-block mt-1.5 px-1.5 py-0.5 rounded text-xs font-mono ${mt.ring} ${mt.color}`}>
                               {entry.calories} kcal
-                            </span>}
+                            </span>
+                          )}
                         </div>
                       ) : (
-                        !isAccepted &&
+                        !isAccepted && (
                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                           <Plus size={16} className="text-muted" />
                         </div>
+                        )
                       )}
                     </div>
                   );
@@ -675,6 +776,7 @@ export default function WellnessMeals() {
     if (!editCell) return null;
     const mt = MEAL_MAP[editCell.mealType];
     const d  = parseD(editCell.date);
+    const readOnly = !!editCell.readOnly;
 
     const notesLines  = (editData.notes || '').split('\n');
     const firstLine   = notesLines[0] || '';
@@ -682,10 +784,16 @@ export default function WellnessMeals() {
     const macroChips  = hasMacros ? firstLine.split('|').map(s => s.trim()).filter(Boolean) : [];
     const ingredients = hasMacros ? notesLines.slice(1).join('\n').trim() : editData.notes;
 
+    const nutKey = eKey(editCell.date, editCell.mealType);
+    const nut = nutritionByKey[nutKey];
+    const nutLoading = nutritionLoadingKey === nutKey;
+
+    const showDetailView = editData.title && (!editMode || readOnly);
+
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
         style={{ background: 'rgba(9,9,14,0.75)', backdropFilter: 'blur(6px)' }}>
-        <div className="card w-full max-w-sm p-5">
+        <div className="card w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className={`flex items-center gap-2 ${mt.color}`}>
@@ -693,6 +801,7 @@ export default function WellnessMeals() {
               </div>
               <p className="text-muted text-xs mt-0.5">
                 {d?.toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'short' })}
+                {readOnly && <span className="ml-2 text-amber-400/80">· View only</span>}
               </p>
             </div>
             <button onClick={() => setEditCell(null)} className="text-muted hover:text-white transition-colors">
@@ -700,9 +809,9 @@ export default function WellnessMeals() {
             </button>
           </div>
 
-          {!editMode && editData.title ? (
+          {showDetailView ? (
             <>
-              <p className="text-white text-base font-bold leading-snug mb-3">{editData.title}</p>
+              <p className="text-white text-base font-bold leading-snug mb-3 break-words">{editData.title}</p>
               {editData.calories && (
                 <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-sm font-mono font-semibold ${mt.ring} ${mt.color} mb-3`}>
                   {editData.calories} kcal
@@ -715,18 +824,78 @@ export default function WellnessMeals() {
                   ))}
                 </div>
               )}
-              {ingredients && (
+              {(ingredients || (!hasMacros && editData.notes)) && (
                 <div className="mb-3">
                   <p className="text-[10px] text-muted uppercase tracking-wider mb-1">Ingredients / Notes</p>
-                  <p className="text-soft text-xs leading-relaxed whitespace-pre-line">{ingredients}</p>
+                  <p className="text-soft text-xs leading-relaxed whitespace-pre-line break-words">
+                    {ingredients || editData.notes}
+                  </p>
                 </div>
               )}
-              <div className="flex gap-2 mt-2">
-                <button onClick={clearCell} className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">Clear</button>
-                <button onClick={() => setEditMode(true)} className="btn-primary flex-1 text-sm py-2">Edit</button>
+
+              <div className="mt-4 border-t border-white/10 pt-3 space-y-2">
+                <button
+                  type="button"
+                  onClick={fetchNutritionBreakdown}
+                  disabled={nutLoading || !editData.title?.trim()}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold
+                    bg-purple-500/15 text-purple-200 border border-purple-500/30 hover:bg-purple-500/25 transition-colors disabled:opacity-50"
+                >
+                  <Sparkles size={12} />
+                  {nutLoading ? 'Fetching nutrition…' : 'Fetch nutrition (AI)'}
+                </button>
+                <p className="text-[10px] text-muted leading-snug">
+                  Estimates per ingredient or component (protein, carbs, fat, calories). Run after your plan is generated or edited.
+                </p>
+                {nut?.items?.length > 0 && (
+                  <div className="overflow-x-auto rounded-lg border border-white/10 mt-2">
+                    <table className="w-full text-xs text-left">
+                      <thead>
+                        <tr className="text-muted uppercase border-b border-white/10">
+                          <th className="py-2 pr-2 pl-2">Item</th>
+                          <th className="py-2 pr-2 text-right">kcal</th>
+                          <th className="py-2 pr-2 text-right">P (g)</th>
+                          <th className="py-2 pr-2 text-right">C (g)</th>
+                          <th className="py-2 pr-2 text-right">F (g)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {nut.items.map((row, i) => (
+                          <tr key={i} className="border-b border-white/5">
+                            <td className="py-1.5 pr-2 pl-2 text-soft">{row.name}</td>
+                            <td className="py-1.5 pr-2 text-right font-mono">{row.calories ?? '—'}</td>
+                            <td className="py-1.5 pr-2 text-right font-mono">{row.protein_g ?? '—'}</td>
+                            <td className="py-1.5 pr-2 text-right font-mono">{row.carbs_g ?? '—'}</td>
+                            <td className="py-1.5 pr-2 text-right font-mono">{row.fat_g ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {nut?.mealTotal && (
+                  <div className={`flex flex-wrap gap-3 text-xs font-mono px-2 py-2 rounded-lg border ${mt.ring} ${mt.color}`}>
+                    <span>Meal total: {nut.mealTotal.calories ?? '—'} kcal</span>
+                    <span>P {nut.mealTotal.protein_g ?? '—'}g</span>
+                    <span>C {nut.mealTotal.carbs_g ?? '—'}g</span>
+                    <span>F {nut.mealTotal.fat_g ?? '—'}g</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2 mt-4">
+                {!readOnly && (
+                  <>
+                    <button type="button" onClick={clearCell} className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">Clear</button>
+                    <button type="button" onClick={() => setEditMode(true)} className="btn-primary flex-1 text-sm py-2">Edit</button>
+                  </>
+                )}
+                {readOnly && (
+                  <button type="button" onClick={() => setEditCell(null)} className="btn-primary flex-1 text-sm py-2">Close</button>
+                )}
               </div>
             </>
-          ) : (
+          ) : readOnly ? null : (
             <>
               <div className="space-y-3">
                 <div>
@@ -751,8 +920,8 @@ export default function WellnessMeals() {
                 </div>
               </div>
               <div className="flex gap-2 mt-4">
-                <button onClick={clearCell} className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">Clear</button>
-                <button onClick={saveCell} className="btn-primary flex-1 text-sm py-2">Save</button>
+                <button type="button" onClick={clearCell} className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">Clear</button>
+                <button type="button" onClick={saveCell} className="btn-primary flex-1 text-sm py-2">Save</button>
               </div>
             </>
           )}

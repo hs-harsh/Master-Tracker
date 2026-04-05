@@ -410,4 +410,125 @@ Requirements:
   }
 });
 
+// ── POST /api/meals/nutrition-breakdown — per-ingredient estimates via Claude ─
+router.post('/nutrition-breakdown', async (req, res) => {
+  try {
+    const { title = '', notes = '' } = req.body || {};
+    if (!String(title).trim()) return res.status(400).json({ error: 'title required' });
+
+    const apiKey = await getAnthropicApiKey();
+    if (!apiKey) return res.status(500).json({ error: 'Anthropic API key not configured in Settings' });
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        system: `You estimate nutrition for home-cooked / typical restaurant meals.
+Return ONLY valid JSON, no markdown:
+{
+  "items": [
+    { "name": "ingredient or component", "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number }
+  ],
+  "mealTotal": { "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number }
+}
+Split the meal into sensible components (e.g. dal, rice, roti, sabzi). Numbers are approximate; use integers for calories, one decimal max for grams.`,
+        messages: [
+          {
+            role: 'user',
+            content: `Meal name: ${title}\n\nNotes / ingredients:\n${notes || '(none)'}\n\nProvide per-component breakdown and mealTotal as the sum of items.`,
+          },
+        ],
+      }),
+    });
+
+    const aiData = await aiRes.json();
+    if (!aiRes.ok) {
+      return res.status(aiRes.status).json({ error: aiData?.error?.message || 'AI error' });
+    }
+
+    let raw = aiData.content?.[0]?.text || '{}';
+    raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (m) raw = m[0];
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return res.status(502).json({ error: 'Could not parse nutrition response. Try again.' });
+    }
+    const items = Array.isArray(parsed.items) ? parsed.items : [];
+    const mealTotal = parsed.mealTotal && typeof parsed.mealTotal === 'object' ? parsed.mealTotal : null;
+    res.json({ items, mealTotal });
+  } catch (e) {
+    console.error('POST /meals/nutrition-breakdown', e);
+    res.status(500).json({ error: e.message || 'Server error' });
+  }
+});
+
+function isValidEmail(s) {
+  return typeof s === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+}
+
+// ── POST /api/meals/week/:id/send-email — email current plan (draft or accepted) ─
+router.post('/week/:id/send-email', async (req, res) => {
+  try {
+    const planId = parseInt(req.params.id, 10);
+    const overrideEmail = (req.body && req.body.email) || '';
+
+    const { rows: planRows } = await pool.query(
+      `SELECT id, user_id, person_name, week_start::text AS week_start, status
+       FROM meal_plans WHERE id=$1 AND user_id=$2`,
+      [planId, req.user.id]
+    );
+    if (!planRows[0]) return res.status(404).json({ error: 'Plan not found' });
+
+    const plan = planRows[0];
+
+    const { rows: entriesRows } = await pool.query(
+      `SELECT entry_date::text AS entry_date, meal_type, title, notes, calories
+       FROM meal_entries WHERE meal_plan_id=$1 ORDER BY entry_date, meal_type`,
+      [planId]
+    );
+
+    let toEmail = '';
+    if (isValidEmail(overrideEmail)) {
+      toEmail = overrideEmail.trim();
+    } else {
+      const [personRes, userRes] = await Promise.all([
+        pool.query(
+          `SELECT email FROM user_persons WHERE user_id=$1 AND person_name=$2`,
+          [req.user.id, plan.person_name]
+        ),
+        pool.query(`SELECT username FROM users WHERE id=$1`, [req.user.id]),
+      ]);
+      toEmail = (personRes.rows[0]?.email || '').trim() || (userRes.rows[0]?.username || '').trim();
+    }
+
+    if (!isValidEmail(toEmail)) {
+      return res.status(400).json({
+        error:
+          'No email on file. Add an email for this profile in Settings, use your login email, or enter a custom address below.',
+      });
+    }
+
+    const groceryLists = entriesRows.length ? await generateGroceryLists(entriesRows) : null;
+    await sendMealPlanEmail(toEmail, plan.person_name, {
+      weekStart: plan.week_start,
+      entries: entriesRows,
+      groceryLists,
+    });
+
+    res.json({ ok: true, sentTo: toEmail.replace(/(^.).*(@.*$)/, '$1***$2') });
+  } catch (e) {
+    console.error('POST /meals/week/:id/send-email', e);
+    res.status(500).json({ error: e.message || 'Server error' });
+  }
+});
+
 module.exports = router;

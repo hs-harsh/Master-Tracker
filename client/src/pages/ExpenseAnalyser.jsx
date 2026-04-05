@@ -70,26 +70,118 @@ async function extractPdfText(file, password) {
   return text;
 }
 
+/** First top-level `{ ... }` using brace depth (strings aware). */
+function extractBalancedObject(s) {
+  const start = s.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+    } else {
+      if (c === '"') inStr = true;
+      else if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) return s.slice(start, i + 1);
+      }
+    }
+  }
+  return s.slice(start);
+}
+
+function tryParseJsonBlock(block) {
+  const tries = [
+    block,
+    block.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim(),
+    block.replace(/,(\s*[}\]])/g, '$1'),
+    block.replace(/[\u0000-\u001F\u007F]/g, ' '),
+  ];
+  for (const t of tries) {
+    try {
+      const o = JSON.parse(t);
+      if (o && typeof o === 'object') return o;
+    } catch (_) {}
+  }
+  return null;
+}
+
+/** Close truncated JSON (unterminated strings, missing }]). */
+function repairTruncatedJson(block) {
+  let s = String(block).trim();
+  for (let iter = 0; iter < 40; iter++) {
+    try {
+      const o = JSON.parse(s);
+      if (o && typeof o === 'object') return o;
+    } catch (_) {
+      let ob = 0;
+      let cb = 0;
+      let osq = 0;
+      let csq = 0;
+      let instr = false;
+      let esc = false;
+      for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (instr) {
+          if (esc) esc = false;
+          else if (c === '\\') esc = true;
+          else if (c === '"') instr = false;
+        } else {
+          if (c === '"') instr = true;
+          else if (c === '{') ob++;
+          else if (c === '}') cb++;
+          else if (c === '[') osq++;
+          else if (c === ']') csq++;
+        }
+      }
+      if (instr) {
+        s += '"';
+        continue;
+      }
+      s = s.replace(/,\s*$/g, '');
+      while (osq > csq) {
+        s += ']';
+        csq++;
+      }
+      while (ob > cb) {
+        s += '}';
+        cb++;
+      }
+      s = s.replace(/,(\s*[}\]])/g, '$1');
+    }
+  }
+  throw new Error('Could not parse AI response.');
+}
+
 function robustParseJSON(raw) {
-  raw = String(raw).trim();
-  try {
-    return JSON.parse(raw);
-  } catch (_) {}
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch (_) {}
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
-  if (start === -1 || end <= start) throw new Error('No JSON found in response');
-  let block = raw.slice(start, end + 1);
-  try {
-    return JSON.parse(block);
-  } catch (_) {}
-  block = block.replace(/,(\s*[}\]])/g, '$1').replace(/[\u0000-\u001F\u007F]/g, ' ');
-  try {
-    return JSON.parse(block);
-  } catch (_) {}
+  const str = String(raw).trim();
+  const direct = tryParseJsonBlock(str);
+  if (direct) return direct;
+
+  const balanced = extractBalancedObject(str);
+  if (balanced) {
+    const p = tryParseJsonBlock(balanced);
+    if (p) return p;
+    try {
+      return repairTruncatedJson(balanced);
+    } catch (_) {}
+  }
+
+  const start = str.indexOf('{');
+  const end = str.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    const slice = str.slice(start, end + 1);
+    const p = tryParseJsonBlock(slice);
+    if (p) return p;
+    try {
+      return repairTruncatedJson(slice);
+    } catch (_) {}
+  }
   throw new Error('Could not parse AI response.');
 }
 
@@ -152,7 +244,7 @@ RULES:
   Map spending: groceries/subscriptions/utilities → Regular; large one-off → Major; rare discretionary → Non-Recurring; travel → Trips; loan/EMI → EMI; internal xfer → Transfers; salary/refund inflow → Income or Other Income as appropriate.
 - "cashflowSummary": one row per bucket you used; sum debits (and credits for Income buckets as appropriate).
 - "categoryHierarchy": parents are broad groups (Food & Dining, Travel, Bills…); "subcategories" sum to parent "amount". Keep "categories" as flat rows with parentCategory for charts (amounts must match hierarchy).
-- JSON must be complete and valid.`;
+- If you run out of space: set "redFlags": [] and shorten "keyInsights", but you MUST output complete valid JSON with every bracket closed — never truncate mid-object.`;
 }
 
 function buildCompilePrompt(results, personNames) {
@@ -290,12 +382,14 @@ export default function ExpenseAnalyser() {
       .get('/expense-analyser/snapshot')
       .then(({ data }) => {
         if (Array.isArray(data.results) && data.results.length) setResults(data.results);
-        if (data.finalData) {
+        if (data.finalData && typeof data.finalData === 'object') {
           setFinalData(data.finalData);
           setView('report');
         }
       })
-      .catch(() => {});
+      .catch((e) => {
+        console.warn('expense snapshot load failed', e);
+      });
   }, [token]);
 
   useEffect(() => {
@@ -410,7 +504,7 @@ export default function ExpenseAnalyser() {
       setQueueStates((prev) => ({ ...prev, [id]: 'analyzing' }));
       try {
         const prompt = buildSingleFilePrompt(slot);
-        const raw = await callClaude(prompt);
+        const raw = await callClaude(prompt, 12000);
         const data = robustParseJSON(raw);
         newResults.push({ slotId: id, label: slot.label, person: slot.person, data });
         setQueueStates((prev) => ({ ...prev, [id]: 'done' }));
@@ -422,6 +516,11 @@ export default function ExpenseAnalyser() {
     }
     setAnalyzing(false);
     setQueueProgress({ current: entries.length, total: entries.length, label: 'Done' });
+    try {
+      await api.put('/expense-analyser/snapshot', { results: newResults });
+    } catch (e) {
+      alert('Analysis finished but could not save to your account: ' + formatApiError(e));
+    }
   }, [slots]);
 
   const compileReport = useCallback(async () => {
@@ -433,7 +532,7 @@ export default function ExpenseAnalyser() {
     setCompiling(true);
     try {
       const prompt = buildCompilePrompt(successResults, persons);
-      const raw = await callClaude(prompt, 10000);
+      const raw = await callClaude(prompt, 12000);
       const data = robustParseJSON(raw);
       setFinalData(data);
       setView('report');
@@ -444,6 +543,7 @@ export default function ExpenseAnalyser() {
           results,
         });
       } catch (e) {
+        alert('Report was built but could not be saved: ' + formatApiError(e));
         console.error('Failed to save expense report snapshot', e);
       }
     } catch (err) {
@@ -682,20 +782,152 @@ function FileSlotRow({ slot, onFileChange, onPdfPasswordChange, onRetry, onRemov
   );
 }
 
-function txnCategoryLabel(t) {
+function subKeyForTxn(t) {
   const p = t.parentCategory || t.parent;
   const s = t.subcategory || t.sub;
-  if (p && s && String(p) !== String(s)) return `${p} → ${s}`;
-  if (t.category) return String(t.category);
-  return 'Other';
+  const cat = t.category ? String(t.category) : '';
+  if (p && s && String(p) !== String(s)) return { parent: String(p), sub: String(s) };
+  if (cat) return { parent: String(p || cat || 'Other'), sub: String(s || cat || 'General') };
+  return { parent: 'Other', sub: 'General' };
+}
+
+/** Parent → subcategory → transactions (debit totals for sorting). */
+function groupTransactionsIntoCategoryTree(transactions) {
+  const list = Array.isArray(transactions) ? transactions : [];
+  const parents = new Map();
+  for (const t of list) {
+    const { parent, sub } = subKeyForTxn(t);
+    if (!parents.has(parent)) parents.set(parent, { parent, subs: new Map() });
+    const subs = parents.get(parent).subs;
+    if (!subs.has(sub)) subs.set(sub, []);
+    subs.get(sub).push(t);
+  }
+  const out = [];
+  for (const [, g] of parents) {
+    const subs = [];
+    let pDebit = 0;
+    for (const [name, txs] of g.subs) {
+      let subDebit = 0;
+      for (const x of txs) {
+        if (x.type !== 'credit') subDebit += Number(x.amount) || 0;
+      }
+      pDebit += subDebit;
+      subs.push({ name, transactions: txs, amount: subDebit });
+    }
+    subs.sort((a, b) => b.amount - a.amount);
+    out.push({ parent: g.parent, subs, amount: pDebit });
+  }
+  out.sort((a, b) => b.amount - a.amount);
+  return out;
+}
+
+function CategoryTransactionTree({ transactions, showPerson = false }) {
+  const tree = groupTransactionsIntoCategoryTree(transactions);
+  const [openParents, setOpenParents] = useState(() => new Set());
+  const [openSubs, setOpenSubs] = useState(() => new Set());
+
+  const toggleP = (k) => {
+    setOpenParents((prev) => {
+      const n = new Set(prev);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  };
+  const toggleS = (k) => {
+    setOpenSubs((prev) => {
+      const n = new Set(prev);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  };
+
+  if (!tree.length) {
+    return <p className="text-muted text-sm">No transactions in this data.</p>;
+  }
+
+  return (
+    <div className="space-y-2 max-h-[min(70vh,720px)] overflow-y-auto pr-1">
+      {tree.map((g) => {
+        const pk = g.parent;
+        const pOpen = openParents.has(pk);
+        return (
+          <div key={pk} className="rounded-lg border border-border/60 bg-card/40 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => toggleP(pk)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface/50"
+            >
+              {pOpen ? <ChevronDown size={16} className="text-muted shrink-0" /> : <ChevronRight size={16} className="text-muted shrink-0" />}
+              <span className="flex-1 min-w-0 font-medium text-soft truncate">{g.parent}</span>
+              <span className="font-mono text-sm text-muted">{fmt(g.amount)}</span>
+            </button>
+            {pOpen && (
+              <div className="border-t border-border/40 bg-surface/20 px-2 py-2 space-y-1">
+                {g.subs.map((sub) => {
+                  const sk = `${pk}::${sub.name}`;
+                  const sOpen = openSubs.has(sk);
+                  return (
+                    <div key={sk} className="rounded-md border border-border/50 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => toggleS(sk)}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-surface/40 text-sm"
+                      >
+                        {sOpen ? <ChevronDown size={14} className="text-muted shrink-0" /> : <ChevronRight size={14} className="text-muted shrink-0" />}
+                        <span className="flex-1 min-w-0 text-muted truncate pl-1">{sub.name}</span>
+                        <span className="font-mono text-xs">{fmt(sub.amount)}</span>
+                        <span className="text-muted text-xs w-12 text-right">{sub.transactions.length}</span>
+                      </button>
+                      {sOpen && (
+                        <div className="border-t border-border/30 px-2 py-1 bg-card/30 overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-muted uppercase border-b border-border/40">
+                                <th className="text-left py-1 pr-2">Date</th>
+                                <th className="text-left py-1">Description</th>
+                                {showPerson ? <th className="text-left py-1">Person</th> : null}
+                                <th className="text-left py-1">Bucket</th>
+                                <th className="text-right py-1">Amt</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sub.transactions.map((t, i) => (
+                                <tr key={i} className="border-b border-border/20">
+                                  <td className="py-1 text-muted whitespace-nowrap">{t.date}</td>
+                                  <td className="py-1 text-soft max-w-[200px] truncate">{t.description}</td>
+                                  {showPerson ? (
+                                    <td className="py-1 text-muted">{typeof t.person === 'string' && t.person ? t.person : '—'}</td>
+                                  ) : null}
+                                  <td className="py-1 text-muted">{t.cashflowType || '—'}</td>
+                                  <td className={`py-1 text-right font-mono whitespace-nowrap ${t.type === 'credit' ? 'text-green-400' : 'text-rose'}`}>
+                                    {t.type === 'credit' ? '+' : '−'}
+                                    {fmtFull(Math.abs(Number(t.amount)))}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function ResultCard({ result, index, expanded, onToggle }) {
   const { label, person, data, error } = result;
   const s = data?.summary || {};
-  const txns = (data?.transactions || []).slice(0, 15);
+  const allTx = data?.transactions || [];
   const flags = data?.redFlags || [];
-  const catGroups = normalizeStatementCategoryHierarchy(data);
 
   if (error) {
     return (
@@ -775,10 +1007,10 @@ function ResultCard({ result, index, expanded, onToggle }) {
               </div>
             ) : null}
           </div>
-          {catGroups.length > 0 && (
+          {allTx.length > 0 && (
             <div>
-              <p className="text-xs text-muted uppercase mb-2">Categories</p>
-              <CategoryHierarchyCollapsible groups={catGroups} nameCols={[]} />
+              <p className="text-xs text-muted uppercase mb-2">By category → subcategory → transactions</p>
+              <CategoryTransactionTree transactions={allTx} showPerson={false} />
             </div>
           )}
           {flags.length > 0 && (
@@ -794,37 +1026,6 @@ function ResultCard({ result, index, expanded, onToggle }) {
               </div>
             </div>
           )}
-          {txns.length > 0 && (
-            <div>
-              <p className="text-xs text-muted uppercase mb-2">Recent transactions</p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-muted text-xs uppercase">
-                      <th className="text-left py-2">Date</th>
-                      <th className="text-left py-2">Description</th>
-                      <th className="text-left py-2">Category</th>
-                      <th className="text-left py-2">Cashflow</th>
-                      <th className="text-right py-2">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {txns.map((t, i) => (
-                      <tr key={i} className="border-b border-border/50">
-                        <td className="py-1.5 text-muted">{t.date}</td>
-                        <td className="py-1.5 text-soft truncate max-w-[180px]">{t.description}</td>
-                        <td className="py-1.5 text-muted text-xs">{txnCategoryLabel(t)}</td>
-                        <td className="py-1.5 text-muted text-xs">{t.cashflowType || '—'}</td>
-                        <td className={`py-1.5 text-right font-mono ${t.type === 'credit' ? 'text-green-400' : 'text-rose'}`}>
-                          {t.type === 'credit' ? '+' : '−'}{fmtFull(Math.abs(Number(t.amount)))}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -836,47 +1037,6 @@ function mergePerPerson(target, src) {
   for (const [k, v] of Object.entries(src)) {
     target[k] = (Number(target[k]) || 0) + (Number(v) || 0);
   }
-}
-
-function normalizeStatementCategoryHierarchy(data) {
-  if (!data) return [];
-  const ch = data.categoryHierarchy;
-  if (Array.isArray(ch) && ch.length) {
-    return ch
-      .map((h) => ({
-        parent: String(h.parent || h.name || 'Other'),
-        amount: Number(h.amount) || 0,
-        count: h.count,
-        subs: (Array.isArray(h.subcategories) ? h.subcategories : Array.isArray(h.subs) ? h.subs : []).map((s) => ({
-          name: String(s.name || s.subcategory || '—'),
-          amount: Number(s.amount) || 0,
-          count: s.count,
-        })),
-      }))
-      .filter((g) => g.amount > 0)
-      .sort((a, b) => b.amount - a.amount);
-  }
-  const flat = (data.categories || []).filter((c) => Number(c.amount) > 0);
-  const map = new Map();
-  for (const c of flat) {
-    const amt = Number(c.amount) || 0;
-    const parent = c.parentCategory || c.parent;
-    const sub = c.subcategory || c.sub;
-    if (parent && sub) {
-      if (!map.has(parent)) map.set(parent, { parent, amount: 0, count: 0, subs: [] });
-      const g = map.get(parent);
-      g.amount += amt;
-      g.count = (g.count || 0) + (Number(c.count) || 0);
-      g.subs.push({ name: sub, amount: amt, count: c.count });
-    } else {
-      const pname = String(c.name || 'Other');
-      if (!map.has(pname)) map.set(pname, { parent: pname, amount: 0, count: 0, subs: [] });
-      const g = map.get(pname);
-      g.amount += amt;
-      g.count = (g.count || 0) + (Number(c.count) || 0);
-    }
-  }
-  return [...map.values()].sort((a, b) => b.amount - a.amount);
 }
 
 function normalizeCategoryHierarchy(finalData) {
@@ -940,89 +1100,6 @@ function personAmount(c, personName) {
   return 0;
 }
 
-function CategoryHierarchyCollapsible({ groups, nameCols = [] }) {
-  const [open, setOpen] = useState(() => new Set());
-  const showPeople = nameCols.length > 0;
-  const toggle = (key) => {
-    setOpen((prev) => {
-      const n = new Set(prev);
-      if (n.has(key)) n.delete(key);
-      else n.add(key);
-      return n;
-    });
-  };
-  if (!groups.length) {
-    return <p className="text-muted text-sm">No category data in this report.</p>;
-  }
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 px-3 text-xs text-muted uppercase">
-        <span className="flex-1 min-w-0">Category</span>
-        {showPeople
-          ? nameCols.map((n) => (
-              <span key={n} className="w-14 shrink-0 text-right hidden sm:inline">
-                {n.length > 8 ? `${n.slice(0, 7)}…` : n}
-              </span>
-            ))
-          : null}
-        <span className="w-24 shrink-0 text-right">Total</span>
-        <span className="w-8 shrink-0 text-right">#</span>
-      </div>
-      {groups.map((g) => {
-        const key = g.parent;
-        const hasSubs = g.subs && g.subs.length > 0;
-        const isOpen = open.has(key);
-        return (
-          <div key={key} className="rounded-lg border border-border/60 overflow-hidden bg-card/40">
-            <button
-              type="button"
-              onClick={() => hasSubs && toggle(key)}
-              className={`w-full flex items-center gap-2 px-3 py-2.5 text-left ${hasSubs ? 'hover:bg-surface/50' : ''}`}
-              aria-expanded={hasSubs ? isOpen : undefined}
-            >
-              <span className="flex items-center gap-2 flex-1 min-w-0">
-                {hasSubs ? (
-                  isOpen ? <ChevronDown size={16} className="text-muted shrink-0" /> : <ChevronRight size={16} className="text-muted shrink-0" />
-                ) : (
-                  <span className="w-4 shrink-0 inline-block" />
-                )}
-                <span className="text-soft font-medium truncate">{g.parent}</span>
-              </span>
-              {showPeople
-                ? nameCols.map((n) => (
-                    <span key={n} className="w-14 shrink-0 text-right font-mono text-xs text-muted hidden sm:inline">
-                      {fmt(personAmount(g, n))}
-                    </span>
-                  ))
-                : null}
-              <span className="w-24 shrink-0 text-right font-mono text-sm">{fmt(g.amount)}</span>
-              <span className="w-8 shrink-0 text-right text-muted text-xs">{g.count ?? '—'}</span>
-            </button>
-            {hasSubs && isOpen && (
-              <div className="border-t border-border/40 bg-surface/20 px-3 py-2 space-y-1.5">
-                {g.subs.map((s, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <span className="flex-1 min-w-0 pl-6 text-muted truncate">{s.name}</span>
-                    {showPeople
-                      ? nameCols.map((n) => (
-                          <span key={n} className="w-14 shrink-0 text-right font-mono text-xs text-muted hidden sm:inline">
-                            {fmt(personAmount(s, n))}
-                          </span>
-                        ))
-                      : null}
-                    <span className="w-24 shrink-0 text-right font-mono">{fmt(s.amount)}</span>
-                    <span className="w-8 shrink-0 text-right text-muted text-xs">{s.count ?? '—'}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function spendSlicesFromSummary(s, personNames) {
   const by = s.totalSpendByPerson;
   if (by && typeof by === 'object' && !Array.isArray(by)) {
@@ -1075,8 +1152,7 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
   const TABS = [
     { id: 'overview', label: 'Overview' },
     { id: 'cashflow', label: 'Cashflow buckets' },
-    { id: 'categories', label: 'Categories' },
-    { id: 'transactions', label: 'Transactions' },
+    { id: 'categories', label: 'Categories & transactions' },
     { id: 'flags', label: 'Alerts' },
     { id: 'suggestions', label: 'Suggestions' },
   ];
@@ -1266,46 +1342,11 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
 
       {tab === 'categories' && (
         <div className="card">
-          <p className="stat-label mb-3">Category breakdown</p>
-          <p className="text-muted text-xs mb-4">Expand a parent row to see subcategories.</p>
-          <CategoryHierarchyCollapsible groups={hierarchyGroups.length ? hierarchyGroups : categories.map((c) => ({ parent: c.name, amount: c.amount, count: c.count, subs: [], perPersonAmounts: c.perPersonAmounts }))} nameCols={nameCols} />
-        </div>
-      )}
-
-      {tab === 'transactions' && (
-        <div className="card">
-          <p className="stat-label mb-3">All transactions ({transactions.length})</p>
-          <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-card">
-                <tr className="border-b border-border text-muted text-xs uppercase">
-                  <th className="text-left py-2">Date</th>
-                  <th className="text-left py-2">Description</th>
-                  <th className="text-left py-2">Person</th>
-                  <th className="text-left py-2">Category</th>
-                  <th className="text-left py-2">Cashflow</th>
-                  <th className="text-right py-2">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.slice(0, 500).map((t, i) => (
-                  <tr key={i} className="border-b border-border/40">
-                    <td className="py-2 text-muted">{t.date}</td>
-                    <td className="py-2 text-soft truncate max-w-[200px]">{t.description}</td>
-                    <td className="py-2 text-muted text-xs">
-                      {typeof t.person === 'string' && t.person.length ? t.person : '—'}
-                    </td>
-                    <td className="py-2 text-muted text-xs">{txnCategoryLabel(t)}</td>
-                    <td className="py-2 text-muted text-xs">{t.cashflowType || '—'}</td>
-                    <td className={`py-2 text-right font-mono ${t.type === 'credit' ? 'text-green-400' : 'text-rose'}`}>
-                      {t.type === 'credit' ? '+' : '−'}{fmtFull(Math.abs(Number(t.amount)))}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {transactions.length > 500 && <p className="text-muted text-xs mt-2">Showing first 500 of {transactions.length}</p>}
+          <p className="stat-label mb-3">Category → subcategory → transactions</p>
+          <p className="text-muted text-xs mb-4">
+            Expand a category, then a subcategory, to see each line item. Totals shown are debit subtotals for sorting.
+          </p>
+          <CategoryTransactionTree transactions={transactions} showPerson />
         </div>
       )}
 
