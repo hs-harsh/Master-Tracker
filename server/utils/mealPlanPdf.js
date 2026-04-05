@@ -78,119 +78,131 @@ function parseMealNotes(notes) {
   return { macroLabels, description: body };
 }
 
+/** Single badge row height (draw + measure must match). */
+const BADGE_H = 13;
+const BADGE_ROW_GAP = 2;
+
 function drawPill(doc, x, y, label, { fill, stroke, textColor, fontSize = 7 }) {
   doc.font('Helvetica').fontSize(fontSize);
-  const padX = 5;
-  const padY = 2;
+  const padX = 4;
   const tw = doc.widthOfString(label);
   const w = tw + padX * 2;
-  const h = fontSize + padY * 2 + 2;
+  const h = BADGE_H;
   doc.roundedRect(x, y, w, h, 3)
     .lineWidth(0.45)
     .fillColor(fill)
     .strokeColor(stroke)
     .fillAndStroke();
-  doc.fillColor(textColor).text(label, x + padX, y + padY + 1, { lineBreak: false });
+  doc.fillColor(textColor).text(label, x + padX, y + 3, { lineBreak: false });
   return w;
 }
 
+/** How many badge rows + total height for kcal + macro pills (matches draw wrapping). */
+function measureBadgeBlock(doc, innerW, calorieLabel, macroLabels) {
+  doc.font('Helvetica').fontSize(7);
+  const labels = [];
+  if (calorieLabel) labels.push(calorieLabel);
+  macroLabels.forEach((l) => labels.push(l));
+  if (!labels.length) return { rows: 0, height: 0 };
+
+  let rowW = 0;
+  let rows = 1;
+  for (const lab of labels) {
+    const pillW = doc.widthOfString(lab) + 8;
+    const gap = 4;
+    if (rowW > 0 && rowW + gap + pillW > innerW) {
+      rows += 1;
+      rowW = pillW;
+    } else {
+      rowW = rowW > 0 ? rowW + gap + pillW : pillW;
+    }
+  }
+  const height = rows * BADGE_H + (rows > 1 ? (rows - 1) * BADGE_ROW_GAP : 0);
+  return { rows, height };
+}
+
 /**
- * Estimated height for one meal card (screenshot-style).
+ * Estimated height for one meal card (tight — must match drawMealCard).
  */
 function measureCardHeight(doc, entry, innerW) {
-  const pad = 12;
+  const pad = 8;
   let h = pad;
-  h += 12; // meal type row
-  doc.font('Helvetica-Bold').fontSize(11);
-  h += doc.heightOfString(entry.title, { width: innerW, lineGap: 1 });
-  h += 8;
-  doc.font('Helvetica').fontSize(7);
-  let badgeH = 0;
-  if (entry.calories) badgeH = Math.max(badgeH, 16);
+  h += 10; // meal type row
+  doc.font('Helvetica-Bold').fontSize(10);
+  h += doc.heightOfString(entry.title, { width: innerW, lineGap: 0.75 });
+  h += 4;
   const { macroLabels, description } = parseMealNotes(entry.notes || '');
-  if (macroLabels.length) {
-    let rowW = 0;
-    let rows = 1;
-    const maxRow = innerW;
-    macroLabels.forEach((lab) => {
-      const w = doc.widthOfString(lab) + 16;
-      if (rowW + w > maxRow && rowW > 0) {
-        rows += 1;
-        rowW = w;
-      } else {
-        rowW += w + 4;
-      }
-    });
-    badgeH = Math.max(badgeH, rows * 18);
-  }
-  h += badgeH + 6;
+  const calLabel = entry.calories ? `${entry.calories} kcal` : null;
+  const { height: badgeBlockH } = measureBadgeBlock(doc, innerW, calLabel, macroLabels);
+  h += badgeBlockH;
+  if (badgeBlockH) h += 4;
   if (description) {
-    doc.fontSize(8).fillColor(C.soft);
-    h += doc.heightOfString(description, { width: innerW, lineGap: 1.2 });
+    doc.font('Helvetica').fontSize(7.5).fillColor(C.soft);
+    h += doc.heightOfString(description, { width: innerW, lineGap: 1 });
   }
   h += pad;
   return Math.ceil(h);
 }
 
 function drawMealCard(doc, x, y, w, entry, mealKey) {
-  const pad = 12;
+  const pad = 8;
   const innerW = w - pad * 2;
   const { macroLabels, description } = parseMealNotes(entry.notes || '');
   const cardH = measureCardHeight(doc, entry, innerW);
 
   doc.save();
-  doc.roundedRect(x, y, w, cardH, 8).fillColor(C.cardBg).strokeColor(C.border).lineWidth(0.6).fillAndStroke();
+  doc.roundedRect(x, y, w, cardH, 6).fillColor(C.cardBg).strokeColor(C.border).lineWidth(0.5).fillAndStroke();
 
   let cy = y + pad;
-  doc.font('Helvetica').fontSize(8).fillColor(C.muted);
+  doc.font('Helvetica').fontSize(7.5).fillColor(C.muted);
   doc.text(`${MEAL_ICONS[mealKey] || ''}  ${MEAL_LABELS[mealKey].toUpperCase()}`, x + pad, cy, {
     width: innerW,
+    lineGap: 0,
   });
-  cy = doc.y + 6;
+  cy = doc.y + 3;
 
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(C.text).text(entry.title, x + pad, cy, {
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(C.text).text(entry.title, x + pad, cy, {
     width: innerW,
-    lineGap: 1,
+    lineGap: 0.75,
   });
-  cy = doc.y + 8;
+  cy = doc.y + 4;
 
-  let bx = x + pad;
-  const badgeY = cy;
-  let rowY = badgeY;
-  let rowX = bx;
-  const maxX = x + w - pad;
-
+  const bx = x + pad;
+  const maxInnerX = x + w - pad;
+  doc.font('Helvetica').fontSize(7);
+  const pills = [];
   if (entry.calories) {
-    const label = `${entry.calories} kcal`;
-    const pillW = drawPill(doc, rowX, rowY, label, {
-      fill: C.kcalFill,
-      stroke: '#b45309',
-      textColor: C.kcalGold,
-      fontSize: 7,
+    pills.push({
+      label: `${entry.calories} kcal`,
+      style: { fill: C.kcalFill, stroke: '#b45309', textColor: C.kcalGold, fontSize: 7 },
     });
-    rowX += pillW + 5;
   }
-
   macroLabels.forEach((lab) => {
-    const pillW = drawPill(doc, rowX, rowY, lab, {
-      fill: C.macroFill,
-      stroke: C.macroBorder,
-      textColor: C.macroGreen,
-      fontSize: 7,
+    pills.push({
+      label: lab,
+      style: { fill: C.macroFill, stroke: C.macroBorder, textColor: C.macroGreen, fontSize: 7 },
     });
-    rowX += pillW + 5;
-    if (rowX > maxX - 40) {
-      rowY += 18;
+  });
+
+  let rowY = cy;
+  let rowX = bx;
+  const pillGap = 4;
+  for (const p of pills) {
+    const pillW = doc.widthOfString(p.label) + 8;
+    if (rowX > bx && rowX + pillGap + pillW > maxInnerX) {
+      rowY += BADGE_H + BADGE_ROW_GAP;
       rowX = bx;
     }
-  });
+    drawPill(doc, rowX, rowY, p.label, p.style);
+    rowX += pillW + pillGap;
+  }
 
-  cy = rowY + 18;
+  cy = rowY + BADGE_H + (pills.length > 0 ? 4 : 0);
 
   if (description) {
-    doc.font('Helvetica').fontSize(8).fillColor(C.soft).text(description, x + pad, cy, {
+    doc.font('Helvetica').fontSize(7.5).fillColor(C.soft).text(description, x + pad, cy, {
       width: innerW,
-      lineGap: 1.2,
+      lineGap: 1,
     });
   }
 
@@ -264,35 +276,36 @@ function buildMealPlanPdf(personName, weekStart, entries, groceryLists) {
       doc.fillColor(C.dateGold).font('Helvetica-Bold').text(`${totalCal.toLocaleString()} kcal`);
       doc.font('Helvetica');
     }
-    doc.moveDown(1.2);
+    doc.moveDown(0.75);
+
+    const cardGap = 4;
 
     for (const ds of days) {
       const dayMeals = MEAL_TYPES.map((mt) => lookup[`${ds}_${mt}`]).filter((e) => e?.title);
       if (!dayMeals.length) continue;
 
-      const dateHeaderH = 22;
-      const gap = 10;
-      let blockH = dateHeaderH + gap;
+      const dateHeaderH = 16;
+      let blockH = dateHeaderH + cardGap;
       for (const mt of MEAL_TYPES) {
         const e = lookup[`${ds}_${mt}`];
         if (!e?.title) continue;
-        blockH += measureCardHeight(doc, e, contentW) + gap;
+        blockH += measureCardHeight(doc, e, contentW) + cardGap;
       }
-      ensureSpace(blockH + 8);
+      ensureSpace(blockH + 4);
 
-      doc.font('Helvetica-Bold').fontSize(13).fillColor(C.dateGold).text(fmtDayLine(ds), margin, doc.y, {
+      doc.font('Helvetica-Bold').fontSize(12).fillColor(C.dateGold).text(fmtDayLine(ds), margin, doc.y, {
         width: contentW,
       });
-      doc.moveDown(0.35);
+      doc.moveDown(0.22);
 
       for (const mt of MEAL_TYPES) {
         const e = lookup[`${ds}_${mt}`];
         if (!e?.title) continue;
         const h = drawMealCard(doc, margin, doc.y, contentW, e, mt);
-        doc.y += h + gap;
-        ensureSpace(40);
+        doc.y += h + cardGap;
+        ensureSpace(36);
       }
-      doc.moveDown(0.4);
+      doc.moveDown(0.15);
     }
 
     if (groceryLists && (groceryLists.days1to3?.length || groceryLists.days4to7?.length)) {
