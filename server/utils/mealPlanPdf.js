@@ -210,6 +210,36 @@ function drawMealCard(doc, x, y, w, entry, mealKey) {
   return cardH;
 }
 
+function dayHasMeals(ds, lookup) {
+  return MEAL_TYPES.some((mt) => lookup[`${ds}_${mt}`]?.title);
+}
+
+function measureDayColumnHeight(doc, ds, colW, lookup, cardGap) {
+  if (!dayHasMeals(ds, lookup)) return 0;
+  doc.font('Helvetica-Bold').fontSize(11);
+  let h = doc.heightOfString(fmtDayLine(ds), { width: colW }) + cardGap;
+  for (const mt of MEAL_TYPES) {
+    const e = lookup[`${ds}_${mt}`];
+    if (!e?.title) continue;
+    h += measureCardHeight(doc, e, colW) + cardGap;
+  }
+  return h;
+}
+
+/** Draw one day in a narrow column; returns bottom Y. */
+function drawDayColumn(doc, x, y, colW, ds, lookup, cardGap) {
+  if (!dayHasMeals(ds, lookup)) return y;
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(C.dateGold).text(fmtDayLine(ds), x, y, { width: colW });
+  let cy = doc.y + cardGap;
+  for (const mt of MEAL_TYPES) {
+    const e = lookup[`${ds}_${mt}`];
+    if (!e?.title) continue;
+    const h = drawMealCard(doc, x, cy, colW, e, mt);
+    cy += h + cardGap;
+  }
+  return cy;
+}
+
 /**
  * @param {string} personName
  * @param {string} weekStart YYYY-MM-DD
@@ -244,13 +274,14 @@ function buildMealPlanPdf(personName, weekStart, entries, groceryLists) {
     const totalCal = (entries || []).reduce((s, e) => s + (Number(e.calories) || 0), 0);
 
     const pw = doc.page.width;
-    const ph = doc.page.height;
+    let ph = doc.page.height;
     const contentW = pw - margin * 2;
 
     function ensureSpace(needH) {
       if (doc.y + needH > ph - margin) {
         doc.addPage();
-        doc.rect(0, 0, doc.page.width, doc.page.height).fill(C.pageBg);
+        ph = doc.page.height;
+        doc.rect(0, 0, doc.page.width, ph).fill(C.pageBg);
         doc.fillColor(C.text);
         doc.x = margin;
         doc.y = margin;
@@ -279,34 +310,42 @@ function buildMealPlanPdf(personName, weekStart, entries, groceryLists) {
     doc.moveDown(0.75);
 
     const cardGap = 4;
+    const colGutter = 10;
+    const colW = (contentW - colGutter) / 2;
+    const xL = margin;
+    const xR = margin + colW + colGutter;
+    const pairFooter = 10;
 
-    for (const ds of days) {
-      const dayMeals = MEAL_TYPES.map((mt) => lookup[`${ds}_${mt}`]).filter((e) => e?.title);
-      if (!dayMeals.length) continue;
+    let yCursor = doc.y;
 
-      const dateHeaderH = 16;
-      let blockH = dateHeaderH + cardGap;
-      for (const mt of MEAL_TYPES) {
-        const e = lookup[`${ds}_${mt}`];
-        if (!e?.title) continue;
-        blockH += measureCardHeight(doc, e, contentW) + cardGap;
-      }
-      ensureSpace(blockH + 4);
+    // Two days per row (Mon|Tue, Wed|Thu, Fri|Sat, Sun alone in last row).
+    for (let p = 0; p < 4; p++) {
+      const i0 = p * 2;
+      const i1 = i0 + 1;
+      if (i0 >= days.length) break;
+      const ds0 = days[i0];
+      const ds1 = i1 < days.length ? days[i1] : null;
 
-      doc.font('Helvetica-Bold').fontSize(12).fillColor(C.dateGold).text(fmtDayLine(ds), margin, doc.y, {
-        width: contentW,
-      });
-      doc.moveDown(0.22);
+      const has0 = dayHasMeals(ds0, lookup);
+      const has1 = ds1 ? dayHasMeals(ds1, lookup) : false;
+      if (!has0 && !has1) continue;
 
-      for (const mt of MEAL_TYPES) {
-        const e = lookup[`${ds}_${mt}`];
-        if (!e?.title) continue;
-        const h = drawMealCard(doc, margin, doc.y, contentW, e, mt);
-        doc.y += h + cardGap;
-        ensureSpace(36);
-      }
-      doc.moveDown(0.15);
+      const h0 = has0 ? measureDayColumnHeight(doc, ds0, colW, lookup, cardGap) : 0;
+      const h1 = has1 ? measureDayColumnHeight(doc, ds1, colW, lookup, cardGap) : 0;
+      const pairH = Math.max(h0, h1) + pairFooter;
+
+      doc.y = yCursor;
+      ensureSpace(pairH);
+      yCursor = doc.y;
+
+      let yL = yCursor;
+      let yR = yCursor;
+      if (has0) yL = drawDayColumn(doc, xL, yL, colW, ds0, lookup, cardGap);
+      if (has1) yR = drawDayColumn(doc, xR, yR, colW, ds1, lookup, cardGap);
+      yCursor = Math.max(yL, yR) + pairFooter;
     }
+
+    doc.y = yCursor;
 
     if (groceryLists && (groceryLists.days1to3?.length || groceryLists.days4to7?.length)) {
       ensureSpace(120);
