@@ -77,6 +77,75 @@ function fmtDayHeader(ds) {
   };
 }
 
+/** Mobile / PDF day title e.g. "Mon, 6 Apr" */
+function fmtDayLine(ds) {
+  const h = fmtDayHeader(ds);
+  return `${h.wd}, ${h.day} ${h.mo}`;
+}
+
+/**
+ * Split notes into macro badges (first line, pipe-separated) + description body.
+ * Matches AI format: "P 22g | C 35g | F 8g" or "Protein: 22g | …"
+ */
+function parseMealNotes(notes) {
+  const raw = (notes || '').trim();
+  if (!raw) return { macroLabels: [], description: '' };
+  const lines = raw.split('\n');
+  const first = (lines[0] || '').trim();
+  const body = lines.slice(1).join('\n').trim();
+  const looksMacro =
+    first.includes('|') &&
+    /\b(protein|carbs?|fat|P\s*[\d.:]|C\s*[\d.:]|F\s*[\d.:])/i.test(first);
+  if (!looksMacro) {
+    return { macroLabels: [], description: raw };
+  }
+  const segs = first.split('|').map((s) => s.trim()).filter(Boolean);
+  const macroLabels = segs.map((seg) => {
+    const s = seg.trim();
+    let m = s.match(/^protein:?\s*(.+)$/i);
+    if (m) return `Protein: ${m[1].trim()}`;
+    m = s.match(/^P:?\s*(.+)$/i);
+    if (m) return `Protein: ${m[1].trim()}`;
+    m = s.match(/^carbs?:?\s*(.+)$/i);
+    if (m) return `Carbs: ${m[1].trim()}`;
+    if (/^C\b/i.test(s)) return `Carbs: ${s.replace(/^C\s*:?\s*/i, '').trim()}`;
+    m = s.match(/^fat:?\s*(.+)$/i);
+    if (m) return `Fat: ${m[1].trim()}`;
+    if (/^F\b/i.test(s)) return `Fat: ${s.replace(/^F\s*:?\s*/i, '').trim()}`;
+    return s;
+  });
+  return { macroLabels, description: body };
+}
+
+/** Shared meal body: title, kcal + macro badges, description (matches mobile card layout). */
+function MealPlanCardContent({ entry, compact }) {
+  const { macroLabels, description } = parseMealNotes(entry?.notes || '');
+  const tTitle = compact ? 'text-xs' : 'text-sm';
+  return (
+    <>
+      <p className={`text-white font-semibold leading-snug break-words ${tTitle}`}>{entry.title}</p>
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {entry.calories ? (
+          <span className="px-2 py-0.5 rounded-md text-[11px] font-mono border border-accent/45 text-accent bg-accent/10">
+            {entry.calories} kcal
+          </span>
+        ) : null}
+        {macroLabels.map((lab, i) => (
+          <span
+            key={i}
+            className="px-2 py-0.5 rounded-md text-[11px] font-mono border border-emerald-500/45 text-emerald-300 bg-emerald-500/10"
+          >
+            {lab}
+          </span>
+        ))}
+      </div>
+      {description ? (
+        <p className="text-muted text-xs mt-2 leading-relaxed whitespace-pre-line break-words">{description}</p>
+      ) : null}
+    </>
+  );
+}
+
 function eKey(date, mealType) {
   return `${String(date).slice(0,10)}_${mealType}`;
 }
@@ -420,8 +489,8 @@ export default function WellnessMeals() {
   function Planner() {
     return (
       <div className="card fade-up-1 overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-white/5">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between p-4 border-b border-white/5">
+          <div className="flex items-center justify-center sm:justify-start gap-2 min-w-0">
             <button onClick={() => shiftWeek(-1)}
               className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
               <ChevronLeft size={18} />
@@ -437,8 +506,8 @@ export default function WellnessMeals() {
               <ChevronRight size={18} />
             </button>
           </div>
-          <div className="flex flex-col items-stretch gap-3 sm:items-end">
-            <div className="flex gap-2 flex-wrap justify-end items-center">
+          <div className="flex flex-col items-stretch gap-3 w-full sm:w-auto sm:items-end">
+            <div className="flex gap-2 flex-wrap justify-center sm:justify-end items-center w-full">
               {isAccepted ? (
                 <>
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
@@ -488,35 +557,24 @@ export default function WellnessMeals() {
                 </>
               )}
             </div>
-            {hasPlanContent && (
-              <div className="flex flex-wrap items-center gap-2 justify-end rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 w-full sm:w-auto sm:max-w-md">
-                <Mail size={14} className="text-muted shrink-0" />
-                <div className="text-left min-w-0 flex-1">
-                  <span className="text-[10px] text-muted uppercase tracking-wider font-mono block">Email plan + PDF</span>
-                  <span className="text-xs text-soft break-all" title="Set MEAL_PLAN_EMAIL_TO on the server to override">
-                    Sends to {MEAL_NOTIFY_EMAIL}
-                  </span>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
         {!isAccepted && (
           <div className="p-3 border-b border-white/5 bg-white/[0.02] space-y-2">
-            <div className="flex gap-2 items-center">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="flex items-center gap-1.5 text-xs text-purple-400 font-semibold shrink-0">
                 <Sparkles size={13} />AI
               </div>
               <input
-                className="input flex-1 text-xs py-1.5"
+                className="input w-full flex-1 text-xs py-2 sm:py-1.5 min-w-0"
                 placeholder="e.g. High protein Indian diet, low carb, vegetarian…"
                 value={aiPrompt}
                 onChange={e => setAiPrompt(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()}
               />
               <button onClick={generatePlan} disabled={generating}
-                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-xs font-semibold
                   bg-purple-500/20 text-purple-300 border border-purple-500/30
                   hover:bg-purple-500/30 transition-colors disabled:opacity-50">
                 <Sparkles size={12} />{generating ? 'Generating…' : 'Generate'}
@@ -574,7 +632,8 @@ export default function WellnessMeals() {
           </div>
         )}
 
-        <div className="overflow-x-auto">
+        {/* Desktop: classic week grid */}
+        <div className="hidden lg:block overflow-x-auto">
           <div className="min-w-[680px]">
             <div className="grid grid-cols-8 border-b border-white/5">
               <div className="p-3" />
@@ -595,7 +654,7 @@ export default function WellnessMeals() {
               <div key={mt.key} className="grid grid-cols-8 border-b border-white/5 last:border-0">
                 <div className={`flex items-center gap-2 p-3 border-r border-white/5 ${mt.ring.split(' ')[0]}`}>
                   <mt.icon size={14} className={mt.color} />
-                  <span className={`text-xs font-semibold ${mt.color} hidden sm:block`}>{mt.label}</span>
+                  <span className={`text-xs font-semibold ${mt.color}`}>{mt.label}</span>
                 </div>
                 {weekDays.map(ds => {
                   const key   = eKey(ds, mt.key);
@@ -604,24 +663,16 @@ export default function WellnessMeals() {
                   const cellInteractive = !isAccepted || !!entry?.title;
                   return (
                     <div key={ds} onClick={() => openCell(ds, mt.key)}
-                      className={`group relative p-2 border-l border-white/5 min-h-[120px] align-top transition-colors
+                      className={`group relative p-2.5 border-l border-white/5 min-h-[128px] align-top transition-colors
                         ${isT ? 'bg-accent/5' : ''}
                         ${cellInteractive ? 'cursor-pointer hover:bg-white/[0.04]' : 'cursor-default'}`}>
                       {entry?.title ? (
                         <div className="pr-0.5">
-                          <p className="text-white text-xs font-medium leading-snug break-words">{entry.title}</p>
-                          {entry.notes && (
-                            <p className="text-muted text-xs mt-1 leading-relaxed whitespace-pre-line break-words">{entry.notes}</p>
-                          )}
-                          {entry.calories && (
-                            <span className={`inline-block mt-1.5 px-1.5 py-0.5 rounded text-xs font-mono ${mt.ring} ${mt.color}`}>
-                              {entry.calories} kcal
-                            </span>
-                          )}
+                          <MealPlanCardContent entry={entry} compact />
                         </div>
                       ) : (
                         !isAccepted && (
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                           <Plus size={16} className="text-muted" />
                         </div>
                         )
@@ -632,6 +683,75 @@ export default function WellnessMeals() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Mobile / tablet: day stacks with meal cards (screenshot-style) */}
+        <div className="lg:hidden px-3 py-4 space-y-8 bg-[#0c0c0c]">
+          {weekDays.map((ds) => {
+            const isT = ds === today;
+            return (
+              <section key={ds} className="space-y-3">
+                <h3 className={`text-base font-bold font-display tracking-tight ${isT ? 'text-accent' : 'text-[#e8bc3d]'}`}>
+                  {fmtDayLine(ds)}
+                </h3>
+                <div className="space-y-3">
+                  {MEAL_TYPES.map((mt) => {
+                    const key = eKey(ds, mt.key);
+                    const entry = entries[key];
+                    const cellInteractive = !isAccepted || !!entry?.title;
+                    if (entry?.title) {
+                      return (
+                        <div
+                          key={mt.key}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => openCell(ds, mt.key)}
+                          onKeyDown={(ev) => {
+                            if (ev.key === 'Enter' || ev.key === ' ') {
+                              ev.preventDefault();
+                              openCell(ds, mt.key);
+                            }
+                          }}
+                          className={`rounded-xl border border-white/10 bg-[#141414] p-3.5 shadow-[0_1px_0_rgba(255,255,255,0.04)] ${
+                            cellInteractive ? 'cursor-pointer active:bg-white/[0.03]' : 'cursor-default'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <mt.icon size={17} className={`shrink-0 ${mt.color}`} />
+                            <span className="text-[10px] uppercase tracking-[0.12em] text-muted font-semibold">
+                              {mt.label}
+                            </span>
+                          </div>
+                          <MealPlanCardContent entry={entry} />
+                        </div>
+                      );
+                    }
+                    if (!isAccepted) {
+                      return (
+                        <button
+                          key={mt.key}
+                          type="button"
+                          onClick={() => openCell(ds, mt.key)}
+                          className="w-full rounded-xl border border-dashed border-white/15 bg-white/[0.02] py-5 flex flex-col items-center justify-center gap-1.5 text-muted text-xs hover:border-white/25 hover:bg-white/[0.04] transition-colors"
+                        >
+                          <Plus size={18} strokeWidth={1.75} />
+                          <span>Add {mt.label}</span>
+                        </button>
+                      );
+                    }
+                    return (
+                      <div
+                        key={mt.key}
+                        className="rounded-xl border border-white/5 bg-white/[0.02] py-5 text-center text-muted text-xs"
+                      >
+                        —
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
         </div>
       </div>
     );
