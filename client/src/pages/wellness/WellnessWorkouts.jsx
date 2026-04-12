@@ -81,12 +81,12 @@ function countSets(exercises) {
   return exercises.reduce((sum, ex) => sum + (Number(ex.sets) || 0), 0);
 }
 
-// localStorage preference helpers (per-person)
+// localStorage preference helpers (per-person, used as instant-load cache)
 function loadPreferences(person) {
   const key = `workout_prompts_${person || 'default'}`;
   try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
 }
-function savePreferences(person, prefs) {
+function cachePreferences(person, prefs) {
   const key = `workout_prompts_${person || 'default'}`;
   try { localStorage.setItem(key, JSON.stringify(prefs)); } catch {}
 }
@@ -125,11 +125,21 @@ export default function WellnessWorkouts() {
   const weekDays = getWeekDays(weekStart);
   const isAccepted = plan?.status === 'accepted';
 
-  // Reload preferences when person changes
+  // Reload preferences when person changes — load from cache first, then hydrate from DB
   useEffect(() => {
-    setPreferences(loadPreferences(currentPerson));
+    const cached = loadPreferences(currentPerson);
+    setPreferences(cached);
     setSelectedPref(null);
     setAiPrompt('');
+    api.get(`/settings/wellness-prefs?type=workout&person=${encodeURIComponent(currentPerson || '')}`)
+      .then(r => {
+        const dbPrefs = r.data?.prefs;
+        if (Array.isArray(dbPrefs)) {
+          setPreferences(dbPrefs);
+          cachePreferences(currentPerson, dbPrefs);
+        }
+      })
+      .catch(() => {});
   }, [currentPerson]);
 
   // ── load week ──────────────────────────────────────────────────────────────
@@ -210,12 +220,14 @@ export default function WellnessWorkouts() {
     if (!text.trim()) return;
     const next = [text, ...preferences.filter(p => p !== text)].slice(0, MAX_PREFERENCES);
     setPreferences(next);
-    savePreferences(currentPerson, next);
+    cachePreferences(currentPerson, next);
+    api.put('/settings/wellness-prefs', { type: 'workout', person: currentPerson || '', prefs: next }).catch(() => {});
   }
   function deletePreference(text) {
     const next = preferences.filter(p => p !== text);
     setPreferences(next);
-    savePreferences(currentPerson, next);
+    cachePreferences(currentPerson, next);
+    api.put('/settings/wellness-prefs', { type: 'workout', person: currentPerson || '', prefs: next }).catch(() => {});
     if (selectedPref === text) setSelectedPref(null);
   }
 

@@ -81,13 +81,13 @@ function eKey(date, mealType) {
   return `${String(date).slice(0,10)}_${mealType}`;
 }
 
+// ── Preference helpers — localStorage cache + DB persistence ─────────────────
+function lsKey(person) { return `meal_prompts_${person || 'default'}`; }
 function loadPreferences(person) {
-  const key = `meal_prompts_${person || 'default'}`;
-  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+  try { return JSON.parse(localStorage.getItem(lsKey(person)) || '[]'); } catch { return []; }
 }
-function savePreferences(person, prefs) {
-  const key = `meal_prompts_${person || 'default'}`;
-  try { localStorage.setItem(key, JSON.stringify(prefs)); } catch {}
+function cachePreferences(person, prefs) {
+  try { localStorage.setItem(lsKey(person), JSON.stringify(prefs)); } catch {}
 }
 
 function dateRangeFor(period) {
@@ -133,11 +133,21 @@ export default function WellnessMeals() {
   const [analytics, setAnalytics] = useState(null);
   const [aLoading,  setALoading]  = useState(false);
 
-  // Reload preferences when person changes
+  // Reload preferences when person changes — instant from cache, then hydrate from DB
   useEffect(() => {
-    setPreferences(loadPreferences(currentPerson));
+    const cached = loadPreferences(currentPerson);
+    setPreferences(cached);
     setSelectedPref(null);
     setAiPrompt('');
+    api.get(`/settings/wellness-prefs?type=meal&person=${encodeURIComponent(currentPerson || '')}`)
+      .then(r => {
+        const dbPrefs = r.data?.prefs;
+        if (Array.isArray(dbPrefs)) {
+          setPreferences(dbPrefs);
+          cachePreferences(currentPerson, dbPrefs);
+        }
+      })
+      .catch(() => {}); // silently keep cache on network error
   }, [currentPerson]);
 
   // ── load week ──────────────────────────────────────────────────────────────
@@ -211,12 +221,14 @@ export default function WellnessMeals() {
     if (!text.trim()) return;
     const next = [text, ...preferences.filter(p => p !== text)].slice(0, MAX_PREFERENCES);
     setPreferences(next);
-    savePreferences(currentPerson, next);
+    cachePreferences(currentPerson, next);
+    savePrefsToDBAsync(currentPerson, next);
   }
   function deletePreference(text) {
     const next = preferences.filter(p => p !== text);
     setPreferences(next);
-    savePreferences(currentPerson, next);
+    cachePreferences(currentPerson, next);
+    savePrefsToDBAsync(currentPerson, next);
     if (selectedPref === text) setSelectedPref(null);
   }
 

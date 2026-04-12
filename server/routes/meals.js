@@ -294,6 +294,13 @@ router.post('/week/:id/generate', async (req, res) => {
     const personName = planRows[0].person_name;
     const days = getWeekDays(weekStart);
 
+    // Load saved dietary preferences for this profile from DB
+    const { rows: prefRows } = await pool.query(
+      `SELECT value FROM user_settings WHERE user_id=$1 AND key=$2`,
+      [req.user.id, `wellness_meal_prefs:${personName}`]
+    );
+    const savedPrefs = prefRows[0]?.value ? (() => { try { return JSON.parse(prefRows[0].value); } catch { return []; } })() : [];
+
     // Fetch last week's accepted plan specifically
     const prevWeekStart = (() => {
       const d = new Date(weekStart + 'T12:00:00');
@@ -350,7 +357,7 @@ Each entry object must have exactly these fields:
 
 Days to fill (Monday to Sunday): ${days.join(', ')}
 
-User's goal / feedback: ${userPrompt || 'Healthy balanced diet'}
+${savedPrefs.length ? `Standing dietary preferences for ${personName || 'this person'} (always apply these):\n${savedPrefs.map((p, i) => `  ${i + 1}. ${p}`).join('\n')}\n` : ''}This week's specific request: ${userPrompt || 'Healthy balanced diet'}
 
 ${lastWeekSummary ? `Last week's accepted meal plan (vary meals and avoid repetition):\n${lastWeekSummary}` : 'No plan from last week.'}
 
