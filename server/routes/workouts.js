@@ -234,6 +234,13 @@ router.post('/week/:id/generate', async (req, res) => {
     const personName = planRows[0].person_name;
     const days = getWeekDays(weekStart);
 
+    // Load saved workout preferences for this profile from DB
+    const { rows: prefRows } = await pool.query(
+      `SELECT value FROM user_settings WHERE user_id=$1 AND key=$2`,
+      [req.user.id, `wellness_workout_prefs:${personName}`]
+    );
+    const savedPrefs = prefRows[0]?.value ? (() => { try { return JSON.parse(prefRows[0].value); } catch { return []; } })() : [];
+
     // Fetch last week's accepted plan specifically, then older history
     const prevWeekStart = (() => {
       const d = new Date(weekStart + 'T12:00:00');
@@ -300,7 +307,7 @@ All days: ${days.join(', ')}
 Gym days (strength training): ${gymDaysList}
 Rest days: ${restDays.join(', ') || 'None'}
 
-User's goal / split preference: ${userPrompt || 'Balanced strength training'}
+${savedPrefs.length ? `Standing fitness preferences for ${personName || 'this person'} (always apply these):\n${savedPrefs.map((p, i) => `  ${i + 1}. ${p}`).join('\n')}\n` : ''}This week's specific request: ${userPrompt || 'Balanced strength training'}
 
 ${lastWeekSummary ? `Last week's accepted plan (vary exercises and progression from this):\n${lastWeekSummary}` : 'No plan from last week.'}
 

@@ -284,4 +284,41 @@ router.post('/sync-from-sheet', auth, async (req, res) => {
   }
 });
 
+// ── Wellness preferences (per-user, per-person/profile) ──────────────────────
+// Key format in user_settings: wellness_meal_prefs:{personName}
+//                               wellness_workout_prefs:{personName}
+
+router.get('/wellness-prefs', auth, async (req, res) => {
+  const type   = ['meal', 'workout'].includes(req.query.type) ? req.query.type : 'meal';
+  const person = (req.query.person || '').trim();
+  const key    = `wellness_${type}_prefs:${person}`;
+  try {
+    const { rows } = await pool.query(
+      'SELECT value FROM user_settings WHERE user_id=$1 AND key=$2',
+      [req.user.id, key]
+    );
+    res.json({ prefs: rows[0]?.value ? JSON.parse(rows[0].value) : [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/wellness-prefs', auth, async (req, res) => {
+  const { type, person, prefs } = req.body;
+  const safeType   = ['meal', 'workout'].includes(type) ? type : 'meal';
+  const safePerson = (person || '').trim();
+  const key        = `wellness_${safeType}_prefs:${safePerson}`;
+  const value      = JSON.stringify(Array.isArray(prefs) ? prefs.slice(0, 10) : []);
+  try {
+    await pool.query(
+      `INSERT INTO user_settings (user_id, key, value) VALUES ($1,$2,$3)
+       ON CONFLICT (user_id, key) DO UPDATE SET value=EXCLUDED.value`,
+      [req.user.id, key, value]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
