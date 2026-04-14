@@ -203,7 +203,6 @@ export default function WellnessMeals() {
   // Prompt state (top-level — never inside inner functions)
   const [aiPrompt,     setAiPrompt]    = useState('');
   const [preferences,  setPreferences] = useState(() => loadPreferences(activePerson || personName));
-  const [selectedPref, setSelectedPref]= useState(null);
 
   // cell edit modal
   const [editCell, setEditCell] = useState(null);
@@ -223,7 +222,6 @@ export default function WellnessMeals() {
   useEffect(() => {
     const cached = loadPreferences(currentPerson);
     setPreferences(cached);
-    setSelectedPref(null);
     setAiPrompt('');
     api.get(`/settings/wellness-prefs?type=meal&person=${encodeURIComponent(currentPerson || '')}`)
       .then(r => {
@@ -319,13 +317,12 @@ export default function WellnessMeals() {
     setPreferences(next);
     cachePreferences(currentPerson, next);
     savePrefsToDBAsync(currentPerson, next);
-    if (selectedPref === text) setSelectedPref(null);
   }
 
   async function generatePlan() {
     if (!plan) return;
     setGenerating(true); setAiError(''); setReasoning(''); setShowReasoning(false);
-    const combined = [selectedPref, aiPrompt.trim()].filter(Boolean).join(' | ');
+    const combined = aiPrompt.trim() || 'Healthy balanced diet';
     if (aiPrompt.trim()) addPreference(aiPrompt.trim());
     try {
       const { data } = await api.post(`/meals/week/${plan.id}/generate`, { prompt: combined || 'Balanced healthy diet' });
@@ -596,33 +593,23 @@ export default function WellnessMeals() {
                 <Sparkles size={12} />{generating ? 'Generating…' : 'Generate'}
               </button>
             </div>
-            {/* Saved Preferences chips */}
+            {/* Saved Preferences chips — all always sent to AI; × to remove */}
             {preferences.length > 0 && (
               <div>
-                <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5">Saved Preferences</p>
+                <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5">Saved Preferences <span className="normal-case text-purple-400/60">(all applied on generate)</span></p>
                 <div className="flex flex-wrap gap-1.5">
                   {preferences.map((pref, i) => (
-                    <div key={i}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs transition-all cursor-pointer ${
-                        selectedPref === pref
-                          ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
-                          : 'border-white/10 text-soft hover:border-purple-500/30 hover:text-white'
-                      }`}
-                      onClick={() => setSelectedPref(prev => prev === pref ? null : pref)}>
+                    <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-300 text-xs">
                       <span className="truncate max-w-[160px]">{pref}</span>
                       <button
-                        onClick={e => { e.stopPropagation(); deletePreference(pref); }}
-                        className="text-muted hover:text-red-400 transition-colors ml-0.5 flex-shrink-0">
+                        onClick={() => deletePreference(pref)}
+                        className="text-purple-400/60 hover:text-red-400 transition-colors ml-0.5 flex-shrink-0"
+                        title="Remove preference">
                         <X size={10} />
                       </button>
                     </div>
                   ))}
                 </div>
-                {selectedPref && (
-                  <p className="text-[10px] text-purple-400/70 mt-1 font-mono">
-                    Preference selected — will be combined with your prompt
-                  </p>
-                )}
               </div>
             )}
             {aiError && <p className="text-xs text-red-400">{aiError}</p>}
