@@ -587,7 +587,7 @@ export default function WellnessMeals() {
                 placeholder="e.g. High protein Indian diet, low carb, vegetarian…"
                 value={aiPrompt}
                 onChange={e => setAiPrompt(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (aiPrompt.trim()) { addPreference(aiPrompt.trim()); setAiPrompt(''); } } }}
               />
               <button onClick={generatePlan} disabled={generating}
                 className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-xs font-semibold
