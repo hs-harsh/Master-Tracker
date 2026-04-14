@@ -303,6 +303,10 @@ export default function WellnessMeals() {
     } catch (err) { console.error(err); } finally { setAccepting(false); }
   }
 
+  function savePrefsToDBAsync(person, prefs) {
+    api.put('/settings/wellness-prefs', { type: 'meal', person: person || '', prefs }).catch(() => {});
+  }
+
   function addPreference(text) {
     if (!text.trim()) return;
     const next = [text, ...preferences.filter(p => p !== text)].slice(0, MAX_PREFERENCES);
