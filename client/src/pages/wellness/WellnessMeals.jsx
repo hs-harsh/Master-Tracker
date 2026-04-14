@@ -205,6 +205,8 @@ export default function WellnessMeals() {
   const [preferences,  setPreferences] = useState(() => loadPreferences(activePerson || personName));
   const [copiedPref,   setCopiedPref]  = useState(null);
 
+  const [refreshingCell, setRefreshingCell] = useState(null); // 'date_mealtype' key
+
   // cell edit modal
   const [editCell, setEditCell] = useState(null);
   const [editData, setEditData] = useState({ title: '', notes: '', calories: '' });
@@ -381,6 +383,22 @@ export default function WellnessMeals() {
     const key  = eKey(editCell.date, editCell.mealType);
     const next = { ...entries }; delete next[key];
     setEntries(next); setEditCell(null);
+  }
+
+  async function refreshEntry(date, mealType) {
+    if (!plan || plan.status === 'accepted') return;
+    const key = eKey(date, mealType);
+    setRefreshingCell(key);
+    try {
+      const { data } = await api.post(`/meals/week/${plan.id}/regenerate-entry`, { entry_date: date, meal_type: mealType });
+      if (data?.entry) {
+        setEntries(prev => ({ ...prev, [key]: { title: data.entry.title || '', notes: data.entry.notes || '', calories: data.entry.calories != null ? String(data.entry.calories) : '' } }));
+      }
+    } catch (err) {
+      console.error('refresh entry failed', err);
+    } finally {
+      setRefreshingCell(null);
+    }
   }
 
   async function fetchNutritionBreakdown() {
@@ -685,6 +703,15 @@ export default function WellnessMeals() {
                       {entry?.title ? (
                         <div className="pr-0.5">
                           <MealPlanCardContent entry={entry} compact />
+                          {!isAccepted && (
+                            <button
+                              onClick={e => { e.stopPropagation(); refreshEntry(ds, mt.key); }}
+                              disabled={!!refreshingCell}
+                              className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md bg-white/5 hover:bg-white/10 text-muted hover:text-white"
+                              title="Get a different meal">
+                              <RefreshCw size={11} className={refreshingCell === key ? 'animate-spin text-purple-400' : ''} />
+                            </button>
+                          )}
                         </div>
                       ) : (
                         !isAccepted && (
@@ -734,9 +761,18 @@ export default function WellnessMeals() {
                         >
                           <div className="flex items-center gap-2 mb-2">
                             <mt.icon size={17} className={`shrink-0 ${mt.color}`} />
-                            <span className="text-[10px] uppercase tracking-[0.12em] text-muted font-semibold">
+                            <span className="text-[10px] uppercase tracking-[0.12em] text-muted font-semibold flex-1">
                               {mt.label}
                             </span>
+                            {!isAccepted && (
+                              <button
+                                onClick={e => { e.stopPropagation(); refreshEntry(ds, mt.key); }}
+                                disabled={!!refreshingCell}
+                                className="p-1 rounded-md text-muted hover:text-white hover:bg-white/10 transition-colors"
+                                title="Get a different meal">
+                                <RefreshCw size={12} className={refreshingCell === eKey(ds, mt.key) ? 'animate-spin text-purple-400' : ''} />
+                              </button>
+                            )}
                           </div>
                           <MealPlanCardContent entry={entry} />
                         </div>

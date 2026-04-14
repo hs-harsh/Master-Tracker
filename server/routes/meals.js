@@ -408,6 +408,106 @@ Requirements:
   }
 });
 
+// ── POST /api/meals/week/:id/regenerate-entry — refresh a single meal cell ───
+router.post('/week/:id/regenerate-entry', async (req, res) => {
+  try {
+    const planId = parseInt(req.params.id, 10);
+    const { entry_date, meal_type } = req.body;
+    if (!entry_date || !meal_type) return res.status(400).json({ error: 'entry_date and meal_type required' });
+
+    // Verify plan ownership
+    const { rows: planRows } = await pool.query(
+      `SELECT id, week_start::text AS week_start, person_name, status FROM meal_plans WHERE id=$1 AND user_id=$2`,
+      [planId, req.user.id]
+    );
+    if (!planRows[0]) return res.status(404).json({ error: 'Plan not found' });
+    if (planRows[0].status === 'accepted') return res.status(400).json({ error: 'Accepted plans cannot be modified' });
+
+    const { week_start, person_name } = planRows[0];
+
+    // Load preferences from DB
+    const { rows: prefRows } = await pool.query(
+      `SELECT value FROM user_settings WHERE user_id=$1 AND key=$2`,
+      [req.user.id, `wellness_meal_prefs:${person_name}`]
+    );
+    const savedPrefs = prefRows[0]?.value ? (() => { try { return JSON.parse(prefRows[0].value); } catch { return []; } })() : [];
+
+    // Load all current entries for this week (context: avoid repeating other meals)
+    const { rows: currentEntries } = await pool.query(
+      `SELECT entry_date::text AS entry_date, meal_type, title FROM meal_entries
+       WHERE meal_plan_id=$1 AND NOT (entry_date=$2 AND meal_type=$3)
+       ORDER BY entry_date, meal_type`,
+      [planId, entry_date, meal_type]
+    );
+
+    // Load the meal being replaced
+    const { rows: currentCell } = await pool.query(
+      `SELECT title FROM meal_entries WHERE meal_plan_id=$1 AND entry_date=$2 AND meal_type=$3`,
+      [planId, entry_date, meal_type]
+    );
+    const currentMeal = currentCell[0]?.title || null;
+
+    // Load past accepted meal history (avoid repeats from other weeks)
+    const { rows: pastEntries } = await pool.query(
+      `SELECT me.title FROM meal_entries me
+       JOIN meal_plans mp ON me.meal_plan_id = mp.id
+       WHERE me.user_id=$1 AND mp.person_name=$2 AND mp.status='accepted' AND me.meal_type=$3
+       ORDER BY me.entry_date DESC LIMIT 30`,
+      [req.user.id, person_name, meal_type]
+    );
+    const pastMeals = pastEntries.map(e => e.title);
+
+    const currentWeekSummary = currentEntries.length
+      ? currentEntries.map(e => `${e.entry_date} ${e.meal_type}: ${e.title}`).join('\n')
+      : 'No other meals planned yet.';
+
+    const apiKey = await getAnthropicApiKey();
+    if (!apiKey) return res.status(500).json({ error: 'Anthropic API key not configured in Settings' });
+
+    const systemPrompt = `You are a meal planning assistant. Return ONLY a valid JSON object, no explanation, no markdown, no code fences.
+Format: { "title": "meal name", "notes": "Protein: Xg | Carbs: Xg | Fat: Xg\\ningredients list", "calories": number_or_null }
+CRITICAL: Follow ALL dietary preferences strictly. They are hard constraints.`;
+
+    const userMessage = `Suggest a fresh alternative ${meal_type} for ${entry_date} (${new Date(entry_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' })}).
+
+${savedPrefs.length ? `⚠️ MANDATORY DIETARY PREFERENCES — MUST FOLLOW:\n${savedPrefs.map((p, i) => `  ${i + 1}. ${p}`).join('\n')}\n` : ''}${currentMeal ? `Currently planned (give something DIFFERENT): ${currentMeal}\n` : ''}
+Other meals already in this week's plan (avoid repeating these):
+${currentWeekSummary}
+
+${pastMeals.length ? `Recent ${meal_type}s from past weeks (avoid repeating):\n${pastMeals.slice(0, 15).map(t => `- ${t}`).join('\n')}\n` : ''}
+Requirements:
+- Must be different from the current meal and all meals listed above
+- title: concise meal name
+- notes: first line must be "Protein: Xg | Carbs: Xg | Fat: Xg", then newline, then brief ingredients
+- calories: estimated integer or null`;
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-20250514',
+        max_tokens: 512,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
+
+    const aiJson = await aiRes.json();
+    const raw = aiJson.content?.[0]?.text || '';
+    let entry;
+    try { entry = JSON.parse(raw); } catch {
+      const m = raw.match(/\{[\s\S]*\}/);
+      entry = m ? JSON.parse(m[0]) : null;
+    }
+    if (!entry?.title) return res.status(500).json({ error: 'AI returned invalid response' });
+
+    res.json({ entry: { entry_date, meal_type, ...entry } });
+  } catch (e) {
+    console.error('POST /meals/week/:id/regenerate-entry', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ── POST /api/meals/nutrition-breakdown — per-ingredient estimates via Claude ─
 router.post('/nutrition-breakdown', async (req, res) => {
   try {
