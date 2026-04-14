@@ -389,8 +389,19 @@ export default function WellnessMeals() {
     if (!plan || plan.status === 'accepted') return;
     const key = eKey(date, mealType);
     setRefreshingCell(key);
+    // Build current week entries from local state to send as context
+    const currentEntriesPayload = Object.entries(entries).map(([k, v]) => ({
+      entry_date: k.slice(0, 10),
+      meal_type: k.slice(11),
+      title: v.title,
+    })).filter(e => e.title);
     try {
-      const { data } = await api.post(`/meals/week/${plan.id}/regenerate-entry`, { entry_date: date, meal_type: mealType });
+      const { data } = await api.post(`/meals/week/${plan.id}/regenerate-entry`, {
+        entry_date: date,
+        meal_type: mealType,
+        current_entries: currentEntriesPayload,
+        current_meal: entries[key]?.title || null,
+      });
       if (data?.entry) {
         setEntries(prev => ({ ...prev, [key]: { title: data.entry.title || '', notes: data.entry.notes || '', calories: data.entry.calories != null ? String(data.entry.calories) : '' } }));
       }

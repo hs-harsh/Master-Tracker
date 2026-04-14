@@ -412,7 +412,7 @@ Requirements:
 router.post('/week/:id/regenerate-entry', async (req, res) => {
   try {
     const planId = parseInt(req.params.id, 10);
-    const { entry_date, meal_type } = req.body;
+    const { entry_date, meal_type, current_entries = [], current_meal = null } = req.body;
     if (!entry_date || !meal_type) return res.status(400).json({ error: 'entry_date and meal_type required' });
 
     // Verify plan ownership
@@ -432,20 +432,10 @@ router.post('/week/:id/regenerate-entry', async (req, res) => {
     );
     const savedPrefs = prefRows[0]?.value ? (() => { try { return JSON.parse(prefRows[0].value); } catch { return []; } })() : [];
 
-    // Load all current entries for this week (context: avoid repeating other meals)
-    const { rows: currentEntries } = await pool.query(
-      `SELECT entry_date::text AS entry_date, meal_type, title FROM meal_entries
-       WHERE meal_plan_id=$1 AND NOT (entry_date=$2 AND meal_type=$3)
-       ORDER BY entry_date, meal_type`,
-      [planId, entry_date, meal_type]
-    );
-
-    // Load the meal being replaced
-    const { rows: currentCell } = await pool.query(
-      `SELECT title FROM meal_entries WHERE meal_plan_id=$1 AND entry_date=$2 AND meal_type=$3`,
-      [planId, entry_date, meal_type]
-    );
-    const currentMeal = currentCell[0]?.title || null;
+    // Use client-provided entries (not saved to DB yet during draft)
+    // current_entries: array of { entry_date, meal_type, title } for the whole week
+    const otherEntries = current_entries.filter(e => !(e.entry_date === entry_date && e.meal_type === meal_type));
+    const currentMeal = current_meal || current_entries.find(e => e.entry_date === entry_date && e.meal_type === meal_type)?.title || null;
 
     // Load past accepted meal history (avoid repeats from other weeks)
     const { rows: pastEntries } = await pool.query(
@@ -457,8 +447,8 @@ router.post('/week/:id/regenerate-entry', async (req, res) => {
     );
     const pastMeals = pastEntries.map(e => e.title);
 
-    const currentWeekSummary = currentEntries.length
-      ? currentEntries.map(e => `${e.entry_date} ${e.meal_type}: ${e.title}`).join('\n')
+    const currentWeekSummary = otherEntries.length
+      ? otherEntries.map(e => `${e.entry_date} ${e.meal_type}: ${e.title}`).join('\n')
       : 'No other meals planned yet.';
 
     const apiKey = await getAnthropicApiKey();
@@ -485,7 +475,7 @@ Requirements:
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model: 'claude-haiku-4-20250514',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 512,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
