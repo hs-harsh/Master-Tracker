@@ -340,13 +340,15 @@ The object must have exactly these top-level keys:
 }
 
 Each entry object must have exactly these fields:
-{ "entry_date": "YYYY-MM-DD", "meal_type": "breakfast|lunch|dinner|snack", "title": "string", "notes": "string or null", "calories": number_or_null }`;
+{ "entry_date": "YYYY-MM-DD", "meal_type": "breakfast|lunch|dinner|snack", "title": "string", "notes": "string or null", "calories": number_or_null }
+
+CRITICAL: If the user has dietary preferences, every single meal MUST strictly follow ALL of them without exception. These are hard constraints, not suggestions.`;
 
     const userMessage = `Generate a complete 7-day meal plan for the week of ${weekStart}.
 
 Days to fill (Monday to Sunday): ${days.join(', ')}
 
-${savedPrefs.length ? `Standing dietary preferences for ${personName || 'this person'} (always apply these):\n${savedPrefs.map((p, i) => `  ${i + 1}. ${p}`).join('\n')}\n` : ''}This week's specific request: ${userPrompt || 'Healthy balanced diet'}
+${savedPrefs.length ? `⚠️ MANDATORY DIETARY PREFERENCES FOR ${(personName || 'this person').toUpperCase()} — MUST BE FOLLOWED FOR EVERY MEAL WITHOUT EXCEPTION:\n${savedPrefs.map((p, i) => `  ${i + 1}. ${p}`).join('\n')}\nDo NOT generate any meal that violates the above preferences.\n` : ''}This week's specific request: ${userPrompt || 'Healthy balanced diet'}
 
 ${lastWeekSummary ? `Last week's accepted meal plan (vary meals and avoid repetition):\n${lastWeekSummary}` : 'No plan from last week.'}
 

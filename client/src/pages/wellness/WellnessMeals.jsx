@@ -227,9 +227,13 @@ export default function WellnessMeals() {
     api.get(`/settings/wellness-prefs?type=meal&person=${encodeURIComponent(currentPerson || '')}`)
       .then(r => {
         const dbPrefs = r.data?.prefs;
-        if (Array.isArray(dbPrefs)) {
+        if (Array.isArray(dbPrefs) && dbPrefs.length > 0) {
+          // DB has data — use it as source of truth
           setPreferences(dbPrefs);
           cachePreferences(currentPerson, dbPrefs);
+        } else if (cached.length > 0) {
+          // DB is empty but localStorage has prefs — push them up to DB
+          api.put('/settings/wellness-prefs', { type: 'meal', person: currentPerson || '', prefs: cached }).catch(() => {});
         }
       })
       .catch(() => {}); // silently keep cache on network error
