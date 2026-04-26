@@ -378,27 +378,6 @@ export default function Portfolio() {
                 </time>
               </p>
             )}
-            <div className="flex items-center gap-1.5">
-              <p className="text-muted text-xs font-mono">
-                {fxFetching
-                  ? <span className="animate-pulse">Fetching FX…</span>
-                  : <>
-                      {fxRates.USD ? `$1 = ₹${fxRates.USD.toFixed(1)}` : '$1 = ₹—'}
-                      {' · '}
-                      {fxRates.GBP ? `£1 = ₹${fxRates.GBP.toFixed(1)}` : '£1 = ₹—'}
-                    </>
-                }
-              </p>
-              <button
-                type="button"
-                onClick={fetchFxRates}
-                disabled={fxFetching}
-                className="text-muted hover:text-accent transition-colors disabled:opacity-40"
-                title="Refresh FX rates"
-              >
-                <Loader2 size={11} className={fxFetching ? 'animate-spin' : ''} />
-              </button>
-            </div>
             <button
               type="button"
               onClick={handleFetchPrices}
@@ -564,7 +543,21 @@ export default function Portfolio() {
       {/* ── Per-currency breakdown ──────────────────────────────────────── */}
       {Object.keys(ccyBreakdown.inv).some(c => c !== 'INR') && (
         <div className="card">
-          <p className="stat-label mb-2 text-xs">Currency Breakdown</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="stat-label text-xs">Currency Breakdown</p>
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted text-xs font-mono">
+                {fxFetching
+                  ? <span className="animate-pulse">Fetching…</span>
+                  : <>{fxRates.USD ? `$1=₹${fxRates.USD.toFixed(1)}` : '$1=₹—'} · {fxRates.GBP ? `£1=₹${fxRates.GBP.toFixed(1)}` : '£1=₹—'}</>
+                }
+              </span>
+              <button type="button" onClick={fetchFxRates} disabled={fxFetching}
+                className="text-muted hover:text-accent transition-colors disabled:opacity-40" title="Refresh FX rates">
+                <Loader2 size={11} className={fxFetching ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs font-mono">
             {['INR', 'USD', 'GBP'].filter(c => ccyBreakdown.inv[c]).map(c => {
               const sym = c === 'INR' ? '₹' : c === 'USD' ? '$' : '£';

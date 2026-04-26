@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, Download } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown } from 'lucide-react';
 import AiEntryPanel from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
@@ -145,6 +145,7 @@ export default function Investments() {
   const [inlineEdit, setInlineEdit] = useState(null); // { id, form: {...row} }
   const [filters, setFilters] = useState({ goal: '', asset_class: '', search: '' });
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' });
 
   const currentPerson = activePerson || personName;
 
@@ -232,6 +233,8 @@ export default function Investments() {
   };
 
 
+  const handleSort = key => setSortConfig(prev => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }));
+
   const filtered = data.filter(inv => {
     if (filters.search) {
       const q = filters.search.toLowerCase();
@@ -244,6 +247,15 @@ export default function Investments() {
     }
     return true;
   });
+
+  const sorted = sortConfig.key
+    ? [...filtered].sort((a, b) => {
+        let av = a[sortConfig.key], bv = b[sortConfig.key];
+        if (['amount','qty','avg_price'].includes(sortConfig.key)) { av = Number(av ?? 0); bv = Number(bv ?? 0); }
+        else { av = String(av ?? '').toLowerCase(); bv = String(bv ?? '').toLowerCase(); }
+        return (av < bv ? -1 : av > bv ? 1 : 0) * (sortConfig.dir === 'asc' ? 1 : -1);
+      })
+    : filtered;
 
   function downloadCSV() {
     const headers = ['Date', 'Account', 'Goal', 'Asset Class', 'Instrument', 'Side', 'Amount', 'Qty', 'Avg Price', 'Broker', 'Ticker'];
@@ -363,9 +375,27 @@ export default function Investments() {
                   <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
                     className="rounded border-border bg-transparent accent-accent cursor-pointer" />
                 </th>
-                {['Date', 'Account', 'Goal', 'Asset Class', 'Instrument', 'Side', 'Ccy', 'Amount', 'Qty', 'Avg Price', 'Broker', ''].map(h => (
-                  <th key={h} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}
+                {(() => {
+                  const SortIcon = ({ k }) => sortConfig.key === k
+                    ? (sortConfig.dir === 'asc' ? <ArrowUp size={10} className="inline ml-0.5" /> : <ArrowDown size={10} className="inline ml-0.5" />)
+                    : null;
+                  const sortable = "text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap";
+                  const plain = "text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider whitespace-nowrap";
+                  return (<>
+                    <th className={sortable} onClick={() => handleSort('date')}>Date<SortIcon k="date" /></th>
+                    <th className={sortable} onClick={() => handleSort('account')}>Account<SortIcon k="account" /></th>
+                    <th className={sortable} onClick={() => handleSort('goal')}>Goal<SortIcon k="goal" /></th>
+                    <th className={sortable} onClick={() => handleSort('asset_class')}>Asset Class<SortIcon k="asset_class" /></th>
+                    <th className={sortable} onClick={() => handleSort('instrument')}>Instrument<SortIcon k="instrument" /></th>
+                    <th className={sortable} onClick={() => handleSort('side')}>Side<SortIcon k="side" /></th>
+                    <th className={plain}>Ccy</th>
+                    <th className={sortable} onClick={() => handleSort('amount')}>Amount<SortIcon k="amount" /></th>
+                    <th className={sortable} onClick={() => handleSort('qty')}>Qty<SortIcon k="qty" /></th>
+                    <th className={sortable} onClick={() => handleSort('avg_price')}>Avg Price<SortIcon k="avg_price" /></th>
+                    <th className={sortable} onClick={() => handleSort('broker')}>Broker<SortIcon k="broker" /></th>
+                    <th className={plain}></th>
+                  </>);
+                })()}
               </tr>
             </thead>
             <tbody>
@@ -374,7 +404,7 @@ export default function Investments() {
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={13} className="py-8 text-center text-muted">No investments yet</td></tr>
               ) : (
-                filtered.map(row => {
+                sorted.map(row => {
                   const isEditing = inlineEdit?.id === row.id;
                   const ef = inlineEdit?.form || {};
 
