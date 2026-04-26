@@ -65,10 +65,11 @@ Sides: ${INV_SIDES.join(', ')}
 
 RULES:
 - Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
-- Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "...", "asset_class": "...", "instrument": "...", "side": "BUY" or "SELL", "amount": <total_rupee_value>, "qty": <number_of_units_or_null>, "avg_price": <price_per_unit_or_null>, "broker": "..." }
+- Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "...", "asset_class": "...", "instrument": "...", "side": "BUY" or "SELL", "amount": <total_value_in_investment_currency>, "currency": "INR" or "USD" or "GBP", "qty": <number_of_units_or_null>, "avg_price": <price_per_unit_in_investment_currency_or_null>, "broker": "..." }
+- currency: detect from context. Use "USD" for US stocks/ETFs/$ amounts, "GBP" for UK stocks/£ amounts, "INR" (default) for Indian instruments/₹ amounts.
 - qty: number of units/shares/lots. If stated, use it. If only amount and avg_price are known, set qty = amount / avg_price (not null).
-- avg_price: price per unit. If not stated but qty and amount are known, compute avg_price = amount / qty. If only amount and avg_price are known from the user, keep both and set qty as above.
-- amount: total rupee value (qty × avg_price). Must be a positive number. Strip ₹ and commas.
+- avg_price: price per unit in the investment's currency. If not stated but qty and amount are known, compute avg_price = amount / qty. If only amount and avg_price are known from the user, keep both and set qty as above.
+- amount: total value in the investment's currency (qty × avg_price). Must be a positive number. Strip currency symbols and commas.
 - Infer asset class: stocks/shares/equity/mutual fund → Equity; bonds/fd/ppf/debt → Debt; gold/silver → Gold; crypto/bitcoin → Crypto; property/real estate → Real Estate
 - Use today's date if no date mentioned. If only month/year given (e.g. "March 2026"), use the 25th of that month.
 - If goal is not mentioned, leave it as ""
@@ -364,9 +365,12 @@ router.post('/parse', auth, async (req, res) => {
         let avg_price = e.avg_price != null && e.avg_price !== '' && Number.isFinite(Number(e.avg_price)) ? Number(e.avg_price) : null;
         if (!avg_price && qty && amount > 0) avg_price = amount / qty;
         if (!qty && avg_price && amount > 0) qty = amount / avg_price;
+        const rawCurr = (e.currency || 'INR').toUpperCase().trim();
+        const currency = ['INR', 'USD', 'GBP'].includes(rawCurr) ? rawCurr : 'INR';
         return {
           ...base,
           amount,
+          currency,
           qty: qty ? +Number(qty).toFixed(4) : null,
           avg_price: avg_price ? +Number(avg_price).toFixed(4) : null,
         };
@@ -416,9 +420,10 @@ Use the INVESTED amount (the amount actually paid / buy value / cost), NOT the c
 
 OTHER RULES:
 - Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
-- Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "", "asset_class": "...", "instrument": "...", "side": "BUY", "amount": <invested_number>, "qty": <units_or_null>, "avg_price": <avg_buy_price_or_null>, "broker": "..." }
+- Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "", "asset_class": "...", "instrument": "...", "side": "BUY", "amount": <invested_number_in_investment_currency>, "currency": "INR" or "USD" or "GBP", "qty": <units_or_null>, "avg_price": <avg_buy_price_or_null>, "broker": "..." }
+- currency: "USD" for US/international stocks (AAPL, TSLA, etc.) or $ amounts, "GBP" for UK stocks or £ amounts, "INR" (default) for Indian instruments.
 - qty: extract units from Qty/Units/Holdings when visible. If amount and avg_price are known but qty is not shown, set qty = amount / avg_price.
-- avg_price: extract average buy price (Avg Buy, Avg Cost, WAP). If qty and amount are known but avg_price not shown, compute avg_price = amount / qty.
+- avg_price: extract average buy price (Avg Buy, Avg Cost, WAP) in the investment's currency. If qty and amount are known but avg_price not shown, compute avg_price = amount / qty.
 - If multiple screenshots are provided, extract holdings from ALL of them and combine into one list. De-duplicate if the same instrument appears in multiple images.
 - One entry per instrument/holding line.
 - Infer asset class from instrument name:
@@ -429,7 +434,7 @@ OTHER RULES:
   * crypto, bitcoin → Crypto
 - Try to infer broker from the app logo/name visible in the screenshot (Zerodha, Groww, Angel, Kite, etc.), else leave ""
 - Use today's date unless a specific date is visible in the screenshot
-- Strip ₹ symbols and commas from all numbers
+- Strip currency symbols and commas from all numbers
 - If nothing can be extracted, return []`;
 
   console.log(`${tag} Calling Anthropic vision API — model=claude-sonnet-4-20250514 — ${Date.now()-t0}ms`);
@@ -498,9 +503,12 @@ OTHER RULES:
       let avg_price = e.avg_price != null && e.avg_price !== '' && Number.isFinite(Number(e.avg_price)) ? Number(e.avg_price) : null;
       if (!avg_price && qty && amount > 0) avg_price = amount / qty;
       if (!qty && avg_price && amount > 0) qty = amount / avg_price;
+      const rawCurr = (e.currency || 'INR').toUpperCase().trim();
+      const currency = ['INR', 'USD', 'GBP'].includes(rawCurr) ? rawCurr : 'INR';
       return {
         ...e,
         amount,
+        currency,
         qty: qty ? +Number(qty).toFixed(4) : null,
         avg_price: avg_price ? +Number(avg_price).toFixed(4) : null,
         account: persons.length ? resolveAccount(e.account, persons) : e.account,

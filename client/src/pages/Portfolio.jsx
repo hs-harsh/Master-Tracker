@@ -31,6 +31,7 @@ export default function Portfolio() {
   const [goalFilter, setGoalFilter] = useState('');
   const [brokerFilter, setBrokerFilter] = useState('');
   const [marketPrices, setMarketPrices] = useState({});
+  const [fxRates, setFxRates] = useState({ INR: 1 });
   const [mktAsOf, setMktAsOf] = useState(null); // YYYY-MM-DD from last saved refresh (DB)
   // Price fetch panel state
   const [showPricePanel, setShowPricePanel] = useState(false);
@@ -128,8 +129,8 @@ export default function Portfolio() {
         map[key] = {
           goal: inv.goal, account: inv.account, asset_class: inv.asset_class,
           instrument: inv.instrument, broker: inv.broker || '—',
-          ticker: inv.ticker || '', net: 0,
-          buyQty: 0, sellQty: 0, weightedSum: 0,
+          ticker: inv.ticker || '', currency: inv.currency || 'INR',
+          net: 0, buyQty: 0, sellQty: 0, weightedSum: 0,
         };
       }
       const e   = map[key];
@@ -142,6 +143,7 @@ export default function Portfolio() {
         if (price > 0 && qty > 0) e.weightedSum += price * qty;
       }
       if (inv.ticker && !e.ticker) e.ticker = inv.ticker;
+      if (inv.currency && inv.currency !== 'INR') e.currency = inv.currency;
     });
     return Object.values(map)
       .filter(r => r.net !== 0)
@@ -153,34 +155,38 @@ export default function Portfolio() {
       .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
   }, [goalInvestments]);
 
-  // ── Enrich with live market prices ───────────────────────────────────────
+  // ── Enrich with live market prices (all monetary values converted to INR) ──
   const enriched = useMemo(() => aggregated.map(row => {
+    const fx = fxRates[row.currency] || 1;        // e.g. 84.5 for USD
+    const netINR = row.net * fx;                   // invested amount in INR
+    const wavgINR = row.wavgPrice ? row.wavgPrice * fx : null;
     const mkt = marketPrices[row.instrument];
     if (mkt?.price) {
-      // Use stored netQty; if missing, estimate from net / wavgPrice; last resort: net / mktPrice
+      // Market price is in the instrument's native currency — apply same FX rate
+      const mktPriceINR = mkt.price * fx;
       let effectiveQty = row.netQty > 0
         ? row.netQty
         : (row.wavgPrice > 0 ? row.net / row.wavgPrice : 0);
-      let estimatedWavg = row.wavgPrice;
+      let estimatedWavg = wavgINR;
       let qtyEstimated = false;
-      // Last resort: if still no qty, estimate using current market price (assumes ~0% return)
       if (effectiveQty <= 0 && row.net > 0 && mkt.price > 0) {
         effectiveQty = row.net / mkt.price;
-        estimatedWavg = mkt.price;
+        estimatedWavg = mktPriceINR;
         qtyEstimated = true;
       }
       if (effectiveQty > 0) {
-        const mktValue  = mkt.price * effectiveQty;
-        const returnAmt = mktValue - row.net;
-        const returnPct = row.net > 0 ? (returnAmt / row.net * 100) : 0;
-        return { ...row, mktPrice: mkt.price, mktValue, returnAmt, returnPct, effectiveQty, estimatedWavg, qtyEstimated };
+        const mktValue  = mktPriceINR * effectiveQty;   // INR
+        const returnAmt = mktValue - netINR;
+        const returnPct = netINR > 0 ? (returnAmt / netINR * 100) : 0;
+        return { ...row, net: netINR, wavgPrice: wavgINR, mktPrice: mktPriceINR, mktValue, returnAmt, returnPct, effectiveQty, estimatedWavg, qtyEstimated, fx };
       }
-      return { ...row, mktPrice: mkt.price, mktValue: null, returnAmt: null, returnPct: null, effectiveQty: 0, estimatedWavg: null, qtyEstimated: false };
+      return { ...row, net: netINR, wavgPrice: wavgINR, mktPrice: mktPriceINR, mktValue: null, returnAmt: null, returnPct: null, effectiveQty: 0, estimatedWavg: null, qtyEstimated: false, fx };
     }
-    return { ...row, mktPrice: null, mktValue: null, returnAmt: null, returnPct: null, effectiveQty: 0, estimatedWavg: null, qtyEstimated: false };
-  }), [aggregated, marketPrices]);
+    return { ...row, net: netINR, wavgPrice: wavgINR, mktPrice: null, mktValue: null, returnAmt: null, returnPct: null, effectiveQty: 0, estimatedWavg: null, qtyEstimated: false, fx };
+  }), [aggregated, marketPrices, fxRates]);
 
-  const totalNet       = goalInvestments.reduce((s, inv) => s + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)), 0);
+  // totalNet uses enriched (which has INR-converted net values)
+  const totalNet       = enriched.reduce((s, r) => s + r.net, 0);
   const pricedCount    = enriched.filter(r => r.mktValue !== null).length;
   const hasMktData     = pricedCount > 0;
   const allPriced      = pricedCount === enriched.length && enriched.length > 0;
@@ -270,6 +276,10 @@ export default function Portfolio() {
     setFetchStatus('fetching');
     try {
       const { data: prices } = await api.post('/investments/fetch-prices', { instruments: instrumentList });
+      // Extract FX rates from response (special key __fxRates)
+      if (prices.__fxRates && typeof prices.__fxRates === 'object') {
+        setFxRates({ INR: 1, ...prices.__fxRates });
+      }
       const next = {};
       instrumentList.forEach(({ instrument }) => {
         const info = prices[instrument];
@@ -335,11 +345,16 @@ export default function Portfolio() {
                 Market values as of{' '}
                 <time dateTime={mktAsOf}>
                   {new Date(`${mktAsOf}T12:00:00`).toLocaleDateString('en-IN', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
+                    day: 'numeric', month: 'short', year: 'numeric',
                   })}
                 </time>
+              </p>
+            )}
+            {(fxRates.USD || fxRates.GBP) && (
+              <p className="text-muted text-xs font-mono">
+                {fxRates.USD ? `$1 = ₹${fxRates.USD.toFixed(1)}` : ''}
+                {fxRates.USD && fxRates.GBP ? ' · ' : ''}
+                {fxRates.GBP ? `£1 = ₹${fxRates.GBP.toFixed(1)}` : ''}
               </p>
             )}
             <button

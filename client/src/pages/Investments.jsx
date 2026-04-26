@@ -7,6 +7,8 @@ import { useAuth } from '../hooks/useAuth';
 
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const SIDES = ['BUY', 'SELL'];
+const CURRENCIES = ['INR', 'USD', 'GBP'];
+const CURRENCY_SYMBOLS = { INR: '₹', USD: '$', GBP: '£' };
 
 function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) {
   const EMPTY = {
@@ -17,6 +19,7 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
     instrument: '',
     side: 'BUY',
     amount: 0,
+    currency: 'INR',
     avg_price: '',
     ticker: '',
     broker: '',
@@ -77,7 +80,13 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
           </select>
         </div>
         <div>
-          <label className="label">Amount (₹)</label>
+          <label className="label">Currency</label>
+          <select name="currency" value={form.currency || 'INR'} onChange={onChange} className="input">
+            {CURRENCIES.map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Amount ({CURRENCY_SYMBOLS[form.currency || 'INR']})</label>
           <input type="number" name="amount" value={form.amount} onChange={onChange} className="input" />
         </div>
         <div>
@@ -353,16 +362,16 @@ export default function Investments() {
                   <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
                     className="rounded border-border bg-transparent accent-accent cursor-pointer" />
                 </th>
-                {['Date', 'Account', 'Goal', 'Asset Class', 'Instrument', 'Side', 'Amount', 'Qty', 'Avg Price', 'Broker', ''].map(h => (
+                {['Date', 'Account', 'Goal', 'Asset Class', 'Instrument', 'Side', 'Ccy', 'Amount', 'Qty', 'Avg Price', 'Broker', ''].map(h => (
                   <th key={h} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={12} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
+                <tr><td colSpan={13} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={12} className="py-8 text-center text-muted">No investments yet</td></tr>
+                <tr><td colSpan={13} className="py-8 text-center text-muted">No investments yet</td></tr>
               ) : (
                 filtered.map(row => {
                   const isEditing = inlineEdit?.id === row.id;
@@ -399,14 +408,19 @@ export default function Investments() {
                             {SIDES.map(s => <option key={s}>{s}</option>)}
                           </select>
                         </td>
+                        <td className="py-1.5 px-2 min-w-[60px]">
+                          <select value={ef.currency || 'INR'} onChange={e => setEf({ currency: e.target.value })} className={ic}>
+                            {CURRENCIES.map(c => <option key={c}>{c}</option>)}
+                          </select>
+                        </td>
                         <td className="py-1.5 px-2 min-w-[90px]"><input type="number" value={ef.amount ?? ''} onChange={e => setEf({ amount: e.target.value })} className={`${ic} font-mono`} /></td>
                         <td className="py-1.5 px-2 min-w-[90px]">
                           <div className="flex flex-col gap-0.5">
                             <input type="number" value={ef.qty ?? ''} onChange={e => setEf({ qty: e.target.value })} placeholder="Qty" className={`${ic} font-mono`} step="0.0001" />
-                            {computedAvgP && <span className="text-[10px] text-teal font-mono">₹{Number(computedAvgP).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/u</span>}
+                            {computedAvgP && <span className="text-[10px] text-teal font-mono">{CURRENCY_SYMBOLS[ef.currency || 'INR']}{Number(computedAvgP).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/u</span>}
                           </div>
                         </td>
-                        <td className="py-1.5 px-2 text-xs text-muted font-mono whitespace-nowrap">{computedAvgP ? `₹${Number(computedAvgP).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}</td>
+                        <td className="py-1.5 px-2 text-xs text-muted font-mono whitespace-nowrap">{computedAvgP ? `${CURRENCY_SYMBOLS[ef.currency || 'INR']}${Number(computedAvgP).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}</td>
                         <td className="py-1.5 px-2 min-w-[90px]"><input type="text" value={ef.broker || ''} onChange={e => setEf({ broker: e.target.value })} placeholder="Broker" className={ic} /></td>
                         <td className="py-1.5 px-2">
                           <div className="flex gap-1.5">
@@ -442,14 +456,19 @@ export default function Investments() {
                           {row.side}
                         </span>
                       </td>
+                      <td className="py-3 px-4">
+                        {row.currency && row.currency !== 'INR'
+                          ? <span className="tag text-xs bg-blue-400/10 text-blue-400">{row.currency}</span>
+                          : <span className="text-muted text-xs">INR</span>}
+                      </td>
                       <td className="py-3 px-4 font-mono text-soft">
-                        {row.side === 'SELL' ? '-' : ''}{fmt(row.amount)}
+                        {row.side === 'SELL' ? '-' : ''}{CURRENCY_SYMBOLS[row.currency || 'INR']}{Number(row.amount).toLocaleString('en-IN')}
                       </td>
                       <td className="py-3 px-4 font-mono text-soft text-xs">
                         {row.qty ? Number(row.qty).toLocaleString('en-IN', { maximumFractionDigits: 3 }) : '—'}
                       </td>
                       <td className="py-3 px-4 font-mono text-soft text-xs">
-                        {row.avg_price ? `₹${Number(row.avg_price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}
+                        {row.avg_price ? `${CURRENCY_SYMBOLS[row.currency || 'INR']}${Number(row.avg_price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}
                       </td>
                       <td className="py-3 px-4 text-soft text-xs">{row.broker || '—'}</td>
                       <td className="py-3 px-4">
