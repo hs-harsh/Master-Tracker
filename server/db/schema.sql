@@ -518,6 +518,10 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'investments' AND column_name = 'currency') THEN
     ALTER TABLE investments ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'INR';
   END IF;
+  -- Widen amount from BIGINT to NUMERIC(14,2) to support non-INR decimal amounts
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'investments' AND column_name = 'amount' AND data_type = 'bigint') THEN
+    ALTER TABLE investments ALTER COLUMN amount TYPE NUMERIC(14,2);
+  END IF;
 END $$;
 
 -- Saved portfolio LTP snapshot per user + profile account (replaces legacy user_settings JSON blob)
