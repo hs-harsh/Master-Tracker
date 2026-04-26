@@ -441,14 +441,16 @@ OTHER RULES:
 - qty: extract units from Qty/Units/Holdings when visible. If amount and avg_price are known but qty is not shown, set qty = amount / avg_price.
 - avg_price: extract average buy price (Avg Buy, Avg Cost, WAP) in the investment's currency. If qty and amount are known but avg_price not shown, compute avg_price = amount / qty.
 - If multiple screenshots are provided, extract holdings from ALL of them and combine into one list. De-duplicate if the same instrument appears in multiple images.
-- One entry per instrument/holding line.
-- Infer asset class from instrument name:
-  * NIFTYBEES, JUNIORBEES, MID150BEES, NIFTY IT ETF, equity funds → Equity
-  * GOLDBEES, Gold BeES, Gold ETF → Gold
+- One entry per holding position — do NOT create duplicate entries for the same position.
+  * IBKR / broker statements often show a ticker symbol AND a full description on the same row (e.g. "IB01" with subtitle "ISHARES US TREAS 0-1YR USD A") — extract ONE entry using the SHORT TICKER SYMBOL (IB01, CSPX, VWRA, EQQQ, IGLN, WSML, KWEB, FXC) as the instrument name, NOT the long description.
+  * If only a full name is shown without a ticker, use the full name.
+- Infer asset class from instrument name/description:
+  * NIFTYBEES, JUNIORBEES, MID150BEES, NIFTY IT ETF, equity ETFs, stocks → Equity
+  * IB01, bond ETFs, FD, PPF, debt funds → Debt
+  * GOLDBEES, Gold BeES, IGLN, SGLN, Gold ETF → Gold
   * SILVERBEES, Silver ETF → Gold
-  * bonds, FD, PPF, debt funds → Debt
   * crypto, bitcoin → Crypto
-- Try to infer broker from the app logo/name visible in the screenshot (Zerodha, Groww, Angel, Kite, etc.), else leave ""
+- Try to infer broker from the app logo/name visible in the screenshot (Zerodha, Groww, Angel, IBKR, Kite, etc.), else leave ""
 - Use today's date unless a specific date is visible in the screenshot
 - Strip currency symbols and commas from all numbers
 - If nothing can be extracted, return []`;
