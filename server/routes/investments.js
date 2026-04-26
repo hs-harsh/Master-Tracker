@@ -430,7 +430,7 @@ router.put('/:id', auth, async (req, res) => {
 // Uses AI to map unknown names → Yahoo symbols, then fetches live prices
 router.post('/fetch-prices', auth, async (req, res) => {
   const { instruments } = req.body;
-  if (!Array.isArray(instruments) || instruments.length === 0) {
+  if (!Array.isArray(instruments)) {
     return res.status(400).json({ error: 'instruments array required' });
   }
 
