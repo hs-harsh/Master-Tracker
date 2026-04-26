@@ -10,19 +10,19 @@ const MEAL_LABELS = {
 const MEAL_ICONS = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍎' };
 
 const C = {
-  pageBg: '#121212',
-  cardBg: '#141414',
-  border: '#2a2a2a',
-  text: '#ffffff',
-  muted: '#888888',
-  soft: '#a8a8a8',
-  dateGold: '#f0c040',
-  kcalGold: '#f0c040',
-  kcalFill: '#1a1500',
-  macroGreen: '#6ee7b7',
-  macroFill: '#0a1e16',
-  macroBorder: '#14532d',
-  blueAccent: '#60a5fa',
+  pageBg: '#ffffff',
+  cardBg: '#f8f9fa',
+  border: '#e2e8f0',
+  text: '#111827',
+  muted: '#6b7280',
+  soft: '#374151',
+  dateGold: '#d97706',
+  kcalGold: '#d97706',
+  kcalFill: '#fef3c7',
+  macroGreen: '#059669',
+  macroFill: '#d1fae5',
+  macroBorder: '#6ee7b7',
+  blueAccent: '#2563eb',
 };
 
 function fmtDayHeader(ds) {
