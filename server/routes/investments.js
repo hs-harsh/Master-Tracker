@@ -210,33 +210,30 @@ async function fetchFromMFAPI(instrumentName) {
 async function fetchPriceWithFallbacks(symbol, instrumentName) {
   const sym = symbol.trim();
 
+  // Helper: normalise a Yahoo Finance quote (handles GBX pence → GBP)
+  function normaliseYFQuote(quote, symbol) {
+    if (!quote?.regularMarketPrice) return null;
+    let price = quote.regularMarketPrice;
+    let currency = quote.currency || 'INR';
+    if (currency === 'GBp') { price = price / 100; currency = 'GBP'; }
+    return { price, currency, symbol, name: quote.longName || quote.shortName || symbol };
+  }
+
   // 1. Yahoo Finance — given symbol
   try {
     const quote = await yf.quote(sym);
-    if (quote?.regularMarketPrice) {
-      return {
-        price: quote.regularMarketPrice,
-        currency: quote.currency || 'INR',
-        symbol: sym,
-        name: quote.longName || quote.shortName || sym,
-      };
-    }
+    const result = normaliseYFQuote(quote, sym);
+    if (result) return result;
   } catch (e) { /* continue */ }
 
-  // 2. Yahoo Finance — try .NS / .BO variants for Indian stocks
-  const cleanSym = sym.replace(/\.(NS|BO)$/i, '').toUpperCase();
-  for (const suffix of ['.NS', '.BO']) {
+  // 2. Yahoo Finance — try .NS / .BO / .L variants
+  const cleanSym = sym.replace(/\.(NS|BO|L)$/i, '').toUpperCase();
+  for (const suffix of ['.NS', '.BO', '.L']) {
     if (sym.toUpperCase().endsWith(suffix.toUpperCase())) continue;
     try {
       const quote = await yf.quote(cleanSym + suffix);
-      if (quote?.regularMarketPrice) {
-        return {
-          price: quote.regularMarketPrice,
-          currency: quote.currency || 'INR',
-          symbol: cleanSym + suffix,
-          name: quote.longName || quote.shortName || cleanSym + suffix,
-        };
-      }
+      const result = normaliseYFQuote(quote, cleanSym + suffix);
+      if (result) return result;
     } catch (e) { /* continue */ }
   }
 
@@ -244,36 +241,34 @@ async function fetchPriceWithFallbacks(symbol, instrumentName) {
   try {
     const searchRes = await yf.search(instrumentName, { newsCount: 0, quotesCount: 10 });
     const candidates = (searchRes?.quotes || []).filter(q => q.quoteType === 'EQUITY' && q.isYahooFinance);
+    // Prefer Indian exchange listings first
     for (const c of candidates) {
       const csym = c.symbol || '';
-      // Prefer Indian exchange listings
       if (!csym.endsWith('.NS') && !csym.endsWith('.BO')) continue;
       try {
         const quote = await yf.quote(csym);
-        if (quote?.regularMarketPrice) {
-          return {
-            price: quote.regularMarketPrice,
-            currency: quote.currency || 'INR',
-            symbol: csym,
-            name: quote.longName || quote.shortName || csym,
-          };
-        }
+        const result = normaliseYFQuote(quote, csym);
+        if (result) return result;
       } catch (e) { /* continue */ }
     }
-    // If no Indian match, try first US result
+    // Then try UK LSE listings
     for (const c of candidates) {
       const csym = c.symbol || '';
-      if (csym.endsWith('.NS') || csym.endsWith('.BO')) continue;
+      if (!csym.endsWith('.L')) continue;
       try {
         const quote = await yf.quote(csym);
-        if (quote?.regularMarketPrice) {
-          return {
-            price: quote.regularMarketPrice,
-            currency: quote.currency || 'USD',
-            symbol: csym,
-            name: quote.longName || quote.shortName || csym,
-          };
-        }
+        const result = normaliseYFQuote(quote, csym);
+        if (result) return result;
+      } catch (e) { /* continue */ }
+    }
+    // Then try US / other listings
+    for (const c of candidates) {
+      const csym = c.symbol || '';
+      if (csym.endsWith('.NS') || csym.endsWith('.BO') || csym.endsWith('.L')) continue;
+      try {
+        const quote = await yf.quote(csym);
+        const result = normaliseYFQuote(quote, csym);
+        if (result) return { ...result, currency: result.currency || 'USD' };
       } catch (e) { /* continue */ }
     }
   } catch (e) {
@@ -452,13 +447,16 @@ router.post('/fetch-prices', auth, async (req, res) => {
         const apiKey = keyRows[0]?.value || process.env.ANTHROPIC_API_KEY;
         if (apiKey) {
           const prompt = `Map these investment instrument names to their Yahoo Finance ticker symbols.
-Return ONLY valid JSON like: {"Reliance Industries": "RELIANCE.NS", "Nifty 50 Index Fund": "^NSEI", "Gold": "GC=F", "Nippon India ETF Nifty IT": "NETFIT.NS"}
+Return ONLY valid JSON like: {"Reliance Industries": "RELIANCE.NS", "Nifty 50 Index Fund": "^NSEI", "Gold": "GC=F", "Nippon India ETF Nifty IT": "NETFIT.NS", "CSPX": "CSPX.L", "AAPL": "AAPL"}
 Rules:
 - Indian NSE stocks/ETFs: append .NS (e.g. RELIANCE.NS, NETFIT.NS, GOLDBEES.NS)
 - Indian BSE stocks: append .BO
 - ETFs listed on NSE use their NSE trading symbol + .NS — do NOT use mutual fund codes
 - Indian indices: ^NSEI (Nifty50), ^NSEBANK (BankNifty), ^CNXIT (IT), ^CNXPHARMA
 - Gold futures: GC=F, Silver: SI=F
+- UCITS ETFs listed on London Stock Exchange (CSPX, VUSA, IWDA, EIMI, CNDX, INRG, AGGG, XDWD, SWRD, VWRL, VHYL, etc.): append .L (e.g. CSPX.L, VUSA.L, IWDA.L)
+- UK stocks listed on LSE: append .L
+- US stocks and ETFs (AAPL, TSLA, NVDA, AMZN, SPY, QQQ, VTI, VOO, etc.): no suffix needed
 - Cash/FD/Splitwise: skip (return empty string "")
 Instruments: ${needAI.map(i => i.instrument).join(', ')}`;
 
