@@ -208,6 +208,7 @@ export default function Investments() {
         instrument:  e.instrument || '',
         side:        e.side || 'BUY',
         amount:      Number(e.amount) || 0,
+        currency:    e.currency || 'INR',
         qty:         e.qty != null && e.qty !== '' ? Number(e.qty) : null,
         avg_price:   e.avg_price != null && e.avg_price !== '' ? Number(e.avg_price) : null,
         ticker:      e.ticker || '',
