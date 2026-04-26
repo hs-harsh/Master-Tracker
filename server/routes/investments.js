@@ -6,7 +6,7 @@ const VALID_CURRENCIES = ['INR', 'USD', 'GBP'];
 
 /** When qty or avg_price is missing, derive from amount and the other field (AI parse often omits qty). */
 function normalizeInvestmentAmounts(body) {
-  const amount = Math.round(Number(body.amount) || 0);
+  const amount = +Number(body.amount || 0).toFixed(2);
   const rawQty = body.qty;
   const rawAvg = body.avg_price;
   const hasQty = rawQty != null && rawQty !== '' && Number.isFinite(Number(rawQty)) && Number(rawQty) > 0;

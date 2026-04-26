@@ -364,8 +364,7 @@ router.post('/parse', auth, async (req, res) => {
     entries = entries.map(e => {
       const base = { ...e, account: persons.length ? resolveAccount(e.account, persons) : e.account };
       if (type === 'investments') {
-        const amount = Math.round(Number(e.amount) || 0);
-        let qty = e.qty != null && e.qty !== '' && Number.isFinite(Number(e.qty)) ? Number(e.qty) : null;
+        const amount = +Number(e.amount || 0).toFixed(2);        let qty = e.qty != null && e.qty !== '' && Number.isFinite(Number(e.qty)) ? Number(e.qty) : null;
         let avg_price = e.avg_price != null && e.avg_price !== '' && Number.isFinite(Number(e.avg_price)) ? Number(e.avg_price) : null;
         if (!avg_price && qty && amount > 0) avg_price = amount / qty;
         if (!qty && avg_price && amount > 0) qty = amount / avg_price;
