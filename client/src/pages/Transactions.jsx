@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, Download } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown } from 'lucide-react';
 import AiEntryPanel, { AiEditPanel } from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
@@ -67,6 +67,9 @@ export default function Transactions() {
   const [editing, setEditing] = useState(null);
   const [filters, setFilters] = useState({ type: '', search: '' });
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' });
+
+  const handleSort = key => setSortConfig(prev => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }));
 
   const currentPerson = activePerson || personName;
 
@@ -161,6 +164,15 @@ export default function Transactions() {
 
   const totalShown = filtered.reduce((s, t) => s + Number(t.amount), 0);
 
+  const sorted = sortConfig.key
+    ? [...filtered].sort((a, b) => {
+        let av = a[sortConfig.key], bv = b[sortConfig.key];
+        if (sortConfig.key === 'amount') { av = Number(av); bv = Number(bv); }
+        else { av = String(av ?? '').toLowerCase(); bv = String(bv ?? '').toLowerCase(); }
+        return (av < bv ? -1 : av > bv ? 1 : 0) * (sortConfig.dir === 'asc' ? 1 : -1);
+      })
+    : filtered;
+
   function downloadCSV() {
     const headers = ['Date', 'Type', 'Account', 'Amount', 'Remark'];
     const rows = filtered.map(t => [
@@ -253,9 +265,19 @@ export default function Transactions() {
                   <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
                     className="rounded border-border bg-transparent accent-accent cursor-pointer" />
                 </th>
-                {['Date', 'Type', 'Account', 'Amount', 'Remark', ''].map(h => (
-                  <th key={h} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider">{h}</th>
-                ))}
+                {(() => {
+                  const SortIcon = ({ k }) => sortConfig.key === k
+                    ? (sortConfig.dir === 'asc' ? <ArrowUp size={10} className="inline ml-0.5" /> : <ArrowDown size={10} className="inline ml-0.5" />)
+                    : null;
+                  return (<>
+                    <th onClick={() => handleSort('date')} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap">Date<SortIcon k="date" /></th>
+                    <th onClick={() => handleSort('type')} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap">Type<SortIcon k="type" /></th>
+                    <th onClick={() => handleSort('account')} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap">Account<SortIcon k="account" /></th>
+                    <th onClick={() => handleSort('amount')} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap">Amount<SortIcon k="amount" /></th>
+                    <th className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider">Remark</th>
+                    <th className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider"></th>
+                  </>);
+                })()}
               </tr>
             </thead>
             <tbody>
@@ -264,7 +286,7 @@ export default function Transactions() {
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={7} className="py-8 text-center text-muted">No transactions found</td></tr>
               ) : (
-                filtered.map(row => (
+                sorted.map(row => (
                   <tr key={row.id} className={`border-b border-border/40 hover:bg-surface/50 transition-colors ${selectedIds.has(row.id) ? 'bg-accent/5' : ''}`}>
                     <td className="py-3 px-4">
                       <input type="checkbox" checked={selectedIds.has(row.id)}
