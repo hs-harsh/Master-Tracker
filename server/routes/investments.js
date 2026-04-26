@@ -505,14 +505,12 @@ Instruments: ${needAI.map(i => i.instrument).join(', ')}`;
     await Promise.allSettled([
       (async () => {
         try {
-          const yf = require('yahoo-finance2').default;
           const q = await yf.quote('USDINR=X');
           if (q?.regularMarketPrice) fxRates.USD = +q.regularMarketPrice.toFixed(4);
         } catch (_) {}
       })(),
       (async () => {
         try {
-          const yf = require('yahoo-finance2').default;
           const q = await yf.quote('GBPINR=X');
           if (q?.regularMarketPrice) fxRates.GBP = +q.regularMarketPrice.toFixed(4);
         } catch (_) {}
