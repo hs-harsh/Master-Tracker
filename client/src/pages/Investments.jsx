@@ -135,6 +135,7 @@ export default function Investments() {
   const [showForm, setShowForm] = useState(false);
   const [inlineEdit, setInlineEdit] = useState(null); // { id, form: {...row} }
   const [filters, setFilters] = useState({ goal: '', asset_class: '', search: '' });
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   const currentPerson = activePerson || personName;
 
@@ -174,6 +175,16 @@ export default function Investments() {
   const handleDelete = async id => {
     if (!confirm('Delete this investment?')) return;
     await api.delete(`/investments/${id}`);
+    setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+    load();
+    bumpDataVersion();
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!selectedIds.size) return;
+    if (!confirm(`Delete ${selectedIds.size} selected investment(s)?`)) return;
+    for (const id of selectedIds) await api.delete(`/investments/${id}`);
+    setSelectedIds(new Set());
     load();
     bumpDataVersion();
   };
@@ -251,6 +262,15 @@ export default function Investments() {
     URL.revokeObjectURL(url);
   }
 
+  const allFilteredSelected = filtered.length > 0 && filtered.every(r => selectedIds.has(r.id));
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedIds(prev => { const n = new Set(prev); filtered.forEach(r => n.delete(r.id)); return n; });
+    } else {
+      setSelectedIds(prev => { const n = new Set(prev); filtered.forEach(r => n.add(r.id)); return n; });
+    }
+  };
+
   const goals = Array.from(new Set(data.map(d => d.goal))).sort();
   const totalShown = filtered.reduce(
     (sum, inv) => sum + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)),
@@ -264,6 +284,11 @@ export default function Investments() {
           <p className="text-muted text-sm mt-0.5">Raw investment entries powering your goal-based portfolio</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          {selectedIds.size > 0 && (
+            <button onClick={handleDeleteSelected} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-rose/10 text-rose border border-rose/20 hover:bg-rose/20 transition-colors">
+              <Trash2 size={14} /> Delete {selectedIds.size} selected
+            </button>
+          )}
           <button onClick={downloadCSV} className="btn-ghost flex items-center gap-2 text-sm">
             <Download size={14} /> Export CSV
           </button>
@@ -324,6 +349,10 @@ export default function Investments() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
+                <th className="py-3 px-4 w-10">
+                  <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
+                    className="rounded border-border bg-transparent accent-accent cursor-pointer" />
+                </th>
                 {['Date', 'Account', 'Goal', 'Asset Class', 'Instrument', 'Side', 'Amount', 'Qty', 'Avg Price', 'Broker', ''].map(h => (
                   <th key={h} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
@@ -331,9 +360,9 @@ export default function Investments() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={11} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
+                <tr><td colSpan={12} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={11} className="py-8 text-center text-muted">No investments yet</td></tr>
+                <tr><td colSpan={12} className="py-8 text-center text-muted">No investments yet</td></tr>
               ) : (
                 filtered.map(row => {
                   const isEditing = inlineEdit?.id === row.id;
@@ -347,6 +376,11 @@ export default function Investments() {
                     const ic = 'input text-xs py-0.5 px-1.5 h-7 w-full';
                     return (
                       <tr key={row.id} className="border-b border-border/40 bg-surface/60">
+                        <td className="py-1.5 px-4">
+                          <input type="checkbox" checked={selectedIds.has(row.id)}
+                            onChange={() => setSelectedIds(prev => { const n = new Set(prev); n.has(row.id) ? n.delete(row.id) : n.add(row.id); return n; })}
+                            className="rounded border-border bg-transparent accent-accent cursor-pointer" />
+                        </td>
                         <td className="py-1.5 px-2 min-w-[110px]"><input type="date" value={ef.date || ''} onChange={e => setEf({ date: e.target.value })} className={ic} /></td>
                         <td className="py-1.5 px-2 min-w-[90px]">
                           <select value={ef.account || ''} onChange={e => setEf({ account: e.target.value })} className={ic}>
@@ -389,7 +423,12 @@ export default function Investments() {
                   }
 
                   return (
-                    <tr key={row.id} className="border-b border-border/40 hover:bg-surface/50 transition-colors">
+                    <tr key={row.id} className={`border-b border-border/40 hover:bg-surface/50 transition-colors ${selectedIds.has(row.id) ? 'bg-accent/5' : ''}`}>
+                      <td className="py-3 px-4">
+                        <input type="checkbox" checked={selectedIds.has(row.id)}
+                          onChange={() => setSelectedIds(prev => { const n = new Set(prev); n.has(row.id) ? n.delete(row.id) : n.add(row.id); return n; })}
+                          className="rounded border-border bg-transparent accent-accent cursor-pointer" />
+                      </td>
                       <td className="py-3 px-4 font-mono text-xs text-soft">{fmtDate(row.date)}</td>
                       <td className="py-3 px-4 text-xs"><span className="tag">{row.account}</span></td>
                       <td className="py-3 px-4 text-soft text-xs">{row.goal}</td>

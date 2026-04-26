@@ -101,20 +101,38 @@ function fmtChartDate(ds) {
 }
 
 function computeStreaks(chartData, habits) {
-  const sorted = [...chartData].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  // Build date -> day entry map for O(1) lookup
+  const dayMap = {};
+  chartData.forEach(d => { dayMap[String(d.date).slice(0, 10)] = d; });
+
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+
   const result = {};
   habits.forEach(h => {
-    let best = 0, temp = 0;
-    for (const day of sorted) {
-      if ((day[h.key] ?? 0) > 0) { temp++; if (temp > best) best = temp; }
-      else temp = 0;
-    }
+    // Current streak: consecutive calendar days back from today with score >= 3
     let current = 0;
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      if ((sorted[i][h.key] ?? 0) > 0) current++;
-      else break;
+    const cursor = new Date(today);
+    while (true) {
+      const ds = cursor.toISOString().slice(0, 10);
+      if ((dayMap[ds]?.[h.key] ?? 0) >= 3) {
+        current++;
+        cursor.setDate(cursor.getDate() - 1);
+      } else {
+        break;
+      }
     }
-    result[h.key] = { current, best };
+
+    // Last 30 calendar days: count days with score >= 3
+    let last30 = 0;
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const ds = d.toISOString().slice(0, 10);
+      if ((dayMap[ds]?.[h.key] ?? 0) >= 3) last30++;
+    }
+
+    result[h.key] = { current, last30 };
   });
   return result;
 }
@@ -642,7 +660,7 @@ export default function WellnessHabits() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {ht.map(h => {
               const Icon = ICON_MAP[h.icon] || Leaf;
-              const { current, best } = streaks[h.key] || { current: 0, best: 0 };
+              const { current, last30 } = streaks[h.key] || { current: 0, last30: 0 };
               return (
                 <div key={h.key} className={`card px-4 py-3 border ${h.ring}`}>
                   <div className="flex items-center gap-1.5 mb-2">
@@ -655,11 +673,11 @@ export default function WellnessHabits() {
                         <Flame size={13} className={current > 0 ? 'text-orange-400' : 'text-muted'} />
                         <span className={`font-mono text-xl font-bold ${current > 0 ? 'text-white' : 'text-muted'}`}>{current}</span>
                       </div>
-                      <p className="text-[10px] text-muted mt-0.5">current streak</p>
+                      <p className="text-[10px] text-muted mt-0.5">day streak</p>
                     </div>
                     <div className="text-right">
-                      <p className={`font-mono text-sm font-semibold ${h.color}`}>{best}</p>
-                      <p className="text-[10px] text-muted">best</p>
+                      <p className={`font-mono text-sm font-semibold ${h.color}`}>{last30}<span className="text-[10px] text-muted font-normal">/30</span></p>
+                      <p className="text-[10px] text-muted">last 30 days</p>
                     </div>
                   </div>
                 </div>
