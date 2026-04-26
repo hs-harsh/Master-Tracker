@@ -297,7 +297,7 @@ export default function Portfolio() {
       instrumentList.forEach(({ instrument }) => {
         const info = prices[instrument];
         if (info?.price) {
-          next[instrument] = { status: 'ok', price: info.price, symbol: info.symbol, name: info.name, source: info.source };
+          next[instrument] = { status: 'ok', price: info.price, currency: info.currency || 'INR', symbol: info.symbol, name: info.name, source: info.source };
         } else if (info?.needsManualPrice) {
           next[instrument] = { status: 'manual', symbol: info.symbol || instrument };
         } else {
@@ -452,7 +452,7 @@ export default function Portfolio() {
                             <div className="flex items-center justify-end gap-1">
                               {priceEdits[instrument] || s.price ? (
                                 <span className="font-mono text-accent">
-                                  ₹{Number(priceEdits[instrument] ?? s.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                                  {s.currency === 'USD' ? '$' : s.currency === 'GBP' ? '£' : '₹'}{Number(priceEdits[instrument] ?? s.price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                                 </span>
                               ) : (
                                 <span className="text-muted text-[10px]">{s.error || 'not found — click to enter'}</span>
