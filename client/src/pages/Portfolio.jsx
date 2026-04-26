@@ -32,6 +32,7 @@ export default function Portfolio() {
   const [brokerFilter, setBrokerFilter] = useState('');
   const [marketPrices, setMarketPrices] = useState({});
   const [fxRates, setFxRates] = useState({ INR: 1 });
+  const [fxFetching, setFxFetching] = useState(false);
   const [mktAsOf, setMktAsOf] = useState(null); // YYYY-MM-DD from last saved refresh (DB)
   // Price fetch panel state
   const [showPricePanel, setShowPricePanel] = useState(false);
@@ -109,6 +110,20 @@ export default function Portfolio() {
 
     return () => { cancelled = true; };
   }, [token, persons, activePerson, personName, dataVersion]);
+
+  // Auto-fetch FX rates on load (separate from full market price refresh)
+  const fetchFxRates = async () => {
+    setFxFetching(true);
+    try {
+      const { data: res } = await api.post('/investments/fetch-prices', { instruments: [] });
+      if (res.__fxRates && typeof res.__fxRates === 'object') {
+        setFxRates({ INR: 1, ...res.__fxRates });
+      }
+    } catch (_) { /* non-critical */ } finally {
+      setFxFetching(false);
+    }
+  };
+  useEffect(() => { if (token) fetchFxRates(); }, [token]);
 
   const goals   = useMemo(() => Array.from(new Set(data.map(d => d.goal))).sort(), [data]);
   const brokers = useMemo(() => Array.from(new Set(data.map(d => d.broker || '').filter(Boolean))).sort(), [data]);
@@ -363,13 +378,27 @@ export default function Portfolio() {
                 </time>
               </p>
             )}
-            {(fxRates.USD || fxRates.GBP) && (
+            <div className="flex items-center gap-1.5">
               <p className="text-muted text-xs font-mono">
-                {fxRates.USD ? `$1 = ₹${fxRates.USD.toFixed(1)}` : ''}
-                {fxRates.USD && fxRates.GBP ? ' · ' : ''}
-                {fxRates.GBP ? `£1 = ₹${fxRates.GBP.toFixed(1)}` : ''}
+                {fxFetching
+                  ? <span className="animate-pulse">Fetching FX…</span>
+                  : <>
+                      {fxRates.USD ? `$1 = ₹${fxRates.USD.toFixed(1)}` : '$1 = ₹—'}
+                      {' · '}
+                      {fxRates.GBP ? `£1 = ₹${fxRates.GBP.toFixed(1)}` : '£1 = ₹—'}
+                    </>
+                }
               </p>
-            )}
+              <button
+                type="button"
+                onClick={fetchFxRates}
+                disabled={fxFetching}
+                className="text-muted hover:text-accent transition-colors disabled:opacity-40"
+                title="Refresh FX rates"
+              >
+                <Loader2 size={11} className={fxFetching ? 'animate-spin' : ''} />
+              </button>
+            </div>
             <button
               type="button"
               onClick={handleFetchPrices}
