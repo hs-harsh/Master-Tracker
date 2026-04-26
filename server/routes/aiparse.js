@@ -364,15 +364,19 @@ router.post('/parse', auth, async (req, res) => {
     entries = entries.map(e => {
       const base = { ...e, account: persons.length ? resolveAccount(e.account, persons) : e.account };
       if (type === 'investments') {
-        const amount = +Number(e.amount || 0).toFixed(2);        let qty = e.qty != null && e.qty !== '' && Number.isFinite(Number(e.qty)) ? Number(e.qty) : null;
+        const amount = +Number(e.amount || 0).toFixed(2);
+        let qty = e.qty != null && e.qty !== '' && Number.isFinite(Number(e.qty)) ? Number(e.qty) : null;
         let avg_price = e.avg_price != null && e.avg_price !== '' && Number.isFinite(Number(e.avg_price)) ? Number(e.avg_price) : null;
-        if (!avg_price && qty && amount > 0) avg_price = amount / qty;
-        if (!qty && avg_price && amount > 0) qty = amount / avg_price;
+        // Recompute from qty×avg_price to avoid AI's integer rounding
+        const computed = (qty && avg_price) ? +(qty * avg_price).toFixed(2) : amount;
+        const finalAmount = computed || amount;
+        if (!avg_price && qty && finalAmount > 0) avg_price = finalAmount / qty;
+        if (!qty && avg_price && finalAmount > 0) qty = finalAmount / avg_price;
         const rawCurr = (e.currency || 'INR').toUpperCase().trim();
         const currency = ['INR', 'USD', 'GBP'].includes(rawCurr) ? rawCurr : 'INR';
         return {
           ...base,
-          amount,
+          amount: finalAmount,
           currency,
           qty: qty ? +Number(qty).toFixed(4) : null,
           avg_price: avg_price ? +Number(avg_price).toFixed(4) : null,
@@ -507,18 +511,21 @@ OTHER RULES:
     }
 
     // Snap account names to real persons so the save never 403s
-    // Round amounts to integers (investments.amount is BIGINT — no decimals allowed)
+    // Normalise amounts to 2 decimal places; recompute from qty×avg_price when AI rounded
     entries = entries.map(e => {
-      const amount = Math.round(Number(e.amount) || 0);
+      const amount = +Number(e.amount || 0).toFixed(2);
       let qty = e.qty != null && e.qty !== '' && Number.isFinite(Number(e.qty)) ? Number(e.qty) : null;
       let avg_price = e.avg_price != null && e.avg_price !== '' && Number.isFinite(Number(e.avg_price)) ? Number(e.avg_price) : null;
-      if (!avg_price && qty && amount > 0) avg_price = amount / qty;
-      if (!qty && avg_price && amount > 0) qty = amount / avg_price;
+      // If both qty and avg_price known, recompute amount to avoid AI's integer rounding
+      const computed = (qty && avg_price) ? +(qty * avg_price).toFixed(2) : amount;
+      const finalAmount = computed || amount;
+      if (!avg_price && qty && finalAmount > 0) avg_price = finalAmount / qty;
+      if (!qty && avg_price && finalAmount > 0) qty = finalAmount / avg_price;
       const rawCurr = (e.currency || 'INR').toUpperCase().trim();
       const currency = ['INR', 'USD', 'GBP'].includes(rawCurr) ? rawCurr : 'INR';
       return {
         ...e,
-        amount,
+        amount: finalAmount,
         currency,
         qty: qty ? +Number(qty).toFixed(4) : null,
         avg_price: avg_price ? +Number(avg_price).toFixed(4) : null,
