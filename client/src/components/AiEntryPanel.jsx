@@ -442,7 +442,7 @@ export function AiEditPanel({ type, persons, onEdit }) {
 // ── Main AiEntryPanel ─────────────────────────────────────────────────────────
 export default function AiEntryPanel({ type, persons, onAdd }) {
   const [open, setOpen]         = useState(false);
-  const [mode, setMode]         = useState('text');  // 'text' | 'image'
+  const [mode, setMode]         = useState(type === 'investments' ? 'image' : 'text');  // 'text' | 'image'
   const [prompt, setPrompt]     = useState('');
   const [stage, setStage]       = useState(null);   // null | 'sending'|'thinking'|'reading'|'reading-img'
   const [entries, setEntries]   = useState(null);
@@ -588,23 +588,6 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
       {open && (
         <div className="mt-4 space-y-3">
 
-          {/* Mode toggle — investments only, hidden once entries are parsed */}
-          {canImage && !entries && (
-            <div className="flex rounded-lg border border-border overflow-hidden text-xs self-start">
-              <button
-                onClick={() => { setMode('text'); setError(''); }}
-                className={`px-3 py-1.5 flex items-center gap-1.5 transition-colors ${mode === 'text' ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'}`}
-              >
-                <Sparkles size={11} /> Text
-              </button>
-              <button
-                onClick={() => { setMode('image'); setError(''); }}
-                className={`px-3 py-1.5 flex items-center gap-1.5 transition-colors ${mode === 'image' ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'}`}
-              >
-                <ImagePlus size={11} /> Screenshot
-              </button>
-            </div>
-          )}
 
           {/* ── Text input ── */}
           {mode === 'text' && (
