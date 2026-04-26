@@ -158,6 +158,7 @@ export default function Portfolio() {
   // ── Enrich with live market prices (all monetary values converted to INR) ──
   const enriched = useMemo(() => aggregated.map(row => {
     const fx = fxRates[row.currency] || 1;        // e.g. 84.5 for USD
+    const netOriginal = row.net;                   // invested amount in original currency
     const netINR = row.net * fx;                   // invested amount in INR
     const wavgINR = row.wavgPrice ? row.wavgPrice * fx : null;
     const mkt = marketPrices[row.instrument];
@@ -175,14 +176,15 @@ export default function Portfolio() {
         qtyEstimated = true;
       }
       if (effectiveQty > 0) {
-        const mktValue  = mktPriceINR * effectiveQty;   // INR
-        const returnAmt = mktValue - netINR;
-        const returnPct = netINR > 0 ? (returnAmt / netINR * 100) : 0;
-        return { ...row, net: netINR, wavgPrice: wavgINR, mktPrice: mktPriceINR, mktValue, returnAmt, returnPct, effectiveQty, estimatedWavg, qtyEstimated, fx };
+        const mktValue    = mktPriceINR * effectiveQty;   // INR
+        const mktValueOrig = mkt.price * effectiveQty;    // original currency
+        const returnAmt   = mktValue - netINR;
+        const returnPct   = netINR > 0 ? (returnAmt / netINR * 100) : 0;
+        return { ...row, net: netINR, netOriginal, wavgPrice: wavgINR, mktPrice: mktPriceINR, mktValue, mktValueOrig, returnAmt, returnPct, effectiveQty, estimatedWavg, qtyEstimated, fx };
       }
-      return { ...row, net: netINR, wavgPrice: wavgINR, mktPrice: mktPriceINR, mktValue: null, returnAmt: null, returnPct: null, effectiveQty: 0, estimatedWavg: null, qtyEstimated: false, fx };
+      return { ...row, net: netINR, netOriginal, wavgPrice: wavgINR, mktPrice: mktPriceINR, mktValue: null, mktValueOrig: null, returnAmt: null, returnPct: null, effectiveQty: 0, estimatedWavg: null, qtyEstimated: false, fx };
     }
-    return { ...row, net: netINR, wavgPrice: wavgINR, mktPrice: null, mktValue: null, returnAmt: null, returnPct: null, effectiveQty: 0, estimatedWavg: null, qtyEstimated: false, fx };
+    return { ...row, net: netINR, netOriginal, wavgPrice: wavgINR, mktPrice: null, mktValue: null, mktValueOrig: null, returnAmt: null, returnPct: null, effectiveQty: 0, estimatedWavg: null, qtyEstimated: false, fx };
   }), [aggregated, marketPrices, fxRates]);
 
   // totalNet uses enriched (which has INR-converted net values)
@@ -195,6 +197,17 @@ export default function Portfolio() {
   const totalMktValue  = enriched.filter(r => r.mktValue !== null).reduce((s, r) => s + r.mktValue, 0);
   const totalReturn    = hasMktData ? totalMktValue - pricedInvested : null;
   const totalReturnPct = totalReturn !== null && pricedInvested > 0 ? (totalReturn / pricedInvested * 100) : null;
+
+  // ── Per-currency breakdown (invested & market value in each currency) ────
+  const ccyBreakdown = useMemo(() => {
+    const inv = {}, mkt = {};
+    enriched.forEach(r => {
+      const ccy = r.currency || 'INR';
+      inv[ccy] = (inv[ccy] || 0) + r.netOriginal;
+      if (r.mktValueOrig != null) mkt[ccy] = (mkt[ccy] || 0) + r.mktValueOrig;
+    });
+    return { inv, mkt };
+  }, [enriched]);
 
   // ── Chart buckets ─────────────────────────────────────────────────────────
   const riskBuckets = {}, assetBuckets = {}, brokerBuckets = {};
@@ -518,6 +531,42 @@ export default function Portfolio() {
           <span className="font-mono text-lg font-bold" style={{ color: ASSET_COLORS.Gold }}>{(goldVal / totalAbs * 100).toFixed(1)}%</span>
         </div>
       </div>
+
+      {/* ── Per-currency breakdown ──────────────────────────────────────── */}
+      {Object.keys(ccyBreakdown.inv).some(c => c !== 'INR') && (
+        <div className="card">
+          <p className="stat-label mb-2 text-xs">Currency Breakdown</p>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs font-mono">
+            {['INR', 'USD', 'GBP'].filter(c => ccyBreakdown.inv[c]).map(c => {
+              const sym = c === 'INR' ? '₹' : c === 'USD' ? '$' : '£';
+              const inv = ccyBreakdown.inv[c] || 0;
+              const mktOrig = ccyBreakdown.mkt[c];
+              const invINR = inv * (fxRates[c] || 1);
+              const mktINR = mktOrig != null ? mktOrig * (fxRates[c] || 1) : null;
+              return (
+                <div key={c} className="flex flex-col gap-0.5">
+                  <span className="text-muted text-[10px] uppercase tracking-wider">{c}</span>
+                  <span className="text-soft">
+                    Invested: <span className="text-accent">{sym}{inv.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                    {c !== 'INR' && <span className="text-muted"> = ₹{invINR.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
+                  </span>
+                  {mktINR != null && (
+                    <span className="text-soft">
+                      Market: <span className={mktINR >= invINR ? 'text-teal' : 'text-rose'}>{sym}{mktOrig.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                      {c !== 'INR' && <span className="text-muted"> = ₹{mktINR.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+            <div className="flex flex-col gap-0.5 border-l border-border pl-6">
+              <span className="text-muted text-[10px] uppercase tracking-wider">Total (INR)</span>
+              <span className="text-soft">Invested: <span className="text-accent font-bold">{fmt(totalNet)}</span></span>
+              {hasMktData && <span className="text-soft">Market: <span className={`font-bold ${totalReturn != null && totalReturn >= 0 ? 'text-teal' : 'text-rose'}`}>{fmt(totalMktValue)}</span></span>}
+            </div>
+          </div>
+        </div>
+      )}
 
       <TradeFeedbackCard
         key={`portfolio-${goalFilter}-${enriched.filter(r => r.net > 0).length}`}

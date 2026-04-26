@@ -66,7 +66,11 @@ Sides: ${INV_SIDES.join(', ')}
 RULES:
 - Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
 - Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "...", "asset_class": "...", "instrument": "...", "side": "BUY" or "SELL", "amount": <total_value_in_investment_currency>, "currency": "INR" or "USD" or "GBP", "qty": <number_of_units_or_null>, "avg_price": <price_per_unit_in_investment_currency_or_null>, "broker": "..." }
-- currency: detect from context. Use "USD" for US stocks/ETFs/$ amounts, "GBP" for UK stocks/£ amounts, "INR" (default) for Indian instruments/₹ amounts.
+- currency: detect from context symbols and instrument names (do not default to INR blindly):
+  * "USD" for US stocks/ETFs or $ amounts (AAPL, TSLA, NVDA, SPY, QQQ, etc.)
+  * "GBP" for UK stocks/ETFs or £ amounts; UCITS ETFs (CSPX, VUSA, IWDA, EIMI, etc.) → use "GBP" if amounts are in £, "USD" if amounts are in $
+  * "INR" for Indian instruments or ₹ amounts (NSE/BSE stocks, Indian ETFs, mutual funds)
+  * When a currency symbol ($, £, ₹) appears next to an amount, always use the matching currency
 - qty: number of units/shares/lots. If stated, use it. If only amount and avg_price are known, set qty = amount / avg_price (not null).
 - avg_price: price per unit in the investment's currency. If not stated but qty and amount are known, compute avg_price = amount / qty. If only amount and avg_price are known from the user, keep both and set qty as above.
 - amount: total value in the investment's currency (qty × avg_price). Must be a positive number. Strip currency symbols and commas.
@@ -421,7 +425,14 @@ Use the INVESTED amount (the amount actually paid / buy value / cost), NOT the c
 OTHER RULES:
 - Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
 - Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "", "asset_class": "...", "instrument": "...", "side": "BUY", "amount": <invested_number_in_investment_currency>, "currency": "INR" or "USD" or "GBP", "qty": <units_or_null>, "avg_price": <avg_buy_price_or_null>, "broker": "..." }
-- currency: "USD" for US/international stocks (AAPL, TSLA, etc.) or $ amounts, "GBP" for UK stocks or £ amounts, "INR" (default) for Indian instruments.
+- currency: Inspect the screenshot carefully for currency clues (this is critical — do not default to INR blindly):
+  * Look for visible currency symbols on amounts: $ or "USD" → "USD", £ or "GBP" → "GBP", ₹ or "INR" → "INR"
+  * UCITS ETFs on LSE (CSPX, VUSA, IWDA, EIMI, CNDX, XDWD, SWRD, VWRL, VHYL, INRG, AGGG, etc.) → check the account currency shown; if amounts are in $ use "USD", if £ use "GBP"
+  * Interactive Brokers (IBKR), Schwab, eToro, Trading 212 screenshots showing US/international stocks (AAPL, TSLA, NVDA, AMZN, etc.) → "USD"
+  * Zerodha, Groww, Angel One, Kite, Upstox, INDmoney (Indian app) → "INR"
+  * UK stocks/ETFs with .L suffix or LSE listings → "GBP"
+  * If the account or portfolio currency label (e.g. "Base Currency: GBP" or "Account: USD") is visible, use that
+  * Default to "INR" only if all other clues are absent
 - qty: extract units from Qty/Units/Holdings when visible. If amount and avg_price are known but qty is not shown, set qty = amount / avg_price.
 - avg_price: extract average buy price (Avg Buy, Avg Cost, WAP) in the investment's currency. If qty and amount are known but avg_price not shown, compute avg_price = amount / qty.
 - If multiple screenshots are provided, extract holdings from ALL of them and combine into one list. De-duplicate if the same instrument appears in multiple images.

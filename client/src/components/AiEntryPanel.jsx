@@ -367,32 +367,28 @@ export function AiEditPanel({ type, persons, onEdit }) {
 
       {open && (
         <div className="mt-4 space-y-3">
-          {!operations && (
-            <>
-              <textarea
-                className="input w-full resize-none text-sm leading-relaxed"
-                rows={3}
-                placeholder={placeholder}
-                value={prompt}
-                onChange={e => setPrompt(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleParse(); }}
-              />
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleParse}
-                  disabled={parsing || !prompt.trim()}
-                  className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-50"
-                >
-                  {parsing
-                    ? <><Loader2 size={14} className="animate-spin" />Finding…</>
-                    : <><Edit2 size={14} />Find & Preview</>}
-                </button>
-                {parsing
-                  ? <StageLabel stage={stage} stages={EDIT_STAGES} />
-                  : <span className="text-xs text-muted">Ctrl+Enter to search</span>}
-              </div>
-            </>
-          )}
+          <textarea
+            className="input w-full resize-none text-sm leading-relaxed"
+            rows={3}
+            placeholder={placeholder}
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleParse(); }}
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleParse}
+              disabled={parsing || !prompt.trim()}
+              className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-50"
+            >
+              {parsing
+                ? <><Loader2 size={14} className="animate-spin" />Finding…</>
+                : <><Edit2 size={14} />{operations ? 'Re-run' : 'Find & Preview'}</>}
+            </button>
+            {parsing
+              ? <StageLabel stage={stage} stages={EDIT_STAGES} />
+              : <span className="text-xs text-muted">Ctrl+Enter to search</span>}
+          </div>
 
           {error && (
             <div className="rounded-lg bg-rose/10 border border-rose/30 px-3 py-2 text-sm text-rose flex items-center gap-2">
@@ -608,7 +604,7 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
           )}
 
           {/* ── Text input ── */}
-          {mode === 'text' && !entries && (
+          {mode === 'text' && (
             <>
               <textarea
                 className="input w-full resize-none text-sm leading-relaxed"
@@ -626,7 +622,7 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
                 >
                   {parsing
                     ? <><Loader2 size={14} className="animate-spin" />Parsing…</>
-                    : <><Sparkles size={14} />Parse</>}
+                    : <><Sparkles size={14} />{entries ? 'Re-parse' : 'Parse'}</>}
                 </button>
                 {parsing
                   ? <StageLabel stage={stage} stages={PARSE_STAGES} />
