@@ -4,7 +4,7 @@ import {
   CheckSquare, Utensils, Dumbbell,
   ChevronLeft, ChevronRight,
   Star, Leaf, Activity, Trophy, AlertTriangle, TrendingUp,
-  Settings, Plus, X, Heart, Zap, Moon, Coffee, Book, Music, Apple, Droplets, Sun,
+  Settings, Plus, X, Heart, Zap, Moon, Coffee, Book, Music, Apple, Droplets, Sun, Flame,
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -98,6 +98,25 @@ function fmtChartDate(ds) {
   const d = parseD(ds);
   if (!d || isNaN(d.getTime())) return String(ds).slice(5, 10); // fallback to MM-DD
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+function computeStreaks(chartData, habits) {
+  const sorted = [...chartData].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const result = {};
+  habits.forEach(h => {
+    let best = 0, temp = 0;
+    for (const day of sorted) {
+      if ((day[h.key] ?? 0) > 0) { temp++; if (temp > best) best = temp; }
+      else temp = 0;
+    }
+    let current = 0;
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      if ((sorted[i][h.key] ?? 0) > 0) current++;
+      else break;
+    }
+    result[h.key] = { current, best };
+  });
+  return result;
 }
 
 function generateKey(label) {
@@ -553,13 +572,15 @@ export default function WellnessHabits() {
     const alerts = buildAlerts(stats);
     const ht     = stats.habits || habitTypes;
 
-    // Chart data: per habit values + daily score
+    // Chart data: daily total score
     const chartData = stats.chartData.map(d => {
       const entry = { date: fmtChartDate(d.date) };
       ht.forEach(h => { entry[h.label] = d[h.key]; });
       entry.Score = ht.map(h => d[h.key]).filter(v => v != null && v > 0).reduce((a, b) => a + b, 0) || null;
       return entry;
     });
+
+    const streaks = computeStreaks(stats.chartData, ht);
 
     const s           = stats.stats;
     const habitsAvg   = s.habitsAvg || {};
@@ -612,22 +633,39 @@ export default function WellnessHabits() {
           })}
         </div>
 
-        {/* line chart — per habit */}
-        <div className="card p-4">
-          <p className="text-xs text-muted uppercase tracking-widest font-mono mb-4">Habit scores over time</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
-              <YAxis domain={[0, 5]} ticks={[0,1,2,3,4,5]} tick={{ fontSize: 10, fill: '#6b7280' }} />
-              <Tooltip content={<HabitTooltip />} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              {ht.map(h => (
-                <Line key={h.key} type="monotone" dataKey={h.label}
-                  stroke={h.stroke} strokeWidth={1.5} dot={false} connectNulls />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+        {/* streak cards */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Flame size={14} className="text-orange-400" />
+            <p className="text-xs text-muted uppercase tracking-widest font-mono">Habit Streaks</p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {ht.map(h => {
+              const Icon = ICON_MAP[h.icon] || Leaf;
+              const { current, best } = streaks[h.key] || { current: 0, best: 0 };
+              return (
+                <div key={h.key} className={`card px-4 py-3 border ${h.ring}`}>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Icon size={12} className={h.color} />
+                    <p className={`text-[10px] uppercase tracking-wider ${h.color} truncate`}>{h.label}</p>
+                  </div>
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <div className="flex items-center gap-1">
+                        <Flame size={13} className={current > 0 ? 'text-orange-400' : 'text-muted'} />
+                        <span className={`font-mono text-xl font-bold ${current > 0 ? 'text-white' : 'text-muted'}`}>{current}</span>
+                      </div>
+                      <p className="text-[10px] text-muted mt-0.5">current streak</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-mono text-sm font-semibold ${h.color}`}>{best}</p>
+                      <p className="text-[10px] text-muted">best</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* line chart — daily total score vs target */}

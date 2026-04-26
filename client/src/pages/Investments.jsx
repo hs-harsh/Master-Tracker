@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, Download } from 'lucide-react';
 import AiEntryPanel from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
@@ -224,6 +224,33 @@ export default function Investments() {
     return true;
   });
 
+  function downloadCSV() {
+    const headers = ['Date', 'Account', 'Goal', 'Asset Class', 'Instrument', 'Side', 'Amount', 'Qty', 'Avg Price', 'Broker', 'Ticker'];
+    const rows = filtered.map(r => [
+      r.date?.slice(0, 10) || '',
+      r.account,
+      r.goal,
+      r.asset_class,
+      r.instrument,
+      r.side,
+      r.amount,
+      r.qty ?? '',
+      r.avg_price ?? '',
+      r.broker || '',
+      r.ticker || '',
+    ]);
+    const csv = [headers, ...rows]
+      .map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `investments_${currentPerson || 'all'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   const goals = Array.from(new Set(data.map(d => d.goal))).sort();
   const totalShown = filtered.reduce(
     (sum, inv) => sum + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)),
@@ -237,6 +264,9 @@ export default function Investments() {
           <p className="text-muted text-sm mt-0.5">Raw investment entries powering your goal-based portfolio</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={downloadCSV} className="btn-ghost flex items-center gap-2 text-sm">
+            <Download size={14} /> Export CSV
+          </button>
           <button
             onClick={() => setShowForm(true)}
             className="btn-primary flex items-center gap-2"
