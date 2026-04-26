@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, Download } from 'lucide-react';
 import AiEntryPanel, { AiEditPanel } from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
@@ -141,6 +141,27 @@ export default function Transactions() {
 
   const totalShown = filtered.reduce((s, t) => s + Number(t.amount), 0);
 
+  function downloadCSV() {
+    const headers = ['Date', 'Type', 'Account', 'Amount', 'Remark'];
+    const rows = filtered.map(t => [
+      t.date?.slice(0, 10) || '',
+      t.type,
+      t.account,
+      t.amount,
+      t.remark || '',
+    ]);
+    const csv = [headers, ...rows]
+      .map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transactions_${currentPerson || 'all'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -149,6 +170,9 @@ export default function Transactions() {
           <p className="text-muted text-sm mt-0.5">All income, major, non-recurring & trip expenses</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={downloadCSV} className="btn-ghost flex items-center gap-2 text-sm">
+            <Download size={14} /> Export CSV
+          </button>
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
             <Plus size={14} /> Add Transaction
           </button>
