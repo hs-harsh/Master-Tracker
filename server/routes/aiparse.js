@@ -73,7 +73,7 @@ RULES:
   * When a currency symbol ($, £, ₹) appears next to an amount, always use the matching currency
 - qty: number of units/shares/lots. If stated, use it. If only amount and avg_price are known, set qty = amount / avg_price (not null).
 - avg_price: price per unit in the investment's currency. If not stated but qty and amount are known, compute avg_price = amount / qty. If only amount and avg_price are known from the user, keep both and set qty as above.
-- amount: total value in the investment's currency (qty × avg_price). Must be a positive number. Strip currency symbols and commas.
+- amount: total value in the investment's currency (qty × avg_price). Must be a positive number. Strip currency symbols and commas. Preserve decimal places exactly — do NOT round to integers.
 - Infer asset class: stocks/shares/equity/mutual fund → Equity; bonds/fd/ppf/debt → Debt; gold/silver → Gold; crypto/bitcoin → Crypto; property/real estate → Real Estate
 - Use today's date if no date mentioned. If only month/year given (e.g. "March 2026"), use the 25th of that month.
 - If goal is not mentioned, leave it as ""
@@ -418,8 +418,9 @@ CRITICAL RULE — AMOUNT TO USE:
 Use the INVESTED amount (the amount actually paid / buy value / cost), NOT the current market value.
 - If screenshot shows: current value ₹11,70,627 and (₹12,04,480) in parentheses → invested = 1204480
 - If screenshot shows: "Invested 4,65,879" → invested = 465879
-- If screenshot shows: Avg price × Qty (e.g. Avg 73.70, Qty 6321) → invested = 73.70 × 6321 = 466158
+- If screenshot shows: Avg price × Qty (e.g. Avg 73.70, Qty 6321) → invested = 73.70 × 6321 = 466157.70
 - Never use LTP, current value, or market value as the amount
+- PRESERVE DECIMAL PLACES exactly as shown — do NOT round to integers (e.g. 5360.25 not 5360, 4781.08 not 4781)
 
 OTHER RULES:
 - Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
