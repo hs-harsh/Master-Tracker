@@ -367,11 +367,9 @@ router.post('/parse', auth, async (req, res) => {
         const amount = +Number(e.amount || 0).toFixed(2);
         let qty = e.qty != null && e.qty !== '' && Number.isFinite(Number(e.qty)) ? Number(e.qty) : null;
         let avg_price = e.avg_price != null && e.avg_price !== '' && Number.isFinite(Number(e.avg_price)) ? Number(e.avg_price) : null;
-        // Recompute from qty×avg_price to avoid AI's integer rounding
-        const computed = (qty && avg_price) ? +(qty * avg_price).toFixed(2) : amount;
-        const finalAmount = computed || amount;
-        if (!avg_price && qty && finalAmount > 0) avg_price = finalAmount / qty;
-        if (!qty && avg_price && finalAmount > 0) qty = finalAmount / avg_price;
+        const finalAmount = amount;
+        if (!avg_price && qty && finalAmount > 0) avg_price = +(finalAmount / qty).toFixed(4);
+        if (!qty && avg_price && finalAmount > 0) qty = +(finalAmount / avg_price).toFixed(4);
         const rawCurr = (e.currency || 'INR').toUpperCase().trim();
         const currency = ['INR', 'USD', 'GBP'].includes(rawCurr) ? rawCurr : 'INR';
         return {
@@ -419,16 +417,19 @@ Available accounts (persons): ${persons.join(', ')}
 Asset classes: ${INV_CLASSES.join(', ')}
 ${note.trim() ? `\nUser note: ${note.trim()}\n` : ''}
 CRITICAL RULE — AMOUNT TO USE:
-Use the INVESTED amount (the amount actually paid / buy value / cost), NOT the current market value.
+Use the INVESTED amount (cost basis / amount paid), NOT the current market value.
+- IBKR / Interactive Brokers statement columns: "COST BASIS" = invested amount (USE THIS), "MARKET VALUE" = current value (DO NOT USE), "POSITION" = qty, "LAST" = current price (DO NOT use as avg_price)
+  → For IBKR: amount = Cost Basis value, qty = Position value, avg_price = Cost Basis ÷ Position
+- Zerodha/Groww: "Invested" or "Buy Value" = amount; "Current Value" or "LTP" = do NOT use
 - If screenshot shows: current value ₹11,70,627 and (₹12,04,480) in parentheses → invested = 1204480
 - If screenshot shows: "Invested 4,65,879" → invested = 465879
 - If screenshot shows: Avg price × Qty (e.g. Avg 73.70, Qty 6321) → invested = 73.70 × 6321 = 466157.70
-- Never use LTP, current value, or market value as the amount
-- PRESERVE DECIMAL PLACES exactly as shown — do NOT round to integers (e.g. 5360.25 not 5360, 4781.08 not 4781)
+- Never use LTP, Last price, current value, or market value as the amount
+- PRESERVE DECIMAL PLACES exactly as shown — do NOT round to integers (e.g. 5360.47 not 5360, 4780.54 not 4780)
 
 OTHER RULES:
 - Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
-- Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "", "asset_class": "...", "instrument": "...", "side": "BUY", "amount": <invested_number_in_investment_currency>, "currency": "INR" or "USD" or "GBP", "qty": <units_or_null>, "avg_price": <avg_buy_price_or_null>, "broker": "..." }
+- Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "", "asset_class": "...", "instrument": "...", "side": "BUY", "amount": <cost_basis_in_investment_currency>, "currency": "INR" or "USD" or "GBP", "qty": <position_units_or_null>, "avg_price": <cost_basis_divided_by_qty_or_null>, "broker": "..." }
 - currency: Inspect the screenshot carefully for currency clues (this is critical — do not default to INR blindly):
   * Look for visible currency symbols on amounts: $ or "USD" → "USD", £ or "GBP" → "GBP", ₹ or "INR" → "INR"
   * UCITS ETFs on LSE (CSPX, VUSA, IWDA, EIMI, CNDX, XDWD, SWRD, VWRL, VHYL, INRG, AGGG, etc.) → check the account currency shown; if amounts are in $ use "USD", if £ use "GBP"
@@ -511,16 +512,15 @@ OTHER RULES:
     }
 
     // Snap account names to real persons so the save never 403s
-    // Normalise amounts to 2 decimal places; recompute from qty×avg_price when AI rounded
     entries = entries.map(e => {
       const amount = +Number(e.amount || 0).toFixed(2);
       let qty = e.qty != null && e.qty !== '' && Number.isFinite(Number(e.qty)) ? Number(e.qty) : null;
       let avg_price = e.avg_price != null && e.avg_price !== '' && Number.isFinite(Number(e.avg_price)) ? Number(e.avg_price) : null;
-      // If both qty and avg_price known, recompute amount to avoid AI's integer rounding
-      const computed = (qty && avg_price) ? +(qty * avg_price).toFixed(2) : amount;
-      const finalAmount = computed || amount;
-      if (!avg_price && qty && finalAmount > 0) avg_price = finalAmount / qty;
-      if (!qty && avg_price && finalAmount > 0) qty = finalAmount / avg_price;
+      // Derive avg_price from cost basis ÷ qty when not explicitly provided
+      // (do NOT recompute amount from qty×avg_price — avg_price might be last/current price)
+      const finalAmount = amount;
+      if (!avg_price && qty && finalAmount > 0) avg_price = +(finalAmount / qty).toFixed(4);
+      if (!qty && avg_price && finalAmount > 0) qty = +(finalAmount / avg_price).toFixed(4);
       const rawCurr = (e.currency || 'INR').toUpperCase().trim();
       const currency = ['INR', 'USD', 'GBP'].includes(rawCurr) ? rawCurr : 'INR';
       return {
