@@ -151,11 +151,14 @@ RULES:
     { "action": "delete", "id": <number> }
 - Only reference IDs that exist in the provided data above.
 - For "update", include only the fields that need to change in "changes".
-- Match entries by their content (instrument, goal, account, broker, amount, date) based on the user's description.
+- Match entries by their content (instrument, goal, account, broker, ticker, currency, qty, avg_price, amount, date) based on the user's description.
 - STRICT AMOUNT MATCHING: If the user specifies a source amount (e.g. "from 15k", "of ₹50,000"), you MUST only match entries whose amount field EXACTLY equals that number. "15k" = 15000, "1L" = 100000. Never match entries with a different amount.
 - If the user says "update all X" or "delete all Y", return multiple operations covering all matches.
-- Apply ALL filter conditions simultaneously (asset_class AND amount AND account AND goal must all match).
+- Apply ALL filter conditions simultaneously (asset_class AND side AND currency AND amount AND account AND goal AND broker must all match when provided).
 - For date fields use YYYY-MM-DD. Amounts must be positive numbers.
+- For currency use one of: INR, USD, GBP.
+- qty and avg_price should be numbers (or null).
+- When changing qty or avg_price without changing amount: keep amount unchanged (frontend/server will normalize derived fields).
 - If nothing matches, return an empty array [].
 
 User request:
@@ -192,7 +195,7 @@ router.post('/edit', auth, async (req, res) => {
       existingEntries = rows;
     } else {
       const { rows } = await pool.query(
-        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date, account, goal, asset_class, instrument, side, amount, broker
+        `SELECT id, to_char(date, 'YYYY-MM-DD') AS date, account, goal, asset_class, instrument, side, amount, currency, qty, avg_price, ticker, broker
          FROM investments WHERE user_id = $1 ORDER BY date DESC LIMIT 500`,
         [req.user.id]
       );

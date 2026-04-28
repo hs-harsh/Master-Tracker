@@ -178,10 +178,11 @@ function OperationsTable({ operations, setOperations, type }) {
     ));
 
   const txFields  = ['date', 'type', 'account', 'amount', 'remark'];
-  const invFields = ['date', 'account', 'goal', 'asset_class', 'instrument', 'side', 'amount', 'broker'];
+  const invFields = ['date', 'account', 'goal', 'asset_class', 'instrument', 'side', 'currency', 'amount', 'qty', 'avg_price', 'ticker', 'broker'];
   const fields    = type === 'transactions' ? txFields : invFields;
 
   const fmt = v => v == null ? '—' : String(v);
+  const ccySym = (ccy) => (ccy === 'USD' ? '$' : ccy === 'GBP' ? '£' : '₹');
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
@@ -209,12 +210,16 @@ function OperationsTable({ operations, setOperations, type }) {
 
                 {/* Original entry summary — gets the extra width */}
                 <td className="py-2.5 px-3">
-                  <span className="font-mono text-white text-xs">{fmt(orig?.amount) !== '—' ? `₹${Number(orig.amount).toLocaleString('en-IN')}` : '—'}</span>
+                  <span className="font-mono text-white text-xs">
+                    {fmt(orig?.amount) !== '—'
+                      ? `${type === 'investments' ? ccySym((orig?.currency || 'INR').toUpperCase()) : '₹'}${Number(orig.amount).toLocaleString('en-IN')}`
+                      : '—'}
+                  </span>
                   <span className="text-muted mx-1.5">·</span>
                   <span className="text-muted text-xs">
                     {type === 'transactions'
                       ? `${orig?.type} · ${orig?.account} · ${orig?.date}`
-                      : `${orig?.instrument || orig?.asset_class} · ${orig?.account} · ${orig?.date}`
+                      : `${orig?.instrument || orig?.asset_class} · ${orig?.account} · ${orig?.date}${orig?.currency ? ` · ${(orig.currency || 'INR').toUpperCase()}` : ''}`
                     }
                   </span>
                   {orig?.remark && <p className="text-muted/60 mt-0.5 truncate max-w-xs">{orig.remark}</p>}
@@ -236,8 +241,12 @@ function OperationsTable({ operations, setOperations, type }) {
                             <EditCell value={val} onChange={v => updateChange(i, field, v)} options={INV_CLASSES} />
                           ) : field === 'side' ? (
                             <EditCell value={val} onChange={v => updateChange(i, field, v)} options={INV_SIDES} />
+                          ) : field === 'currency' ? (
+                            <EditCell value={(val || 'INR').toUpperCase()} onChange={v => updateChange(i, field, v)} options={['INR', 'USD', 'GBP']} />
                           ) : field === 'amount' ? (
                             <EditCell value={val} onChange={v => updateChange(i, field, Number(v))} type="number" />
+                          ) : field === 'qty' || field === 'avg_price' ? (
+                            <EditCell value={val ?? ''} onChange={v => updateChange(i, field, v === '' ? null : Number(v))} type="number" />
                           ) : field === 'date' ? (
                             <EditCell value={val} onChange={v => updateChange(i, field, v)} type="date" />
                           ) : (

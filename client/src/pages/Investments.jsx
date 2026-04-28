@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown } from 'lucide-react';
-import AiEntryPanel from '../components/AiEntryPanel';
+import AiEntryPanel, { AiEditPanel } from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
@@ -208,8 +208,8 @@ export default function Investments() {
         asset_class: e.asset_class || 'Equity',
         instrument:  e.instrument || '',
         side:        e.side || 'BUY',
-        amount:      Number(e.amount) || 0,
-        currency:    e.currency || 'INR',
+        amount:      e.amount != null && e.amount !== '' ? Number(e.amount) : 0,
+        currency:    (e.currency || 'INR').toUpperCase(),
         qty:         e.qty != null && e.qty !== '' ? Number(e.qty) : null,
         avg_price:   e.avg_price != null && e.avg_price !== '' ? Number(e.avg_price) : null,
         ticker:      e.ticker || '',
@@ -220,12 +220,28 @@ export default function Investments() {
     bumpDataVersion();
   };
 
+  function normalizeInvestmentPatch(patch) {
+    const out = { ...patch };
+    if ('amount' in out) out.amount = out.amount != null && out.amount !== '' ? Number(out.amount) : 0;
+    if ('qty' in out) out.qty = out.qty == null || out.qty === '' ? null : Number(out.qty);
+    if ('avg_price' in out) out.avg_price = out.avg_price == null || out.avg_price === '' ? null : Number(out.avg_price);
+    if ('currency' in out) out.currency = (out.currency || 'INR').toUpperCase();
+    if ('ticker' in out) out.ticker = out.ticker || '';
+    if ('goal' in out) out.goal = out.goal || '';
+    if ('broker' in out) out.broker = out.broker || '';
+    if ('instrument' in out) out.instrument = out.instrument || '';
+    if ('asset_class' in out) out.asset_class = out.asset_class || 'Equity';
+    if ('side' in out) out.side = out.side || 'BUY';
+    return out;
+  }
+
   const handleAiEdit = async (operations) => {
     for (const op of operations) {
       if (op.action === 'delete') {
         await api.delete(`/investments/${op.id}`);
       } else if (op.action === 'update' && op.changes) {
-        await api.put(`/investments/${op.id}`, { ...op.original, ...op.changes });
+        const merged = normalizeInvestmentPatch({ ...op.original, ...op.changes });
+        await api.put(`/investments/${op.id}`, merged);
       }
     }
     load();
@@ -323,7 +339,8 @@ export default function Investments() {
         </div>
       </div>
 
-      <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} onEdit={handleAiEdit} />
+      <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
+      <AiEditPanel type="investments" persons={persons.length ? persons : [personName]} onEdit={handleAiEdit} />
 
       {showForm && (
         <InvestmentForm
