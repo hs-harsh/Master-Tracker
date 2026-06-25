@@ -327,7 +327,7 @@ RULES:
 async function callClaude(prompt, maxTokens = 6000) {
   try {
     const res = await api.post('/chat', {
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }],
     });

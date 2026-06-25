@@ -126,7 +126,7 @@ If any missing field needs data outside OHLCV (VWAP, fundamentals, sentiment, et
       'content-type':      'application/json',
     },
     body: JSON.stringify({
-      model:      'claude-sonnet-4-20250514',
+      model:      'claude-sonnet-4-6',
       max_tokens: 1024,
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userMessage }],
@@ -423,7 +423,7 @@ Before you return JSON, check: every string in entry.long and exit.long (left/ri
         'content-type':      'application/json',
       },
       body: JSON.stringify({
-        model:      'claude-sonnet-4-20250514',
+        model:      'claude-sonnet-4-6',
         max_tokens: 2048,
         system:     systemPrompt,
         messages:   [{ role: 'user', content: userMessage }],

@@ -232,7 +232,7 @@ async function generateGroceryLists(entries) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 1024,
         system: `You are a meal planning assistant. Generate grocery lists from meal plans.
 Return ONLY a valid JSON object with no explanation, no markdown, no code fences:
@@ -376,7 +376,7 @@ Requirements:
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 6000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
@@ -475,7 +475,7 @@ Requirements:
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 512,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
@@ -515,7 +515,7 @@ router.post('/nutrition-breakdown', async (req, res) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         system: `You estimate nutrition for home-cooked / typical Indian and international meals.
 Return ONLY valid JSON, no markdown, no code fences:

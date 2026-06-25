@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getAnthropicApiKey } = require('../utils/anthropicKey');
 
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-4-6';
 
 // POST /api/chat — proxy for Expense Analyser (Anthropic Claude)
 router.post('/', async (req, res) => {

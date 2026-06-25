@@ -214,7 +214,7 @@ router.post('/edit', auth, async (req, res) => {
     ? buildTxEditPrompt(prompt.trim(), existingEntries, persons, todayStr)
     : buildInvEditPrompt(prompt.trim(), existingEntries, persons, todayStr);
 
-  console.log(`${tag} Calling Anthropic API — model=claude-sonnet-4-20250514 — ${Date.now()-t0}ms`);
+  console.log(`${tag} Calling Anthropic API — model=claude-sonnet-4-6 — ${Date.now()-t0}ms`);
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => {
@@ -231,7 +231,7 @@ router.post('/edit', auth, async (req, res) => {
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 2048,
           messages: [{ role: 'user', content: systemPrompt }],
         }),
@@ -305,7 +305,7 @@ router.post('/parse', auth, async (req, res) => {
     type === 'cashflow'     ? buildCashflowPrompt(prompt.trim(), persons, todayStr) :
                               buildInvPrompt(prompt.trim(), persons, todayStr);
 
-  console.log(`${tag} Calling Anthropic API — model=claude-sonnet-4-20250514 — ${Date.now()-t0}ms`);
+  console.log(`${tag} Calling Anthropic API — model=claude-sonnet-4-6 — ${Date.now()-t0}ms`);
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => {
@@ -322,7 +322,7 @@ router.post('/parse', auth, async (req, res) => {
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 4096,   // enough for 200+ row tables
           messages: [{ role: 'user', content: systemPrompt }],
         }),
@@ -458,7 +458,7 @@ OTHER RULES:
 - Strip currency symbols and commas from all numbers
 - If nothing can be extracted, return []`;
 
-  console.log(`${tag} Calling Anthropic vision API — model=claude-sonnet-4-20250514 — ${Date.now()-t0}ms`);
+  console.log(`${tag} Calling Anthropic vision API — model=claude-sonnet-4-6 — ${Date.now()-t0}ms`);
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => {
@@ -475,7 +475,7 @@ OTHER RULES:
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 2048,
           messages: [{
             role: 'user',
