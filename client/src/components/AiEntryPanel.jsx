@@ -451,7 +451,7 @@ export function AiEditPanel({ type, persons, onEdit }) {
 // ── Main AiEntryPanel ─────────────────────────────────────────────────────────
 export default function AiEntryPanel({ type, persons, onAdd }) {
   const [open, setOpen]         = useState(false);
-  const [mode, setMode]         = useState(type === 'investments' ? 'image' : 'text');  // 'text' | 'image'
+  const [mode, setMode]         = useState('text');  // 'text' | 'image' (image only for investments)
   const [prompt, setPrompt]     = useState('');
   const [stage, setStage]       = useState(null);   // null | 'sending'|'thinking'|'reading'|'reading-img'
   const [entries, setEntries]   = useState(null);
@@ -578,6 +578,20 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
 
   const handleReset = () => { setEntries(null); setError(''); setDone(false); setImages([]); setImageNote(''); };
 
+  const switchMode = (next) => {
+    if (next === mode) return;
+    setMode(next);
+    setError('');
+    setEntries(null);
+    setDone(false);
+    if (next === 'text') {
+      setImages([]);
+      setImageNote('');
+    } else {
+      setPrompt('');
+    }
+  };
+
   return (
     <div className="card border-accent/30 bg-gradient-to-br from-accent/5 to-transparent">
       <button
@@ -597,6 +611,29 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
       {open && (
         <div className="mt-4 space-y-3">
 
+          {canImage && !entries && (
+            <div className="flex gap-1 p-1 rounded-lg bg-surface/60 border border-border w-fit">
+              <button
+                type="button"
+                onClick={() => switchMode('text')}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  mode === 'text' ? 'bg-accent/20 text-accent' : 'text-muted hover:text-white'
+                }`}
+              >
+                Type description
+              </button>
+              <button
+                type="button"
+                onClick={() => switchMode('image')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  mode === 'image' ? 'bg-accent/20 text-accent' : 'text-muted hover:text-white'
+                }`}
+              >
+                <ImagePlus size={12} />
+                Screenshot (optional)
+              </button>
+            </div>
+          )}
 
           {/* ── Text input ── */}
           {mode === 'text' && (
