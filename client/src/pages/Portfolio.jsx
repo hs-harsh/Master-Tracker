@@ -27,8 +27,10 @@ export default function Portfolio() {
   const { personName, activePerson, dataVersion, token } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [goalFilter, setGoalFilter] = useState('');
-  const [brokerFilter, setBrokerFilter] = useState('');
+  const [goalFilter,   setGoalFilterRaw]   = useState(() => localStorage.getItem('portfolio_goal_filter') || '');
+  const [brokerFilter, setBrokerFilterRaw] = useState(() => localStorage.getItem('portfolio_broker_filter') || '');
+  const setGoalFilter   = (v) => { setGoalFilterRaw(v);   localStorage.setItem('portfolio_goal_filter', v); };
+  const setBrokerFilter = (v) => { setBrokerFilterRaw(v); localStorage.setItem('portfolio_broker_filter', v); };
   const [fxRates, setFxRates] = useState({ INR: 1 });
   const [fxFetching, setFxFetching] = useState(false);
   const [expandedAssets, setExpandedAssets] = useState(new Set());

@@ -104,7 +104,15 @@ export default function Investments() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [inlineEdit, setInlineEdit] = useState(null); // { id, form: {...row} }
-  const [filters, setFilters] = useState({ goal: '', asset_class: '', broker: '', search: '' });
+  const [filters, setFiltersRaw] = useState(() => {
+    try { return { goal: '', broker: '', search: '', ...JSON.parse(localStorage.getItem('investments_filters') || '{}') }; }
+    catch { return { goal: '', broker: '', search: '' }; }
+  });
+  const setFilters = (next) => setFiltersRaw(prev => {
+    const merged = typeof next === 'function' ? next(prev) : next;
+    try { localStorage.setItem('investments_filters', JSON.stringify(merged)); } catch {}
+    return merged;
+  });
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' });
 
@@ -115,7 +123,6 @@ export default function Investments() {
     const params = new URLSearchParams();
     if (currentPerson) params.append('account', currentPerson);
     if (filters.goal) params.append('goal', filters.goal);
-    if (filters.asset_class) params.append('asset_class', filters.asset_class);
     api
       .get(`/investments?${params.toString()}`)
       .then(r => setData(r.data))
@@ -125,7 +132,7 @@ export default function Investments() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPerson, filters.goal, filters.asset_class]);
+  }, [currentPerson, filters.goal]);
 
   const handleSave = async form => {
     try {
@@ -328,16 +335,12 @@ export default function Investments() {
           <option value="">All Goals</option>
           {goals.map(g => <option key={g}>{g}</option>)}
         </select>
-        <select className="input w-40" value={filters.asset_class} onChange={e => setFilters(p => ({ ...p, asset_class: e.target.value }))}>
-          <option value="">All Asset Classes</option>
-          {ASSET_CLASSES.map(a => <option key={a}>{a}</option>)}
-        </select>
         <select className="input w-40" value={filters.broker} onChange={e => setFilters(p => ({ ...p, broker: e.target.value }))}>
           <option value="">All Brokers</option>
           {brokers.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
-        {(filters.goal || filters.asset_class || filters.broker || filters.search) && (
-          <button onClick={() => setFilters({ goal: '', asset_class: '', broker: '', search: '' })} className="text-muted hover:text-white text-xs flex items-center gap-1">
+        {(filters.goal || filters.broker || filters.search) && (
+          <button onClick={() => setFilters({ goal: '', broker: '', search: '' })} className="text-muted hover:text-white text-xs flex items-center gap-1">
             <X size={12} /> Clear
           </button>
         )}
