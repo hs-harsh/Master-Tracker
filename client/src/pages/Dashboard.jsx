@@ -16,6 +16,12 @@ import { useNavigate } from 'react-router-dom';
 
 const RISK_COLORS = ['#60a5fa', '#fbbf24', '#f97316'];
 
+// Convert an investment's amount to INR using its currency and the live FX rate map.
+function toINR(inv, fxRates) {
+  const fx = fxRates?.[inv.currency || 'INR'] || 1;
+  return Number(inv.amount) * fx;
+}
+
 const TT = {
   contentStyle: { background: '#0f1117', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, fontSize: 12, color: '#e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' },
   labelStyle:   { color: '#8b95a5', marginBottom: 4, fontWeight: 600 },
@@ -179,13 +185,13 @@ function buildAlerts(cashflowData, investments, corpusGap) {
 }
 
 // ── Corpus vs Invested chart ──────────────────────────────────────────────────
-function CorpusVsInvestedChart({ cashflowData, investments, allCashflowData }) {
+function CorpusVsInvestedChart({ cashflowData, investments, allCashflowData, fxRates }) {
   // Build cumulative investments by month — needs to be keyed against ALL history,
   // but we only display the sliced window.
   const invByMonth = {};
   (investments || []).forEach(inv => {
     const mk = inv.date.slice(0, 7);
-    const a  = inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount);
+    const a  = inv.side === 'SELL' ? -toINR(inv, fxRates) : toINR(inv, fxRates);
     invByMonth[mk] = (invByMonth[mk] || 0) + a;
   });
 
@@ -306,7 +312,7 @@ function RangePills({ range, setRange }) {
 }
 
 // ── Full person panel ─────────────────────────────────────────────────────────
-function PersonPanel({ person, cashflowData, investments }) {
+function PersonPanel({ person, cashflowData, investments, fxRates }) {
   const [range, setRangeRaw] = useState(() => localStorage.getItem(FINANCE_RANGE_KEY) || '1Y');
   const setRange = (r) => { setRangeRaw(r); localStorage.setItem(FINANCE_RANGE_KEY, r); };
   const color   = colorFor(person);
@@ -317,7 +323,7 @@ function PersonPanel({ person, cashflowData, investments }) {
   const netAsset     = Number(latest?.net_asset || 0);
   const corpus       = Number(latest?.corpus    || 0);
   const totalInvested = (investments || []).reduce(
-    (s, inv) => s + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)), 0
+    (s, inv) => s + (inv.side === 'SELL' ? -toINR(inv, fxRates) : toINR(inv, fxRates)), 0
   );
   const corpusGap = corpus - totalInvested; // positive = undeployed, negative = investments > corpus (returns!)
 
@@ -418,7 +424,7 @@ function PersonPanel({ person, cashflowData, investments }) {
 
       {/* Corpus vs Invested + Savings Rate */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 fade-up">
-        <CorpusVsInvestedChart cashflowData={slicedCashflow} investments={investments} allCashflowData={cashflowData} />
+        <CorpusVsInvestedChart cashflowData={slicedCashflow} investments={investments} allCashflowData={cashflowData} fxRates={fxRates} />
         <SavingsRateChart cashflowData={slicedCashflow} />
       </div>
 
@@ -492,14 +498,14 @@ function PersonPanel({ person, cashflowData, investments }) {
 }
 
 /* ── Compact view (multi-person sidebar) ──────────────────────────────────── */
-function PersonPanelCompact({ person, cashflowData, investments }) {
+function PersonPanelCompact({ person, cashflowData, investments, fxRates }) {
   const color  = colorFor(person);
   const latest = cashflowData[cashflowData.length - 1];
   const prev   = cashflowData[cashflowData.length - 2];
   const netAssetTrend = latest && prev
     ? ((Number(latest.net_asset) - Number(prev.net_asset)) / Math.abs(Number(prev.net_asset) || 1)) * 100 : 0;
   const totalInvested = (investments || []).reduce(
-    (s, inv) => s + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)), 0
+    (s, inv) => s + (inv.side === 'SELL' ? -toINR(inv, fxRates) : toINR(inv, fxRates)), 0
   );
   const cfData = cashflowData.slice(-12).map(r => ({
     month:   fmtDate(r.month),
@@ -539,10 +545,11 @@ function PersonPanelCompact({ person, cashflowData, investments }) {
 
 /* ── Dashboard page ──────────────────────────────────────────────────────── */
 export default function Dashboard() {
-  const { personName, persons, activePerson, setActivePerson } = useAuth();
+  const { personName, persons, activePerson, setActivePerson, token } = useAuth();
   const [cashflowMap, setCashflowMap]   = useState({});
   const [investmentsMap, setInvestmentsMap] = useState({});
   const [loading, setLoading]           = useState(true);
+  const [fxRates, setFxRates]           = useState({ INR: 1 });
 
   const currentPerson = activePerson || personName;
 
@@ -566,6 +573,14 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, [persons]);
 
+  // Live USD/GBP → INR rates, so "Total Invested" sums all currencies correctly.
+  useEffect(() => {
+    if (!token) return;
+    api.get('/investments/fx-rates')
+      .then(({ data }) => setFxRates({ INR: 1, ...data }))
+      .catch(() => {});
+  }, [token]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -586,6 +601,7 @@ export default function Dashboard() {
         person={currentPerson}
         cashflowData={cashflowMap[currentPerson] || []}
         investments={investmentsMap[currentPerson] || []}
+        fxRates={fxRates}
       />
     </div>
   );
