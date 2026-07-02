@@ -368,4 +368,90 @@ Requirements:
   }
 });
 
+// ── POST /api/workouts/week/:id/ai-log ────────────────────────────────────────
+// Parses a free-text description of a single day's workout (e.g. "Chest day —
+// bench press 20kg 4x8, incline DB press 15kg 3x10") into a structured entry.
+router.post('/week/:id/ai-log', async (req, res) => {
+  try {
+    const planId = parseInt(req.params.id, 10);
+    const { prompt: userPrompt, entry_date } = req.body;
+    if (!userPrompt || !String(userPrompt).trim()) {
+      return res.status(400).json({ error: 'prompt required' });
+    }
+    if (!entry_date) return res.status(400).json({ error: 'entry_date required' });
+
+    const { rows: planRows } = await pool.query(
+      `SELECT id, status FROM workout_plans WHERE id=$1 AND user_id=$2`,
+      [planId, req.user.id]
+    );
+    if (!planRows[0]) return res.status(404).json({ error: 'Plan not found' });
+    if (planRows[0].status === 'accepted')
+      return res.status(400).json({ error: 'Accepted plans cannot be edited — reset to draft first' });
+
+    const systemPrompt = `You are a fitness log parser. The user describes a workout they already performed on a single day, in free text. Convert it into structured JSON.
+Return ONLY a valid JSON object with no explanation, no markdown, no code fences.
+{
+  "workout_type": "strength|cardio|flexibility|rest",
+  "title": "short title, e.g. 'Chest Day' or 'Push Day — Chest & Triceps'",
+  "duration": number_or_null,
+  "exercises": [ { "name": "Bench Press", "weight": "20kg", "sets": 4, "reps": "8" } ]
+}
+
+Rules:
+- Preserve weight exactly as the user stated it, including unit (kg/lb); use null if bodyweight/not mentioned.
+- sets is a number if stated, else null. reps can be a string like "8-12" or "10", else null.
+- workout_type: "strength" for weight training, "cardio" for running/cycling/etc, "flexibility" for yoga/stretching, "rest" if described as a rest day.
+- duration: total minutes if mentioned, else null.
+- If it's a rest day or no exercises are described, exercises should be an empty array.`;
+
+    const userMessage = `Workout description for ${entry_date}: "${String(userPrompt).trim()}"`;
+
+    const apiKey = await getAnthropicApiKey();
+    if (!apiKey) return res.status(500).json({ error: 'Anthropic API key not configured in Settings' });
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
+
+    const aiData = await aiRes.json();
+    if (!aiRes.ok) return res.status(aiRes.status).json({ error: aiData?.error?.message || 'AI error' });
+
+    let raw = aiData.content?.[0]?.text || '{}';
+    raw = raw.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\{[\s\S]*\}/);
+      parsed = match ? JSON.parse(match[0]) : null;
+    }
+    if (!parsed) return res.status(422).json({ error: 'Could not parse AI response' });
+
+    const exercises = Array.isArray(parsed.exercises) ? parsed.exercises : [];
+    const entry = {
+      entry_date: String(entry_date).slice(0, 10),
+      workout_type: parsed.workout_type || 'strength',
+      title: parsed.title || null,
+      notes: JSON.stringify(exercises),
+      duration: parsed.duration != null ? parseInt(parsed.duration, 10) || null : null,
+    };
+    res.json({ entry });
+  } catch (e) {
+    console.error('POST /workouts/week/:id/ai-log', e);
+    res.status(500).json({ error: e.message || 'Server error' });
+  }
+});
+
 module.exports = router;
