@@ -524,18 +524,6 @@ BEGIN
   END IF;
 END $$;
 
--- Saved portfolio LTP snapshot per user + profile account (replaces legacy user_settings JSON blob)
-CREATE TABLE IF NOT EXISTS portfolio_market_snapshots (
-  id SERIAL PRIMARY KEY,
-  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  account VARCHAR(50) NOT NULL DEFAULT '',
-  as_of DATE NOT NULL,
-  prices JSONB NOT NULL DEFAULT '{}',
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (user_id, account)
-);
-CREATE INDEX IF NOT EXISTS idx_portfolio_market_snapshots_user ON portfolio_market_snapshots(user_id);
-
 -- Latest Expense Analyser compiled report (survives refresh / relogin)
 CREATE TABLE IF NOT EXISTS expense_analyser_snapshots (
   user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

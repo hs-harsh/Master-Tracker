@@ -204,4 +204,4 @@ async function searchStocks(query) {
   }
 }
 
-module.exports = { getPriceData, getPriceHistory, searchStocks, getSymbol, ALL_SYMBOLS };
+module.exports = { getPriceData, getPriceHistory, searchStocks, getSymbol, ALL_SYMBOLS, getYf };
