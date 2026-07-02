@@ -3,7 +3,7 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, Legend,
 } from 'recharts';
-import { PieChart as PieIcon, Target, Wallet, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { PieChart as PieIcon, Target, Wallet, Loader2, ChevronDown, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 import TradeFeedbackCard from '../components/TradeFeedbackCard';
@@ -33,6 +33,8 @@ export default function Portfolio() {
   const [fxFetching, setFxFetching] = useState(false);
   const [expandedAssets, setExpandedAssets] = useState(new Set());
   const [expandedInstruments, setExpandedInstruments] = useState(new Set());
+  const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' });
+  const handleSort = key => setSortConfig(prev => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }));
 
   const toggleAsset = (assetClass) => setExpandedAssets(prev => {
     const next = new Set(prev);
@@ -102,7 +104,7 @@ export default function Portfolio() {
   }, [data]);
   const assetClassFor = inv => canonicalAssetClass[inv.instrument] || inv.asset_class;
 
-  // ── Aggregated positions with weighted avg price ──────────────────────────
+  // ── Aggregated positions ────────────────────────────────────────────────────
   const aggregated = useMemo(() => {
     const map = {};
     goalInvestments.forEach(inv => {
@@ -113,35 +115,25 @@ export default function Portfolio() {
           goal: inv.goal, account: inv.account, asset_class: assetClass,
           instrument: inv.instrument, broker: inv.broker || '—',
           ticker: inv.ticker || '', currency: inv.currency || 'INR',
-          net: 0, buyQty: 0, sellQty: 0, weightedSum: 0,
+          net: 0,
         };
       }
       const e   = map[key];
       const amt = Number(inv.amount);
-      const qty = inv.qty ? Number(inv.qty) : 0;
-      const price = inv.avg_price ? Number(inv.avg_price) : 0;
-      if (inv.side === 'SELL') { e.net -= amt; e.sellQty += qty; }
-      else {
-        e.net += amt; e.buyQty += qty;
-        if (price > 0 && qty > 0) e.weightedSum += price * qty;
-      }
+      if (inv.side === 'SELL') e.net -= amt;
+      else e.net += amt;
       if (inv.ticker && !e.ticker) e.ticker = inv.ticker;
       if (inv.currency && inv.currency !== 'INR') e.currency = inv.currency;
     });
     return Object.values(map)
       .filter(r => r.net !== 0)
-      .map(r => ({
-        ...r,
-        netQty:    Math.max(0, r.buyQty - r.sellQty),
-        wavgPrice: r.buyQty > 0 && r.weightedSum > 0 ? r.weightedSum / r.buyQty : null,
-      }))
       .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
   }, [goalInvestments, canonicalAssetClass]);
 
   // ── Convert invested amounts to INR using live FX rate (per position's currency) ──
   const enriched = useMemo(() => aggregated.map(row => {
     const fx = fxRates[row.currency] || 1;
-    return { ...row, netOriginal: row.net, net: row.net * fx, wavgPrice: row.wavgPrice ? row.wavgPrice * fx : null, fx };
+    return { ...row, netOriginal: row.net, net: row.net * fx, fx };
   }), [aggregated, fxRates]);
 
   const totalNet = enriched.reduce((s, r) => s + r.net, 0);
@@ -200,6 +192,15 @@ export default function Portfolio() {
   const goldVal   = Math.max(0, assetBuckets.Gold || 0) + Math.max(0, assetBuckets['Real Estate'] || 0);
   const cashVal   = Math.max(0, assetBuckets.Cash || 0);
   const totalAbs  = equityVal + debtVal + goldVal + cashVal || 1;
+
+  const sortedHoldings = sortConfig.key
+    ? [...enriched].sort((a, b) => {
+        let av = a[sortConfig.key], bv = b[sortConfig.key];
+        if (sortConfig.key === 'net') { av = Number(av ?? 0); bv = Number(bv ?? 0); }
+        else { av = String(av ?? '').toLowerCase(); bv = String(bv ?? '').toLowerCase(); }
+        return (av < bv ? -1 : av > bv ? 1 : 0) * (sortConfig.dir === 'asc' ? 1 : -1);
+      })
+    : enriched;
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -438,32 +439,37 @@ export default function Portfolio() {
 
       {/* Full holdings table */}
       <div className="card overflow-hidden">
-        <p className="text-muted text-xs mb-3">All positions — net (BUY − SELL) & weighted avg price</p>
+        <p className="text-muted text-xs mb-3">All positions — net (BUY − SELL)</p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                {['Goal', 'Instrument', 'Asset', 'W.Avg', 'Net Invested', 'Broker'].map(h => (
-                  <th key={h} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}
+                {(() => {
+                  const SortIcon = ({ k }) => sortConfig.key === k
+                    ? (sortConfig.dir === 'asc' ? <ArrowUp size={10} className="inline ml-0.5" /> : <ArrowDown size={10} className="inline ml-0.5" />)
+                    : null;
+                  const sortable = "text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap";
+                  return (<>
+                    <th className={sortable} onClick={() => handleSort('goal')}>Goal<SortIcon k="goal" /></th>
+                    <th className={sortable} onClick={() => handleSort('instrument')}>Instrument<SortIcon k="instrument" /></th>
+                    <th className={sortable} onClick={() => handleSort('asset_class')}>Asset<SortIcon k="asset_class" /></th>
+                    <th className={sortable} onClick={() => handleSort('net')}>Net Invested<SortIcon k="net" /></th>
+                    <th className={sortable} onClick={() => handleSort('broker')}>Broker<SortIcon k="broker" /></th>
+                  </>);
+                })()}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
-              ) : enriched.length === 0 ? (
-                <tr><td colSpan={6} className="py-8 text-center text-muted">{goalFilter || brokerFilter ? 'No positions for this filter' : 'No investments yet'}</td></tr>
+                <tr><td colSpan={5} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
+              ) : sortedHoldings.length === 0 ? (
+                <tr><td colSpan={5} className="py-8 text-center text-muted">{goalFilter || brokerFilter ? 'No positions for this filter' : 'No investments yet'}</td></tr>
               ) : (
-                enriched.map((row, i) => (
+                sortedHoldings.map((row, i) => (
                   <tr key={i} className="border-b border-border/40 hover:bg-surface/40 transition-colors">
                     <td className="py-3 px-4 text-xs text-soft">{row.goal}</td>
                     <td className="py-3 px-4 text-xs text-soft max-w-[160px] truncate">{row.instrument}</td>
                     <td className="py-3 px-4 text-xs"><span className="tag bg-card/60">{row.asset_class}</span></td>
-                    <td className="py-3 px-4 font-mono text-xs text-soft">
-                      {row.wavgPrice
-                        ? `₹${row.wavgPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
-                        : '—'}
-                    </td>
                     <td className="py-3 px-4 font-mono text-soft">{row.net >= 0 ? '' : '−'}{fmt(Math.abs(row.net))}</td>
                     <td className="py-3 px-4 text-xs text-muted">{row.broker}</td>
                   </tr>

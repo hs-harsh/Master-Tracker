@@ -104,7 +104,7 @@ export default function Investments() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [inlineEdit, setInlineEdit] = useState(null); // { id, form: {...row} }
-  const [filters, setFilters] = useState({ goal: '', asset_class: '', search: '' });
+  const [filters, setFilters] = useState({ goal: '', asset_class: '', broker: '', search: '' });
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' });
 
@@ -213,6 +213,7 @@ export default function Investments() {
   const handleSort = key => setSortConfig(prev => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }));
 
   const filtered = data.filter(inv => {
+    if (filters.broker && (inv.broker || '') !== filters.broker) return false;
     if (filters.search) {
       const q = filters.search.toLowerCase();
       if (!(
@@ -268,7 +269,8 @@ export default function Investments() {
     }
   };
 
-  const goals = Array.from(new Set(data.map(d => d.goal))).sort();
+  const goals   = Array.from(new Set(data.map(d => d.goal))).sort();
+  const brokers = Array.from(new Set(data.map(d => d.broker || '').filter(Boolean))).sort();
   const totalShown = filtered.reduce(
     (sum, inv) => sum + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)),
     0
@@ -330,8 +332,12 @@ export default function Investments() {
           <option value="">All Asset Classes</option>
           {ASSET_CLASSES.map(a => <option key={a}>{a}</option>)}
         </select>
-        {(filters.goal || filters.asset_class || filters.search) && (
-          <button onClick={() => setFilters({ goal: '', asset_class: '', search: '' })} className="text-muted hover:text-white text-xs flex items-center gap-1">
+        <select className="input w-40" value={filters.broker} onChange={e => setFilters(p => ({ ...p, broker: e.target.value }))}>
+          <option value="">All Brokers</option>
+          {brokers.map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
+        {(filters.goal || filters.asset_class || filters.broker || filters.search) && (
+          <button onClick={() => setFilters({ goal: '', asset_class: '', broker: '', search: '' })} className="text-muted hover:text-white text-xs flex items-center gap-1">
             <X size={12} /> Clear
           </button>
         )}
