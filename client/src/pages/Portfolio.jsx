@@ -77,14 +77,40 @@ export default function Portfolio() {
     return list;
   }, [data, goalFilter, brokerFilter]);
 
+  // ── Canonical asset class per instrument ───────────────────────────────────
+  // Some instruments have inconsistent asset_class tags across their own BUY/SELL
+  // entries (data-entry drift). Pick the most common tag per instrument (computed
+  // from the full unfiltered dataset so it doesn't shift with goal/broker filters)
+  // so all of an instrument's transactions net together and land in one bucket.
+  const canonicalAssetClass = useMemo(() => {
+    const counts = {}; // instrument -> { assetClass -> { count, lastDate } }
+    data.forEach(inv => {
+      if (!counts[inv.instrument]) counts[inv.instrument] = {};
+      const c = counts[inv.instrument];
+      if (!c[inv.asset_class]) c[inv.asset_class] = { count: 0, lastDate: inv.date };
+      c[inv.asset_class].count += 1;
+      if (new Date(inv.date) > new Date(c[inv.asset_class].lastDate)) c[inv.asset_class].lastDate = inv.date;
+    });
+    const result = {};
+    Object.entries(counts).forEach(([instrument, tags]) => {
+      const entries = Object.entries(tags);
+      result[instrument] = entries.length === 1
+        ? entries[0][0]
+        : entries.sort((a, b) => b[1].count - a[1].count || new Date(b[1].lastDate) - new Date(a[1].lastDate))[0][0];
+    });
+    return result;
+  }, [data]);
+  const assetClassFor = inv => canonicalAssetClass[inv.instrument] || inv.asset_class;
+
   // ── Aggregated positions with weighted avg price ──────────────────────────
   const aggregated = useMemo(() => {
     const map = {};
     goalInvestments.forEach(inv => {
-      const key = `${inv.goal}|${inv.account}|${inv.asset_class}|${inv.instrument}|${inv.broker || ''}`;
+      const assetClass = assetClassFor(inv);
+      const key = `${inv.goal}|${inv.account}|${assetClass}|${inv.instrument}|${inv.broker || ''}`;
       if (!map[key]) {
         map[key] = {
-          goal: inv.goal, account: inv.account, asset_class: inv.asset_class,
+          goal: inv.goal, account: inv.account, asset_class: assetClass,
           instrument: inv.instrument, broker: inv.broker || '—',
           ticker: inv.ticker || '', currency: inv.currency || 'INR',
           net: 0, buyQty: 0, sellQty: 0, weightedSum: 0,
@@ -110,7 +136,7 @@ export default function Portfolio() {
         wavgPrice: r.buyQty > 0 && r.weightedSum > 0 ? r.weightedSum / r.buyQty : null,
       }))
       .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
-  }, [goalInvestments]);
+  }, [goalInvestments, canonicalAssetClass]);
 
   // ── Convert invested amounts to INR using live FX rate (per position's currency) ──
   const enriched = useMemo(() => aggregated.map(row => {
@@ -133,10 +159,11 @@ export default function Portfolio() {
   // ── Chart buckets ─────────────────────────────────────────────────────────
   const riskBuckets = {}, assetBuckets = {}, brokerBuckets = {};
   goalInvestments.forEach(inv => {
+    const assetClass = assetClassFor(inv);
     const s = inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount);
-    riskBuckets[riskForAsset(inv.asset_class)] = (riskBuckets[riskForAsset(inv.asset_class)] || 0) + s;
-    assetBuckets[inv.asset_class]              = (assetBuckets[inv.asset_class] || 0) + s;
-    brokerBuckets[inv.broker || '—']            = (brokerBuckets[inv.broker || '—'] || 0) + s;
+    riskBuckets[riskForAsset(assetClass)] = (riskBuckets[riskForAsset(assetClass)] || 0) + s;
+    assetBuckets[assetClass]              = (assetBuckets[assetClass] || 0) + s;
+    brokerBuckets[inv.broker || '—']       = (brokerBuckets[inv.broker || '—'] || 0) + s;
   });
 
   const riskPie   = Object.entries(riskBuckets).map(([name, value]) => ({ name, value }));
@@ -359,7 +386,7 @@ export default function Portfolio() {
                       const instKey = `${g.asset_class}|${ins.instrument}`;
                       const instOpen = expandedInstruments.has(instKey);
                       const txns = goalInvestments
-                        .filter(inv => inv.asset_class === g.asset_class && inv.instrument === ins.instrument)
+                        .filter(inv => assetClassFor(inv) === g.asset_class && inv.instrument === ins.instrument)
                         .sort((a, b) => new Date(b.date) - new Date(a.date));
                       return (
                         <div key={ins.instrument}>
