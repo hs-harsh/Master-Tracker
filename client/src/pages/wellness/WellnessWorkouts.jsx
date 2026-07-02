@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
+import { parseD, todayStr, getMonday, getWeekDays, fmtWeekRange } from '../../lib/utils';
 
 // ─── nav ──────────────────────────────────────────────────────────────────────
 const SUB_TABS = [
@@ -26,39 +27,6 @@ const MAX_PREFERENCES = 8;
 const WELLNESS_PERIOD_KEY = 'wellness_analytics_period';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-function parseD(d) {
-  if (!d) return null;
-  if (d instanceof Date) return d;
-  return new Date(String(d).slice(0, 10) + 'T12:00:00');
-}
-
-function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-
-function getMonday(ds) {
-  const d   = new Date(ds + 'T12:00:00');
-  const day = d.getDay();
-  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
-  return d.toISOString().slice(0, 10);
-}
-
-function getWeekDays(weekStart) {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart + 'T12:00:00');
-    d.setDate(d.getDate() + i);
-    return d.toISOString().slice(0, 10);
-  });
-}
-
-function fmtWeekRange(ws) {
-  const s = parseD(ws);
-  const e = new Date(ws + 'T12:00:00'); e.setDate(e.getDate() + 6);
-  const opts = { day: 'numeric', month: 'short' };
-  return `${s.toLocaleDateString('en-IN', opts)} – ${e.toLocaleDateString('en-IN', { ...opts, year: 'numeric' })}`;
-}
-
 function dateRangeFor(period) {
   const to = todayStr();
   const d  = new Date(to + 'T12:00:00');

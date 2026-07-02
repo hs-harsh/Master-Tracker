@@ -37,6 +37,40 @@ export const fmtMonthKey = (d) => {
   return new Date(d).toISOString().slice(0, 7);
 };
 
+// ── Week-based date helpers (shared by the wellness planner pages) ───────────
+export function parseD(d) {
+  if (!d) return null;
+  if (d instanceof Date) return d;
+  return new Date(String(d).slice(0, 10) + 'T12:00:00');
+}
+
+export function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+export function getMonday(ds) {
+  const d   = new Date(ds + 'T12:00:00');
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  return d.toISOString().slice(0, 10);
+}
+
+export function getWeekDays(weekStart) {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart + 'T12:00:00');
+    d.setDate(d.getDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
+export function fmtWeekRange(ws) {
+  const s = parseD(ws);
+  const e = new Date(ws + 'T12:00:00'); e.setDate(e.getDate() + 6);
+  const opts = { day: 'numeric', month: 'short' };
+  return `${s.toLocaleDateString('en-IN', opts)} – ${e.toLocaleDateString('en-IN', { ...opts, year: 'numeric' })}`;
+}
+
 const PERSON_COLORS = ['#f0c040', '#a78bfa', '#2dd4bf', '#fb7185', '#60a5fa', '#f97316'];
 export const colorFor = (person) => {
   if (!person) return PERSON_COLORS[0];

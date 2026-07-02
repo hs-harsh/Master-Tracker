@@ -4,6 +4,7 @@ const pool               = require('../db');
 const auth               = require('../middleware/auth');
 const { sendMealPlanEmail } = require('../utils/email');
 const { getAnthropicApiKey } = require('../utils/anthropicKey');
+const { getMonday, todayStr, getWeekDays } = require('../utils/dateHelpers');
 
 router.use(auth);
 
@@ -12,30 +13,6 @@ function getMealPlanNotifyEmail() {
   const env = (process.env.MEAL_PLAN_EMAIL_TO || '').trim();
   if (env && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env)) return env;
   return 'harshsingh.iitd@gmail.com';
-}
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-/** Return the Monday (YYYY-MM-DD) of the week containing dateStr */
-function getMonday(dateStr) {
-  const d   = new Date(dateStr + 'T12:00:00');
-  const day = d.getDay();                  // 0=Sun … 6=Sat
-  const diff = day === 0 ? -6 : 1 - day;  // shift to Monday
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
-}
-
-function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-
-function getWeekDays(weekStart) {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart + 'T12:00:00');
-    d.setDate(d.getDate() + i);
-    return d.toISOString().slice(0, 10);
-  });
 }
 
 // ── GET /api/meals/week?week_start=YYYY-MM-DD&person=Harsh ───────────────────

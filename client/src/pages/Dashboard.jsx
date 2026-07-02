@@ -497,52 +497,6 @@ function PersonPanel({ person, cashflowData, investments, fxRates }) {
   );
 }
 
-/* ── Compact view (multi-person sidebar) ──────────────────────────────────── */
-function PersonPanelCompact({ person, cashflowData, investments, fxRates }) {
-  const color  = colorFor(person);
-  const latest = cashflowData[cashflowData.length - 1];
-  const prev   = cashflowData[cashflowData.length - 2];
-  const netAssetTrend = latest && prev
-    ? ((Number(latest.net_asset) - Number(prev.net_asset)) / Math.abs(Number(prev.net_asset) || 1)) * 100 : 0;
-  const totalInvested = (investments || []).reduce(
-    (s, inv) => s + (inv.side === 'SELL' ? -toINR(inv, fxRates) : toINR(inv, fxRates)), 0
-  );
-  const cfData = cashflowData.slice(-12).map(r => ({
-    month:   fmtDate(r.month),
-    Income:  Number(r.income || 0) + Number(r.other_income || 0),
-    Expense: Number(r.net_expense || 0),
-    Saving:  Number(r.actual_saving || 0),
-  }));
-  return (
-    <div className="flex-1 min-w-0 space-y-3">
-      <div className="flex items-center gap-2.5">
-        <div className="w-1 h-8 rounded-full" style={{ backgroundColor: color }} />
-        <h2 className="font-display font-bold text-white text-sm tracking-wide">{person}</h2>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <StatCard label="Net Asset" value={latest ? fmt(latest.net_asset) : '—'}
-          sub={`${netAssetTrend >= 0 ? '+' : ''}${netAssetTrend.toFixed(1)}% MoM`} trend={netAssetTrend} />
-        <StatCard label="Invested"  value={fmt(totalInvested)} />
-        <StatCard label="Income"    value={latest ? fmt(latest.income) : '—'} />
-        <StatCard label="Saving"    value={latest ? fmt(latest.actual_saving) : '—'} />
-      </div>
-      <div className="card">
-        <p className="stat-label mb-2">Cashflow (last 12m)</p>
-        <ResponsiveContainer width="100%" height={100}>
-          <BarChart data={cfData} barGap={2} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-            <XAxis dataKey="month" tick={{ fill: '#4b5563', fontSize: 9 }} tickLine={false} axisLine={false} />
-            <YAxis hide />
-            <Tooltip {...TT} />
-            <Bar dataKey="Income"  fill="#f0c040" radius={[3,3,0,0]} />
-            <Bar dataKey="Expense" fill="#fb7185" radius={[3,3,0,0]} />
-            <Bar dataKey="Saving"  fill="#2dd4bf" radius={[3,3,0,0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
-
 /* ── Dashboard page ──────────────────────────────────────────────────────── */
 export default function Dashboard() {
   const { personName, persons, activePerson, setActivePerson, token } = useAuth();

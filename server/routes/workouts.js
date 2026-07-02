@@ -4,24 +4,9 @@ const pool    = require('../db');
 const auth    = require('../middleware/auth');
 const { sendWorkoutPlanEmail } = require('../utils/email');
 const { getAnthropicApiKey } = require('../utils/anthropicKey');
+const { getMonday, todayStr, getWeekDays } = require('../utils/dateHelpers');
 
 router.use(auth);
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-/** Return the Monday (YYYY-MM-DD) of the week containing dateStr */
-function getMonday(dateStr) {
-  const d   = new Date(dateStr + 'T12:00:00');
-  const day = d.getDay();                  // 0=Sun … 6=Sat
-  const diff = day === 0 ? -6 : 1 - day;  // shift to Monday
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
-}
-
-function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
 
 // ── GET /api/workouts/week?week_start=YYYY-MM-DD&person=Harsh ────────────────
 // Returns the plan + entries for a week; auto-creates plan if missing.
@@ -203,16 +188,6 @@ router.get('/calendar', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-function getWeekDays(weekStart) {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart + 'T12:00:00');
-    d.setDate(d.getDate() + i);
-    return d.toISOString().slice(0, 10);
-  });
-}
 
 // ── POST /api/workouts/week/:id/generate ──────────────────────────────────────
 // Uses Claude to generate a full week of workouts based on user prompt + past history.

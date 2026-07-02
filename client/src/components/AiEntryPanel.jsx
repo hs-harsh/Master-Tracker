@@ -164,10 +164,6 @@ function OperationsTable({ operations, setOperations, type }) {
       idx === i ? { ...op, changes: { ...op.changes, [field]: val } } : op
     ));
 
-  const txFields  = ['date', 'type', 'account', 'amount', 'remark'];
-  const invFields = ['date', 'account', 'goal', 'asset_class', 'instrument', 'side', 'currency', 'amount', 'broker'];
-  const fields    = type === 'transactions' ? txFields : invFields;
-
   const fmt = v => v == null ? '—' : String(v);
   const ccySym = (ccy) => (ccy === 'USD' ? '$' : ccy === 'GBP' ? '£' : '₹');
 
