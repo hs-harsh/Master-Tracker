@@ -169,6 +169,9 @@ export default function WellnessHabits() {
   const setPeriod = (p) => { setPeriodRaw(p); localStorage.setItem(WELLNESS_PERIOD_KEY, p); };
   const [stats,   setStats]   = useState(null);
   const [aLoading,setALoading]= useState(false);
+  // Consistency totals (last 30 days / YTD) must not shift when the chart period changes —
+  // fetched separately on a fixed 1Y window regardless of the selected `period`.
+  const [yearStats, setYearStats] = useState(null);
 
   // ── load habit config ───────────────────────────────────────────────────────
   const loadConfig = useCallback(async (person) => {
@@ -229,6 +232,19 @@ export default function WellnessHabits() {
   useEffect(() => {
     if (view === 'analytics') loadStats(period, currentPerson);
   }, [view, period, currentPerson, loadStats]);
+
+  const loadYearStats = useCallback(async (person) => {
+    try {
+      const { data } = await api.get(`/habits/stats?period=1Y&person=${encodeURIComponent(person || '')}`);
+      setYearStats(data);
+    } catch {
+      setYearStats(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view === 'analytics') loadYearStats(currentPerson);
+  }, [view, currentPerson, loadYearStats]);
 
   // ── scroll today to leftmost visible column ────────────────────────────────
   const scrollRef = useRef(null);
@@ -597,7 +613,7 @@ export default function WellnessHabits() {
       return entry;
     });
 
-    const totals = computeHabitTotals(stats.chartData, ht);
+    const totals = computeHabitTotals(yearStats?.chartData || stats.chartData, ht);
 
     const s           = stats.stats;
     const habitsAvg   = s.habitsAvg || {};

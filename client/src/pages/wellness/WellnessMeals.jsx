@@ -4,13 +4,9 @@ import {
   CheckSquare, Utensils, Dumbbell,
   ChevronLeft, ChevronRight,
   Plus, X, Check, Save, Sparkles, Copy,
-  Coffee, Sun, Moon, Apple, AlertTriangle,
+  Coffee, Sun, Moon, Apple,
   ChevronDown, ChevronUp, RefreshCw, Mail,
 } from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, ReferenceLine, Cell,
-} from 'recharts';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -30,9 +26,7 @@ const MEAL_TYPES = [
 ];
 const MEAL_MAP = Object.fromEntries(MEAL_TYPES.map(m => [m.key, m]));
 
-const PERIODS = ['1M', '3M', '1Y'];
 const MAX_PREFERENCES = 8;
-const WELLNESS_PERIOD_KEY = 'wellness_analytics_period';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function parseD(d) {
@@ -159,14 +153,6 @@ function cachePreferences(person, prefs) {
   try { localStorage.setItem(lsKey(person), JSON.stringify(prefs)); } catch {}
 }
 
-function dateRangeFor(period) {
-  const to = todayStr();
-  const d  = new Date(to + 'T12:00:00');
-  const days = { '1M': 30, '3M': 90, '1Y': 365 }[period] || 30;
-  d.setDate(d.getDate() - days);
-  return { from: d.toISOString().slice(0, 10), to };
-}
-
 function nutritionTagClass(tag) {
   const t = String(tag).toLowerCase();
   if (t.includes('protein')) return 'bg-teal-500/15 text-teal-300 border-teal-500/30';
@@ -214,12 +200,6 @@ export default function WellnessMeals() {
   const [nutritionByKey, setNutritionByKey] = useState({});
   const [nutritionLoadingKey, setNutritionLoadingKey] = useState(null);
   const [emailSending, setEmailSending] = useState(false);
-
-  // analytics state — shared period across all wellness tabs via localStorage
-  const [period, setPeriodRaw] = useState(() => localStorage.getItem(WELLNESS_PERIOD_KEY) || '1M');
-  const setPeriod = (p) => { setPeriodRaw(p); localStorage.setItem(WELLNESS_PERIOD_KEY, p); };
-  const [analytics, setAnalytics] = useState(null);
-  const [aLoading,  setALoading]  = useState(false);
 
   // healthy ideas state
   const [ideas, setIdeas] = useState({ breakfast_snacks: [], lunch_dinner: [] });
@@ -270,24 +250,6 @@ export default function WellnessMeals() {
   }, []);
 
   useEffect(() => { loadWeek(weekStart, currentPerson); }, [weekStart, currentPerson, loadWeek]);
-
-  // ── load analytics ─────────────────────────────────────────────────────────
-  const loadAnalytics = useCallback(async (p, person) => {
-    setALoading(true);
-    try {
-      const { from, to } = dateRangeFor(p);
-      const { data } = await api.get(`/meals/calendar?from=${from}&to=${to}&person=${encodeURIComponent(person || '')}`);
-      setAnalytics(data.entries || []);
-    } catch (err) {
-      setAnalytics([]);
-    } finally {
-      setALoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (view === 'analytics') loadAnalytics(period, currentPerson);
-  }, [view, period, currentPerson, loadAnalytics]);
 
   // ── healthy ideas ────────────────────────────────────────────────────────────
   const loadIdeas = useCallback(async (person) => {
@@ -505,87 +467,6 @@ export default function WellnessMeals() {
   const hasPlanContent = weekDays.some((ds) =>
     MEAL_TYPES.some((mt) => (entries[eKey(ds, mt.key)]?.title || '').trim().length > 0),
   );
-
-  // ── analytics helpers ──────────────────────────────────────────────────────
-  function buildMealAnalytics(entries) {
-    if (!entries?.length) return null;
-
-    // Group by date
-    const byDate = {};
-    entries.forEach(e => {
-      const ds = String(e.entry_date).slice(0, 10);
-      (byDate[ds] = byDate[ds] || []).push(e);
-    });
-
-    const dates = Object.keys(byDate).sort();
-
-    // Daily calories + meal count
-    const dailyData = dates.map(ds => {
-      const dayEntries = byDate[ds];
-      const totalCal   = dayEntries.reduce((s, e) => s + (e.calories || 0), 0);
-      const mealCount  = dayEntries.length;
-      const d = parseD(ds);
-      return {
-        date: d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
-        Calories: totalCal || null,
-        Meals: mealCount,
-      };
-    });
-
-    // Meal type counts
-    const typeCounts = {};
-    MEAL_TYPES.forEach(mt => { typeCounts[mt.key] = 0; });
-    entries.forEach(e => { typeCounts[e.meal_type] = (typeCounts[e.meal_type] || 0) + 1; });
-
-    const typeBar = MEAL_TYPES.map(mt => ({ name: mt.label, Count: typeCounts[mt.key], fill: mt.stroke }));
-
-    // Avg calories per day (only days with calories logged)
-    const calDays = dailyData.filter(d => d.Calories);
-    const avgCal  = calDays.length ? Math.round(calDays.reduce((s, d) => s + d.Calories, 0) / calDays.length) : null;
-
-    // Completion rate (% of days with all 4 meal types)
-    const fullDays = dates.filter(ds => byDate[ds].length >= 4).length;
-    const completionRate = dates.length ? Math.round((fullDays / dates.length) * 100) : 0;
-
-    // Alerts
-    const alerts = [];
-    const thisWeekStart = getMonday(today);
-    const thisWeekDates = dates.filter(ds => ds >= thisWeekStart);
-    const thisWeekBreakfasts = thisWeekDates.filter(ds =>
-      byDate[ds].some(e => e.meal_type === 'breakfast')
-    );
-    const skippedBreakfast = thisWeekDates.length - thisWeekBreakfasts.length;
-    if (skippedBreakfast > 2) {
-      alerts.push({ type: 'warn', msg: `Breakfast skipped ${skippedBreakfast} days this week` });
-    }
-    if (!calDays.length) {
-      alerts.push({ type: 'info', msg: 'Calorie tracking not started — add calories to meal entries for insights' });
-    } else if (avgCal < 1500) {
-      alerts.push({ type: 'warn', msg: `Avg daily calories ${avgCal} kcal may be too low` });
-    } else if (avgCal > 2800) {
-      alerts.push({ type: 'warn', msg: `Avg daily calories ${avgCal} kcal is quite high` });
-    }
-    if (completionRate < 50) {
-      alerts.push({ type: 'warn', msg: `Only ${completionRate}% of days have all 4 meals logged` });
-    }
-
-    return { dailyData, typeBar, avgCal, completionRate, totalDays: dates.length, fullDays, alerts };
-  }
-
-  function CustomTooltip({ active, payload, label }) {
-    if (!active || !payload?.length) return null;
-    return (
-      <div className="card p-3 text-xs space-y-1">
-        <p className="text-muted font-mono mb-1">{label}</p>
-        {payload.map(p => (
-          <div key={p.name} className="flex justify-between gap-4">
-            <span style={{ color: p.fill || p.color || p.stroke }}>{p.name}</span>
-            <span className="text-white font-mono">{p.value ?? '—'}{p.name === 'Calories' ? ' kcal' : ''}</span>
-          </div>
-        ))}
-      </div>
-    );
-  }
 
   // ── planner ────────────────────────────────────────────────────────────────
   function Planner() {
@@ -868,133 +749,6 @@ export default function WellnessMeals() {
                   })}
                 </div>
               </section>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  // ── analytics ──────────────────────────────────────────────────────────────
-  function Analytics() {
-    if (aLoading) return <div className="text-center py-10 text-muted text-sm">Loading analytics…</div>;
-
-    const data = buildMealAnalytics(analytics);
-    if (!data) return (
-      <div className="card p-8 text-center text-muted text-sm fade-up-1">
-        No accepted meal data for this period. Accept a week plan to see analytics.
-      </div>
-    );
-
-    return (
-      <div className="space-y-4 fade-up-1">
-        {/* alerts */}
-        {data.alerts.length > 0 && (
-          <div className="space-y-2">
-            {data.alerts.map((a, i) => (
-              <div key={i} className={`flex items-start gap-3 px-4 py-3 rounded-xl border text-sm ${
-                a.type === 'info'
-                  ? 'bg-blue-400/5 border-blue-400/20 text-blue-300'
-                  : 'bg-amber-400/5 border-amber-400/20 text-amber-300'
-              }`}>
-                <AlertTriangle size={14} className="mt-0.5 shrink-0" />{a.msg}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* stat cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="card px-4 py-3">
-            <p className="text-[10px] text-muted uppercase tracking-wider">Days Planned</p>
-            <p className="font-mono text-2xl font-bold text-white">{data.totalDays}</p>
-          </div>
-          <div className="card px-4 py-3">
-            <p className="text-[10px] text-muted uppercase tracking-wider">Full Days (4 meals)</p>
-            <p className="font-mono text-2xl font-bold text-emerald-400">{data.fullDays}</p>
-          </div>
-          <div className="card px-4 py-3">
-            <p className="text-[10px] text-muted uppercase tracking-wider">Completion Rate</p>
-            <p className={`font-mono text-2xl font-bold ${data.completionRate >= 70 ? 'text-emerald-400' : data.completionRate >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
-              {data.completionRate}%
-            </p>
-          </div>
-          <div className="card px-4 py-3">
-            <p className="text-[10px] text-muted uppercase tracking-wider">Avg Calories/Day</p>
-            <p className="font-mono text-2xl font-bold text-white">
-              {data.avgCal != null ? data.avgCal : '—'}
-              {data.avgCal && <span className="text-sm text-muted"> kcal</span>}
-            </p>
-          </div>
-        </div>
-
-        {/* calorie trend */}
-        {data.dailyData.some(d => d.Calories) && (
-          <div className="card p-4">
-            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-4">Daily calorie intake</p>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={data.dailyData} margin={{ top: 4, right: 8, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
-                <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} />
-                <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine y={2000} stroke="#f59e0b" strokeDasharray="4 4"
-                  label={{ value: '2000 kcal', position: 'right', fontSize: 10, fill: '#f59e0b' }} />
-                <Line type="monotone" dataKey="Calories" stroke="#34d399" strokeWidth={2} dot={false} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* meals logged per day */}
-          <div className="card p-4">
-            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-4">Meals logged per day</p>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={data.dailyData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
-                <YAxis domain={[0, 4]} ticks={[0,1,2,3,4]} allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
-                <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine y={4} stroke="#6b7280" strokeDasharray="3 3" />
-                <Bar dataKey="Meals" fill="#60a5fa" radius={[3,3,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* meal type distribution */}
-          <div className="card p-4">
-            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-4">Meal type frequency</p>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={data.typeBar} layout="vertical" margin={{ top: 4, right: 8, left: 10, bottom: 0 }}>
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#9ca3af' }} width={70} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="Count" radius={[0,3,3,0]}>
-                  {data.typeBar.map((entry, i) => (
-                    <Cell key={i} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* meal type cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {MEAL_TYPES.map(mt => {
-            const count = data.typeBar.find(t => t.name === mt.label)?.Count || 0;
-            return (
-              <div key={mt.key} className={`card px-4 py-3 border ${mt.ring}`}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <mt.icon size={11} className={mt.color} />
-                  <p className={`text-[10px] uppercase tracking-wider ${mt.color}`}>{mt.label}</p>
-                </div>
-                <p className={`font-mono text-xl font-bold ${mt.color}`}>{count} <span className="text-xs font-normal">times</span></p>
-                <p className="text-[10px] text-muted mt-0.5">
-                  {data.totalDays ? `${Math.round((count / data.totalDays) * 100)}% of days` : ''}
-                </p>
-              </div>
             );
           })}
         </div>
@@ -1290,24 +1044,12 @@ export default function WellnessMeals() {
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight">
             {currentPerson ? `${currentPerson}'s Meals` : 'Meals'}
           </h1>
-          <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Weekly meal planner & analytics</p>
+          <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Weekly meal planner</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {view === 'analytics' && (
-            <div className="flex gap-1 rounded-lg overflow-hidden border border-white/8">
-              {PERIODS.map(p => (
-                <button key={p} onClick={() => setPeriod(p)}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                    period === p ? 'bg-accent text-ink' : 'text-soft hover:text-white bg-surface/50'
-                  }`}>
-                  {p}
-                </button>
-              ))}
-            </div>
-          )}
           <div className="flex gap-1 p-1 rounded-xl"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            {[{ key: 'planner', label: 'Plan Week' }, { key: 'analytics', label: 'Analytics' }, { key: 'ideas', label: 'Healthy Ideas' }].map(({ key, label }) => (
+            {[{ key: 'ideas', label: 'Healthy Ideas' }, { key: 'planner', label: 'Plan Week' }].map(({ key, label }) => (
               <button key={key} onClick={() => setView(key)}
                 className={`px-4 py-2 rounded-lg text-sm font-body transition-all ${
                   view === key ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'
@@ -1322,7 +1064,6 @@ export default function WellnessMeals() {
       {loading && <div className="text-center py-10 text-muted text-sm fade-up-1">Loading…</div>}
 
       {!loading && view === 'planner'  && Planner()}
-      {           view === 'analytics' && Analytics()}
       {           view === 'ideas'     && HealthyIdeas()}
 
       {EditModal()}
