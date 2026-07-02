@@ -100,29 +100,19 @@ function fmtChartDate(ds) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-function computeStreaks(chartData, habits) {
+function computeHabitTotals(chartData, habits) {
   // Build date -> day entry map for O(1) lookup
   const dayMap = {};
   chartData.forEach(d => { dayMap[String(d.date).slice(0, 10)] = d; });
 
   const today = new Date();
   today.setHours(12, 0, 0, 0);
+  const yearStart = new Date(today.getFullYear(), 0, 1);
+  yearStart.setHours(12, 0, 0, 0);
+  const daysYTD = Math.floor((today - yearStart) / 86400000) + 1;
 
   const result = {};
   habits.forEach(h => {
-    // Current streak: consecutive calendar days back from today with score >= 3
-    let current = 0;
-    const cursor = new Date(today);
-    while (true) {
-      const ds = cursor.toISOString().slice(0, 10);
-      if ((dayMap[ds]?.[h.key] ?? 0) >= 3) {
-        current++;
-        cursor.setDate(cursor.getDate() - 1);
-      } else {
-        break;
-      }
-    }
-
     // Last 30 calendar days: count days with score >= 3
     let last30 = 0;
     for (let i = 0; i < 30; i++) {
@@ -132,7 +122,16 @@ function computeStreaks(chartData, habits) {
       if ((dayMap[ds]?.[h.key] ?? 0) >= 3) last30++;
     }
 
-    result[h.key] = { current, last30 };
+    // Year-to-date: count days since Jan 1 with score >= 3
+    let ytd = 0;
+    for (let i = 0; i < daysYTD; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const ds = d.toISOString().slice(0, 10);
+      if ((dayMap[ds]?.[h.key] ?? 0) >= 3) ytd++;
+    }
+
+    result[h.key] = { last30, ytd, daysYTD };
   });
   return result;
 }
@@ -598,7 +597,7 @@ export default function WellnessHabits() {
       return entry;
     });
 
-    const streaks = computeStreaks(stats.chartData, ht);
+    const totals = computeHabitTotals(stats.chartData, ht);
 
     const s           = stats.stats;
     const habitsAvg   = s.habitsAvg || {};
@@ -651,16 +650,16 @@ export default function WellnessHabits() {
           })}
         </div>
 
-        {/* streak cards */}
+        {/* consistency cards */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Flame size={14} className="text-orange-400" />
-            <p className="text-xs text-muted uppercase tracking-widest font-mono">Habit Streaks</p>
+            <p className="text-xs text-muted uppercase tracking-widest font-mono">Habit Consistency</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {ht.map(h => {
               const Icon = ICON_MAP[h.icon] || Leaf;
-              const { current, last30 } = streaks[h.key] || { current: 0, last30: 0 };
+              const { last30, ytd, daysYTD } = totals[h.key] || { last30: 0, ytd: 0, daysYTD: 0 };
               return (
                 <div key={h.key} className={`card px-4 py-3 border ${h.ring}`}>
                   <div className="flex items-center gap-1.5 mb-2">
@@ -669,15 +668,12 @@ export default function WellnessHabits() {
                   </div>
                   <div className="flex items-end justify-between">
                     <div>
-                      <div className="flex items-center gap-1">
-                        <Flame size={13} className={current > 0 ? 'text-orange-400' : 'text-muted'} />
-                        <span className={`font-mono text-xl font-bold ${current > 0 ? 'text-white' : 'text-muted'}`}>{current}</span>
-                      </div>
-                      <p className="text-[10px] text-muted mt-0.5">day streak</p>
+                      <span className={`font-mono text-xl font-bold ${last30 > 0 ? 'text-white' : 'text-muted'}`}>{last30}</span>
+                      <p className="text-[10px] text-muted mt-0.5">last 30 days (≥3)</p>
                     </div>
                     <div className="text-right">
-                      <p className={`font-mono text-sm font-semibold ${h.color}`}>{last30}<span className="text-[10px] text-muted font-normal">/30</span></p>
-                      <p className="text-[10px] text-muted">last 30 days</p>
+                      <p className={`font-mono text-sm font-semibold ${h.color}`}>{ytd}<span className="text-[10px] text-muted font-normal">/{daysYTD}</span></p>
+                      <p className="text-[10px] text-muted">YTD score (≥3)</p>
                     </div>
                   </div>
                 </div>

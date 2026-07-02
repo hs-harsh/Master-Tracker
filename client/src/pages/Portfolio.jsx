@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, Legend, ComposedChart, Line, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, Legend,
 } from 'recharts';
-import { PieChart as PieIcon, Target, Wallet, Loader2 } from 'lucide-react';
+import { PieChart as PieIcon, Target, Wallet, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 import TradeFeedbackCard from '../components/TradeFeedbackCard';
@@ -31,6 +31,19 @@ export default function Portfolio() {
   const [brokerFilter, setBrokerFilter] = useState('');
   const [fxRates, setFxRates] = useState({ INR: 1 });
   const [fxFetching, setFxFetching] = useState(false);
+  const [expandedAssets, setExpandedAssets] = useState(new Set());
+  const [expandedInstruments, setExpandedInstruments] = useState(new Set());
+
+  const toggleAsset = (assetClass) => setExpandedAssets(prev => {
+    const next = new Set(prev);
+    next.has(assetClass) ? next.delete(assetClass) : next.add(assetClass);
+    return next;
+  });
+  const toggleInstrument = (key) => setExpandedInstruments(prev => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
 
   const currentPerson = activePerson || personName;
 
@@ -140,15 +153,20 @@ export default function Portfolio() {
     }));
   }, [enriched]);
 
-  // Portfolio growth: cumulative invested over time
-  const growthData = useMemo(() => {
-    const sorted = [...data].sort((a, b) => new Date(a.date) - new Date(b.date));
-    let cum = 0;
-    return sorted.map(r => {
-      cum += r.side === 'SELL' ? -Number(r.amount) : Number(r.amount);
-      return { date: r.date?.slice(0, 7), value: +(cum / 100000).toFixed(2) };
-    }).filter((r, i, arr) => i === arr.length - 1 || r.date !== arr[i + 1]?.date);
-  }, [data]);
+  // ── Group holdings by asset class → instrument (invested amount, INR) ────
+  const assetClassGroups = useMemo(() => {
+    const map = {};
+    enriched.forEach(r => {
+      if (!map[r.asset_class]) map[r.asset_class] = { asset_class: r.asset_class, net: 0, instruments: {} };
+      const g = map[r.asset_class];
+      g.net += r.net;
+      if (!g.instruments[r.instrument]) g.instruments[r.instrument] = { instrument: r.instrument, net: 0 };
+      g.instruments[r.instrument].net += r.net;
+    });
+    return Object.values(map)
+      .map(g => ({ ...g, instruments: Object.values(g.instruments).sort((a, b) => b.net - a.net) }))
+      .sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+  }, [enriched]);
 
   const equityVal = Math.max(0, assetBuckets.Equity || 0) + Math.max(0, assetBuckets.Crypto || 0);
   const debtVal   = Math.max(0, assetBuckets.Debt || 0);
@@ -316,83 +334,80 @@ export default function Portfolio() {
         </div>
       </div>
 
-      {/* Portfolio growth chart */}
-      {growthData.length > 1 && (
-        <div className="card">
-          <p className="stat-label mb-3">Portfolio Growth — Cumulative Invested (₹L)</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <ComposedChart data={growthData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" />
-              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={TT} content={({ active, payload }) => active && payload?.[0] ? (
-                <div style={{ padding: '6px 10px', ...TT }}>{payload[0].payload.date}: <strong>{payload[0].value} L</strong></div>
-              ) : null} />
-              <Line type="monotone" dataKey="value" stroke="#f0c040" strokeWidth={2} dot={false} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* Holdings by Instrument — Equity and Non-Equity side by side */}
-      {enriched.length > 0 && (() => {
-        const equityRows = [...enriched].filter(r => r.asset_class === 'Equity' || r.asset_class === 'Crypto').sort((a, b) => b.net - a.net);
-        const nonEquityRows = [...enriched].filter(r => r.asset_class !== 'Equity' && r.asset_class !== 'Crypto').sort((a, b) => b.net - a.net);
-
-        const makeBarData = (rows) => rows.map(r => ({
-          name: r.instrument.length > 14 ? r.instrument.slice(0, 13) + '…' : r.instrument,
-          fullName: r.instrument,
-          assetClass: r.asset_class,
-          Invested: +(r.net / 100000).toFixed(2),
-          wavgPrice: r.wavgPrice,
-          broker: r.broker,
-          color: ASSET_COLORS[r.asset_class] || '#9ca3af',
-        }));
-
-        const renderChart = (title, rows) => {
-          if (rows.length === 0) return null;
-          const barData = makeBarData(rows);
-          const chartH = Math.max(rows.length * 52 + 80, 180);
-          return (
-            <div className="card">
-              <p className="text-muted text-xs uppercase tracking-wider mb-3">{title}</p>
-              <ResponsiveContainer width="100%" height={chartH}>
-                <BarChart data={barData} margin={{ top: 4, right: 8, bottom: 60, left: 0 }}>
-                  <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 9 }} tickLine={false} axisLine={false}
-                    angle={-40} textAnchor="end" interval={0} />
-                  <YAxis tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false}
-                    tickFormatter={v => `${v}L`} width={32} />
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const d = payload[0].payload;
+      {/* Holdings by Asset Class — collapsible: Asset Class → Instrument → Transactions */}
+      {assetClassGroups.length > 0 && (
+        <div className="card overflow-hidden">
+          <p className="text-muted text-xs mb-3">Holdings by Asset Class</p>
+          {assetClassGroups.map(g => {
+            const assetOpen = expandedAssets.has(g.asset_class);
+            return (
+              <div key={g.asset_class} className="border-b border-border/40 last:border-0">
+                <button
+                  type="button"
+                  onClick={() => toggleAsset(g.asset_class)}
+                  className="w-full flex items-center justify-between py-3 px-2 hover:bg-surface/40 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    {assetOpen ? <ChevronDown size={14} className="text-muted" /> : <ChevronRight size={14} className="text-muted" />}
+                    <span className="tag bg-card/60" style={{ color: ASSET_COLORS[g.asset_class] || '#9ca3af' }}>{g.asset_class}</span>
+                  </div>
+                  <span className="font-mono text-sm text-soft">{fmt(g.net)}</span>
+                </button>
+                {assetOpen && (
+                  <div className="pl-6 pb-2">
+                    {g.instruments.map(ins => {
+                      const instKey = `${g.asset_class}|${ins.instrument}`;
+                      const instOpen = expandedInstruments.has(instKey);
+                      const txns = goalInvestments
+                        .filter(inv => inv.asset_class === g.asset_class && inv.instrument === ins.instrument)
+                        .sort((a, b) => new Date(b.date) - new Date(a.date));
                       return (
-                        <div style={{ padding: '8px 12px', background: '#1a1a2e', border: '1px solid #2d2d44', borderRadius: 8, fontSize: 11 }}>
-                          <div className="font-bold text-white mb-1">{d.fullName}</div>
-                          <div style={{ color: d.color }} className="text-xs mb-1">{d.assetClass}</div>
-                          {d.broker && <div className="text-muted text-xs">{d.broker}</div>}
-                          {d.wavgPrice && <div className="text-soft text-xs">Avg: ₹{d.wavgPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>}
-                          {payload.map(p => <div key={p.name} style={{ color: p.fill || p.color }} className="text-xs">{p.name}: ₹{(p.value * 100000).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>)}
+                        <div key={ins.instrument}>
+                          <button
+                            type="button"
+                            onClick={() => toggleInstrument(instKey)}
+                            className="w-full flex items-center justify-between py-2 px-2 hover:bg-surface/30 transition-colors text-xs"
+                          >
+                            <div className="flex items-center gap-2">
+                              {instOpen ? <ChevronDown size={12} className="text-muted" /> : <ChevronRight size={12} className="text-muted" />}
+                              <span className="text-soft">{ins.instrument}</span>
+                            </div>
+                            <span className="font-mono text-soft">{fmt(ins.net)}</span>
+                          </button>
+                          {instOpen && (
+                            <div className="pl-6 pb-2 overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-muted">
+                                    <th className="text-left py-1.5 px-2 font-display text-[10px] uppercase tracking-wider">Date</th>
+                                    <th className="text-left py-1.5 px-2 font-display text-[10px] uppercase tracking-wider">Side</th>
+                                    <th className="text-right py-1.5 px-2 font-display text-[10px] uppercase tracking-wider">Amount</th>
+                                    <th className="text-left py-1.5 px-2 font-display text-[10px] uppercase tracking-wider">Broker</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {txns.map(t => (
+                                    <tr key={t.id} className="border-t border-border/30">
+                                      <td className="py-1.5 px-2 text-soft">{t.date?.slice(0, 10)}</td>
+                                      <td className={`py-1.5 px-2 ${t.side === 'SELL' ? 'text-rose' : 'text-teal'}`}>{t.side}</td>
+                                      <td className="py-1.5 px-2 text-right font-mono text-soft">{fmt(Number(t.amount))}</td>
+                                      <td className="py-1.5 px-2 text-muted">{t.broker || '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
                         </div>
                       );
-                    }}
-                  />
-                  <Bar dataKey="Invested" radius={[3, 3, 0, 0]}>
-                    {barData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          );
-        };
-
-        return (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {renderChart('Equity Holdings', equityRows)}
-            {renderChart('Non-Equity Holdings (Debt, Gold, Cash, RE)', nonEquityRows)}
-          </div>
-        );
-      })()}
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Full holdings table */}
       <div className="card overflow-hidden">
