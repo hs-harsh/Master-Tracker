@@ -283,16 +283,14 @@ export default function WellnessWorkouts() {
   }
 
   // ── Add Workout with AI ─────────────────────────────────────────────────────
-  function openAiLog() {
-    setAiLogDate(weekDays.includes(today) ? today : weekDays[0]);
-    setAiLogPrompt('');
-    setAiLogError('');
-    setAiLogPreview(null);
-    setShowAiLog(true);
-  }
-  function closeAiLog() {
-    if (aiLogParsing || aiLogSaving) return;
-    setShowAiLog(false);
+  function toggleAiLog() {
+    if (!showAiLog) {
+      setAiLogDate(weekDays.includes(today) ? today : weekDays[0]);
+      setAiLogPrompt('');
+      setAiLogError('');
+      setAiLogPreview(null);
+    }
+    setShowAiLog(o => !o);
   }
 
   async function parseAiLog() {
@@ -450,14 +448,6 @@ export default function WellnessWorkouts() {
               </button>
             </div>
             <div className="flex items-center gap-2">
-              {!isAccepted && (
-                <button onClick={openAiLog}
-                  title="Parse a free-text description of a workout you did and log it to a day"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
-                    bg-teal-500/15 text-teal-300 border border-teal-500/30 hover:bg-teal-500/25 transition-colors">
-                  <Sparkles size={12} />Add Workout with AI
-                </button>
-              )}
               {isAccepted && (
                 <>
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
@@ -474,6 +464,8 @@ export default function WellnessWorkouts() {
             </div>
           </div>
         </div>
+
+        {!isAccepted && AiLogPanel()}
 
         {/* Onboarding callout */}
         {!isAccepted && !generated && (
@@ -776,165 +768,168 @@ export default function WellnessWorkouts() {
     );
   }
 
-  // ── Add Workout with AI modal ──────────────────────────────────────────────
-  function AiLogModal() {
-    if (!showAiLog) return null;
+  // ── Add Workout with AI — inline collapsible panel (matches Investments' "Add with AI") ──
+  function AiLogPanel() {
     const previewExercises = aiLogPreview ? parseExercises(aiLogPreview.notes) : [];
     const isGymPreview = aiLogPreview?.workout_type === 'strength';
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-        style={{ background: 'rgba(9,9,14,0.80)', backdropFilter: 'blur(6px)' }}>
-        <div className="card w-full max-w-lg p-5 space-y-4 overflow-y-auto max-h-[90vh]">
-          <div className="flex items-center justify-between">
-            <h2 className="text-white font-semibold font-display text-lg flex items-center gap-2">
-              <Sparkles size={16} className="text-teal-400" />Add Workout with AI
-            </h2>
-            <button onClick={closeAiLog} className="text-muted hover:text-white transition-colors">
-              <X size={18} />
-            </button>
+      <div className="card border-teal-500/30 bg-gradient-to-br from-teal-500/5 to-transparent">
+        <button
+          onClick={toggleAiLog}
+          className="w-full flex items-center justify-between gap-2 text-left"
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles size={16} className="text-teal-400" />
+            <span className="font-display font-semibold text-white text-sm">Add Workout with AI</span>
+            <span className="text-xs text-muted">— describe a workout you did, AI logs it to a day</span>
           </div>
+          {showAiLog ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
+        </button>
 
-          <div>
-            <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5 block">Day</label>
-            <select
-              className="input w-full text-sm py-2"
-              value={aiLogDate || ''}
-              onChange={e => setAiLogDate(e.target.value)}
-            >
-              {weekDays.map((ds, i) => (
-                <option key={ds} value={ds}>{DAY_LABELS[i]} · {parseD(ds).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5 block">What did you do?</label>
-            <textarea
-              className="input w-full text-sm py-2 min-h-[80px] resize-none"
-              placeholder="e.g. Chest day — bench press 20kg 4x8, incline dumbbell press 15kg 3x10, cable fly 10kg 3x12"
-              value={aiLogPrompt}
-              onChange={e => setAiLogPrompt(e.target.value)}
-            />
-          </div>
-
-          {aiLogError && <p className="text-xs text-red-400">{aiLogError}</p>}
-
-          {!aiLogPreview && (
-            <button onClick={parseAiLog} disabled={aiLogParsing || !aiLogPrompt.trim()}
-              className="btn-primary w-full text-sm flex items-center justify-center gap-2 disabled:opacity-50">
-              <Sparkles size={14} />{aiLogParsing ? 'Parsing…' : 'Parse with AI'}
-            </button>
-          )}
-
-          {aiLogPreview && (
-            <div className="space-y-3 border-t border-white/8 pt-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1 block">Title</label>
-                  <input
-                    className="input w-full text-sm py-1.5"
-                    value={aiLogPreview.title || ''}
-                    onChange={e => setAiLogPreview(prev => ({ ...prev, title: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1 block">Type</label>
-                  <select
-                    className="input w-full text-sm py-1.5"
-                    value={aiLogPreview.workout_type}
-                    onChange={e => setAiLogPreview(prev => ({ ...prev, workout_type: e.target.value }))}
-                  >
-                    <option value="strength">Strength</option>
-                    <option value="cardio">Cardio</option>
-                    <option value="flexibility">Flexibility</option>
-                    <option value="rest">Rest</option>
-                  </select>
-                </div>
-              </div>
-
-              {isGymPreview && (
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[10px] text-muted uppercase tracking-widest font-mono">Exercises</label>
-                    <button onClick={addAiLogExercise} className="text-teal-400 hover:text-teal-300 text-xs flex items-center gap-1">
-                      <Plus size={12} />Add row
-                    </button>
-                  </div>
-                  <div className="overflow-x-auto rounded-lg border border-white/8">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-white/5">
-                          <th className="text-left px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Exercise</th>
-                          <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Weight</th>
-                          <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Sets</th>
-                          <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Reps</th>
-                          <th></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {previewExercises.map((ex, j) => (
-                          <tr key={j} className="border-b border-white/[0.03] last:border-0">
-                            <td className="px-3 py-1.5">
-                              <input
-                                className="bg-transparent text-soft text-xs w-full outline-none focus:text-white"
-                                value={ex.name || ''}
-                                onChange={e => updateAiLogExercise(j, 'name', e.target.value)}
-                                placeholder="Exercise name"
-                              />
-                            </td>
-                            <td className="px-2 py-1.5">
-                              <input
-                                className="bg-transparent text-soft text-xs text-center w-16 outline-none font-mono"
-                                value={ex.weight ?? ''}
-                                onChange={e => updateAiLogExercise(j, 'weight', e.target.value)}
-                                placeholder="20kg"
-                              />
-                            </td>
-                            <td className="px-2 py-1.5">
-                              <input
-                                type="number"
-                                className="bg-accent/10 text-accent text-xs text-center w-12 outline-none font-mono font-semibold rounded px-1 py-0.5"
-                                value={ex.sets ?? ''}
-                                onChange={e => updateAiLogExercise(j, 'sets', e.target.value)}
-                              />
-                            </td>
-                            <td className="px-2 py-1.5">
-                              <input
-                                className="bg-transparent text-soft text-xs text-center w-14 outline-none font-mono"
-                                value={ex.reps ?? ''}
-                                onChange={e => updateAiLogExercise(j, 'reps', e.target.value)}
-                                placeholder="8-12"
-                              />
-                            </td>
-                            <td className="px-1">
-                              <button onClick={() => removeAiLogExercise(j)} className="text-muted hover:text-red-400 transition-colors p-1">
-                                <Trash2 size={12} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                        {previewExercises.length === 0 && (
-                          <tr><td colSpan={5} className="px-3 py-3 text-center text-muted/60 text-xs">No exercises — add a row above</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-1">
-                <button onClick={() => setAiLogPreview(null)} className="btn-ghost text-xs px-3 py-1.5 flex-1">
-                  Back
-                </button>
-                <button onClick={saveAiLog} disabled={aiLogSaving}
-                  className="btn-primary text-xs px-3 py-1.5 flex-1 flex items-center justify-center gap-1.5">
-                  <Check size={13} />{aiLogSaving ? 'Saving…' : 'Save to Day'}
-                </button>
-              </div>
+        {showAiLog && (
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5 block">Day</label>
+              <select
+                className="input w-full text-sm py-2"
+                value={aiLogDate || ''}
+                onChange={e => setAiLogDate(e.target.value)}
+              >
+                {weekDays.map((ds, i) => (
+                  <option key={ds} value={ds}>{DAY_LABELS[i]} · {parseD(ds).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</option>
+                ))}
+              </select>
             </div>
-          )}
-        </div>
+
+            <div>
+              <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5 block">What did you do?</label>
+              <textarea
+                className="input w-full text-sm py-2 min-h-[80px] resize-none"
+                placeholder="e.g. Chest day — bench press 20kg 4x8, incline dumbbell press 15kg 3x10, cable fly 10kg 3x12"
+                value={aiLogPrompt}
+                onChange={e => setAiLogPrompt(e.target.value)}
+              />
+            </div>
+
+            {aiLogError && <p className="text-xs text-red-400">{aiLogError}</p>}
+
+            {!aiLogPreview && (
+              <button onClick={parseAiLog} disabled={aiLogParsing || !aiLogPrompt.trim()}
+                className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">
+                <Sparkles size={14} />{aiLogParsing ? 'Parsing…' : 'Parse with AI'}
+              </button>
+            )}
+
+            {aiLogPreview && (
+              <div className="space-y-3 border-t border-white/8 pt-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1 block">Title</label>
+                    <input
+                      className="input w-full text-sm py-1.5"
+                      value={aiLogPreview.title || ''}
+                      onChange={e => setAiLogPreview(prev => ({ ...prev, title: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1 block">Type</label>
+                    <select
+                      className="input w-full text-sm py-1.5"
+                      value={aiLogPreview.workout_type}
+                      onChange={e => setAiLogPreview(prev => ({ ...prev, workout_type: e.target.value }))}
+                    >
+                      <option value="strength">Strength</option>
+                      <option value="cardio">Cardio</option>
+                      <option value="flexibility">Flexibility</option>
+                      <option value="rest">Rest</option>
+                    </select>
+                  </div>
+                </div>
+
+                {isGymPreview && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[10px] text-muted uppercase tracking-widest font-mono">Exercises</label>
+                      <button onClick={addAiLogExercise} className="text-teal-400 hover:text-teal-300 text-xs flex items-center gap-1">
+                        <Plus size={12} />Add row
+                      </button>
+                    </div>
+                    <div className="overflow-x-auto rounded-lg border border-white/8">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-white/5">
+                            <th className="text-left px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Exercise</th>
+                            <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Weight</th>
+                            <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Sets</th>
+                            <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Reps</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previewExercises.map((ex, j) => (
+                            <tr key={j} className="border-b border-white/[0.03] last:border-0">
+                              <td className="px-3 py-1.5">
+                                <input
+                                  className="bg-transparent text-soft text-xs w-full outline-none focus:text-white"
+                                  value={ex.name || ''}
+                                  onChange={e => updateAiLogExercise(j, 'name', e.target.value)}
+                                  placeholder="Exercise name"
+                                />
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <input
+                                  className="bg-transparent text-soft text-xs text-center w-16 outline-none font-mono"
+                                  value={ex.weight ?? ''}
+                                  onChange={e => updateAiLogExercise(j, 'weight', e.target.value)}
+                                  placeholder="20kg"
+                                />
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <input
+                                  type="number"
+                                  className="bg-accent/10 text-accent text-xs text-center w-12 outline-none font-mono font-semibold rounded px-1 py-0.5"
+                                  value={ex.sets ?? ''}
+                                  onChange={e => updateAiLogExercise(j, 'sets', e.target.value)}
+                                />
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <input
+                                  className="bg-transparent text-soft text-xs text-center w-14 outline-none font-mono"
+                                  value={ex.reps ?? ''}
+                                  onChange={e => updateAiLogExercise(j, 'reps', e.target.value)}
+                                  placeholder="8-12"
+                                />
+                              </td>
+                              <td className="px-1">
+                                <button onClick={() => removeAiLogExercise(j)} className="text-muted hover:text-red-400 transition-colors p-1">
+                                  <Trash2 size={12} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {previewExercises.length === 0 && (
+                            <tr><td colSpan={5} className="px-3 py-3 text-center text-muted/60 text-xs">No exercises — add a row above</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setAiLogPreview(null)} className="btn-ghost text-xs px-3 py-1.5 flex-1">
+                    Back
+                  </button>
+                  <button onClick={saveAiLog} disabled={aiLogSaving}
+                    className="btn-primary text-xs px-3 py-1.5 flex-1 flex items-center justify-center gap-1.5">
+                    <Check size={13} />{aiLogSaving ? 'Saving…' : 'Save to Day'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -1089,8 +1084,6 @@ export default function WellnessWorkouts() {
 
       {!loading && view === 'planner'  && Planner()}
       {           view === 'analytics' && Analytics()}
-
-      {AiLogModal()}
     </div>
   );
 }
