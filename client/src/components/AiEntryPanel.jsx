@@ -69,22 +69,14 @@ function TxConfirmTable({ entries, setEntries, persons }) {
 // ── Investment confirmation table (add mode) ──────────────────────────────────
 function InvConfirmTable({ entries, setEntries, persons }) {
   const update = (i, field, val) =>
-    setEntries(prev => prev.map((e, idx) => {
-      if (idx !== i) return e;
-      const updated = { ...e, [field]: val };
-      // recompute avg_price whenever amount or qty changes
-      const amt = Number(field === 'amount' ? val : updated.amount);
-      const qty = Number(field === 'qty'    ? val : updated.qty);
-      if (amt > 0 && qty > 0) updated.avg_price = +(amt / qty).toFixed(4);
-      return updated;
-    }));
+    setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
   const remove = i => setEntries(prev => prev.filter((_, idx) => idx !== i));
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-border bg-surface/60">
-            {['Date', 'Account', 'Instrument', 'Class', 'Side', 'CCY', 'Amount', 'Qty', 'Avg Price', 'Goal', 'Broker', ''].map(h => (
+            {['Date', 'Account', 'Instrument', 'Class', 'Side', 'CCY', 'Amount', 'Goal', 'Broker', ''].map(h => (
               <th key={h} className="text-left py-2.5 px-3 text-muted font-display uppercase tracking-wider whitespace-nowrap">{h}</th>
             ))}
           </tr>
@@ -92,9 +84,6 @@ function InvConfirmTable({ entries, setEntries, persons }) {
         <tbody>
           {entries.map((e, i) => {
             const ccy = e.currency || 'INR';
-            const ccySym = ccy === 'USD' ? '$' : ccy === 'GBP' ? '£' : '₹';
-            const computedAvg = e.qty && Number(e.qty) > 0 && Number(e.amount) > 0
-              ? (Number(e.amount) / Number(e.qty)).toFixed(2) : null;
             return (
             <tr key={i} className="border-b border-border/50 hover:bg-surface/40">
               <td className="py-2 px-3"><EditCell value={e.date} onChange={v => update(i, 'date', v)} type="date" /></td>
@@ -104,8 +93,6 @@ function InvConfirmTable({ entries, setEntries, persons }) {
               <td className="py-2 px-3"><EditCell value={e.side} onChange={v => update(i, 'side', v)} options={INV_SIDES} /></td>
               <td className="py-2 px-3"><EditCell value={ccy} onChange={v => update(i, 'currency', v)} options={['INR', 'USD', 'GBP']} /></td>
               <td className="py-2 px-3"><EditCell value={e.amount} onChange={v => update(i, 'amount', v)} type="number" /></td>
-              <td className="py-2 px-3"><EditCell value={e.qty ?? ''} onChange={v => update(i, 'qty', v === '' ? null : Number(v))} type="number" /></td>
-              <td className="py-2 px-3 font-mono text-teal whitespace-nowrap">{computedAvg ? `${ccySym}${Number(computedAvg).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}</td>
               <td className="py-2 px-3"><EditCell value={e.goal || ''} onChange={v => update(i, 'goal', v)} /></td>
               <td className="py-2 px-3"><EditCell value={e.broker || ''} onChange={v => update(i, 'broker', v)} /></td>
               <td className="py-2 px-3">
@@ -178,7 +165,7 @@ function OperationsTable({ operations, setOperations, type }) {
     ));
 
   const txFields  = ['date', 'type', 'account', 'amount', 'remark'];
-  const invFields = ['date', 'account', 'goal', 'asset_class', 'instrument', 'side', 'currency', 'amount', 'qty', 'avg_price', 'ticker', 'broker'];
+  const invFields = ['date', 'account', 'goal', 'asset_class', 'instrument', 'side', 'currency', 'amount', 'broker'];
   const fields    = type === 'transactions' ? txFields : invFields;
 
   const fmt = v => v == null ? '—' : String(v);

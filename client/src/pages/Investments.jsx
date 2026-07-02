@@ -20,8 +20,6 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
     side: 'BUY',
     amount: 0,
     currency: 'INR',
-    avg_price: '',
-    ticker: '',
     broker: '',
   };
   const [form, setForm] = useState(initial || { ...EMPTY });
@@ -33,10 +31,6 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
     const { name, value } = e.target;
     setForm(p => ({ ...p, [name]: value }));
   };
-
-  const computedAvgPrice = form.qty && Number(form.qty) > 0 && Number(form.amount) > 0
-    ? (Number(form.amount) / Number(form.qty)).toFixed(4)
-    : null;
 
   return (
     <div className="card space-y-4">
@@ -88,39 +82,6 @@ function InvestmentForm({ initial, defaultAccount, persons, onSave, onCancel }) 
         <div>
           <label className="label">Amount ({CURRENCY_SYMBOLS[form.currency || 'INR']})</label>
           <input type="number" name="amount" value={form.amount} onChange={onChange} className="input" />
-        </div>
-        <div>
-          <label className="label">
-            Qty / Units
-            <span className="text-muted font-normal ml-1 text-xs">(optional)</span>
-          </label>
-          <input
-            type="number"
-            name="qty"
-            value={form.qty || ''}
-            onChange={onChange}
-            className="input"
-            placeholder="No. of units / shares"
-            step="0.0001"
-          />
-          {computedAvgPrice && (
-            <p className="text-xs text-teal mt-1">Avg price ≈ ₹{Number(computedAvgPrice).toLocaleString('en-IN', { maximumFractionDigits: 4 })}</p>
-          )}
-        </div>
-        <div>
-          <label className="label">
-            Yahoo Ticker
-            <span className="text-muted font-normal ml-1 text-xs">(for live price)</span>
-          </label>
-          <input
-            type="text"
-            name="ticker"
-            value={form.ticker}
-            onChange={onChange}
-            className="input"
-            placeholder="e.g. RELIANCE.NS, GC=F, ^NSEI"
-          />
-          <p className="text-[10px] text-muted mt-1">NSE: add .NS · BSE: add .BO · Gold futures: GC=F · Leave blank — AI will try to find it</p>
         </div>
         <div className="col-span-2 md:col-span-3">
           <label className="label">Broker / Account</label>
@@ -267,14 +228,14 @@ export default function Investments() {
   const sorted = sortConfig.key
     ? [...filtered].sort((a, b) => {
         let av = a[sortConfig.key], bv = b[sortConfig.key];
-        if (['amount','qty','avg_price'].includes(sortConfig.key)) { av = Number(av ?? 0); bv = Number(bv ?? 0); }
+        if (sortConfig.key === 'amount') { av = Number(av ?? 0); bv = Number(bv ?? 0); }
         else { av = String(av ?? '').toLowerCase(); bv = String(bv ?? '').toLowerCase(); }
         return (av < bv ? -1 : av > bv ? 1 : 0) * (sortConfig.dir === 'asc' ? 1 : -1);
       })
     : filtered;
 
   function downloadCSV() {
-    const headers = ['Date', 'Account', 'Goal', 'Asset Class', 'Instrument', 'Side', 'Amount', 'Qty', 'Avg Price', 'Broker', 'Ticker'];
+    const headers = ['Date', 'Account', 'Goal', 'Asset Class', 'Instrument', 'Side', 'Amount', 'Broker', 'Ticker'];
     const rows = filtered.map(r => [
       r.date?.slice(0, 10) || '',
       r.account,
@@ -283,8 +244,6 @@ export default function Investments() {
       r.instrument,
       r.side,
       r.amount,
-      r.qty ?? '',
-      r.avg_price ?? '',
       r.broker || '',
       r.ticker || '',
     ]);
@@ -407,8 +366,6 @@ export default function Investments() {
                     <th className={sortable} onClick={() => handleSort('side')}>Side<SortIcon k="side" /></th>
                     <th className={plain}>Ccy</th>
                     <th className={sortable} onClick={() => handleSort('amount')}>Amount<SortIcon k="amount" /></th>
-                    <th className={sortable} onClick={() => handleSort('qty')}>Qty<SortIcon k="qty" /></th>
-                    <th className={sortable} onClick={() => handleSort('avg_price')}>Avg Price<SortIcon k="avg_price" /></th>
                     <th className={sortable} onClick={() => handleSort('broker')}>Broker<SortIcon k="broker" /></th>
                     <th className={plain}></th>
                   </>);
@@ -417,18 +374,15 @@ export default function Investments() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={13} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
+                <tr><td colSpan={11} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={13} className="py-8 text-center text-muted">No investments yet</td></tr>
+                <tr><td colSpan={11} className="py-8 text-center text-muted">No investments yet</td></tr>
               ) : (
                 sorted.map(row => {
                   const isEditing = inlineEdit?.id === row.id;
                   const ef = inlineEdit?.form || {};
 
                   if (isEditing) {
-                    const computedAvgP = ef.qty && Number(ef.qty) > 0 && Number(ef.amount) > 0
-                      ? (Number(ef.amount) / Number(ef.qty)).toFixed(2)
-                      : null;
                     const setEf = patch => setInlineEdit(prev => ({ ...prev, form: { ...prev.form, ...patch } }));
                     const ic = 'input text-xs py-0.5 px-1.5 h-7 w-full';
                     return (
@@ -462,13 +416,6 @@ export default function Investments() {
                           </select>
                         </td>
                         <td className="py-1.5 px-2 min-w-[90px]"><input type="number" value={ef.amount ?? ''} onChange={e => setEf({ amount: e.target.value })} className={`${ic} font-mono`} /></td>
-                        <td className="py-1.5 px-2 min-w-[90px]">
-                          <div className="flex flex-col gap-0.5">
-                            <input type="number" value={ef.qty ?? ''} onChange={e => setEf({ qty: e.target.value })} placeholder="Qty" className={`${ic} font-mono`} step="0.0001" />
-                            {computedAvgP && <span className="text-[10px] text-teal font-mono">{CURRENCY_SYMBOLS[ef.currency || 'INR']}{Number(computedAvgP).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/u</span>}
-                          </div>
-                        </td>
-                        <td className="py-1.5 px-2 text-xs text-muted font-mono whitespace-nowrap">{computedAvgP ? `${CURRENCY_SYMBOLS[ef.currency || 'INR']}${Number(computedAvgP).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}</td>
                         <td className="py-1.5 px-2 min-w-[90px]"><input type="text" value={ef.broker || ''} onChange={e => setEf({ broker: e.target.value })} placeholder="Broker" className={ic} /></td>
                         <td className="py-1.5 px-2">
                           <div className="flex gap-1.5">
@@ -511,12 +458,6 @@ export default function Investments() {
                       </td>
                       <td className="py-3 px-4 font-mono text-soft">
                         {row.side === 'SELL' ? '-' : ''}{CURRENCY_SYMBOLS[row.currency || 'INR']}{Number(row.amount).toLocaleString('en-IN')}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-soft text-xs">
-                        {row.qty ? Number(row.qty).toLocaleString('en-IN', { maximumFractionDigits: 3 }) : '—'}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-soft text-xs">
-                        {row.avg_price ? `${CURRENCY_SYMBOLS[row.currency || 'INR']}${Number(row.avg_price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}
                       </td>
                       <td className="py-3 px-4 text-soft text-xs">{row.broker || '—'}</td>
                       <td className="py-3 px-4">

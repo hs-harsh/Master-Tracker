@@ -65,15 +65,13 @@ Sides: ${INV_SIDES.join(', ')}
 
 RULES:
 - Return ONLY a valid JSON array, no explanation, no markdown, no code fences.
-- Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "...", "asset_class": "...", "instrument": "...", "side": "BUY" or "SELL", "amount": <total_value_in_investment_currency>, "currency": "INR" or "USD" or "GBP", "qty": <number_of_units_or_null>, "avg_price": <price_per_unit_in_investment_currency_or_null>, "broker": "..." }
+- Each object: { "date": "YYYY-MM-DD", "account": "...", "goal": "...", "asset_class": "...", "instrument": "...", "side": "BUY" or "SELL", "amount": <total_value_in_investment_currency>, "currency": "INR" or "USD" or "GBP", "broker": "..." }
 - currency: detect from context symbols and instrument names (do not default to INR blindly):
   * "USD" for US stocks/ETFs or $ amounts (AAPL, TSLA, NVDA, SPY, QQQ, etc.)
   * "GBP" for UK stocks/ETFs or £ amounts; UCITS ETFs (CSPX, VUSA, IWDA, EIMI, etc.) → use "GBP" if amounts are in £, "USD" if amounts are in $
   * "INR" for Indian instruments or ₹ amounts (NSE/BSE stocks, Indian ETFs, mutual funds)
   * When a currency symbol ($, £, ₹) appears next to an amount, always use the matching currency
-- qty: number of units/shares/lots. If stated, use it. If only amount and avg_price are known, set qty = amount / avg_price (not null).
-- avg_price: price per unit in the investment's currency. If not stated but qty and amount are known, compute avg_price = amount / qty. If only amount and avg_price are known from the user, keep both and set qty as above.
-- amount: total value in the investment's currency (qty × avg_price). Must be a positive number. Strip currency symbols and commas. Preserve decimal places exactly — do NOT round to integers.
+- amount: total invested value in the investment's currency. Must be a positive number. Strip currency symbols and commas. Preserve decimal places exactly — do NOT round to integers. If the user gives quantity and price per unit instead of a total, compute amount = qty × price.
 - Infer asset class: stocks/shares/equity/mutual fund → Equity; bonds/fd/ppf/debt → Debt; gold/silver → Gold; crypto/bitcoin → Crypto; property/real estate → Real Estate
 - Use today's date if no date mentioned. If only month/year given (e.g. "March 2026"), use the 25th of that month.
 - If goal is not mentioned, leave it as ""
@@ -363,25 +361,14 @@ router.post('/parse', auth, async (req, res) => {
     }
 
     // Snap account names to real persons so the save never 403s
-    // For investments: round amounts to integers (BIGINT column — no decimals), normalise qty/avg_price
+    // For investments: round amounts to integers (BIGINT column — no decimals)
     entries = entries.map(e => {
       const base = { ...e, account: persons.length ? resolveAccount(e.account, persons) : e.account };
       if (type === 'investments') {
         const amount = +Number(e.amount || 0).toFixed(2);
-        let qty = e.qty != null && e.qty !== '' && Number.isFinite(Number(e.qty)) ? Number(e.qty) : null;
-        let avg_price = e.avg_price != null && e.avg_price !== '' && Number.isFinite(Number(e.avg_price)) ? Number(e.avg_price) : null;
-        const finalAmount = amount;
-        if (!avg_price && qty && finalAmount > 0) avg_price = +(finalAmount / qty).toFixed(4);
-        if (!qty && avg_price && finalAmount > 0) qty = +(finalAmount / avg_price).toFixed(4);
         const rawCurr = (e.currency || 'INR').toUpperCase().trim();
         const currency = ['INR', 'USD', 'GBP'].includes(rawCurr) ? rawCurr : 'INR';
-        return {
-          ...base,
-          amount: finalAmount,
-          currency,
-          qty: qty ? +Number(qty).toFixed(4) : null,
-          avg_price: avg_price ? +Number(avg_price).toFixed(4) : null,
-        };
+        return { ...base, amount, currency };
       }
       return base;
     });
