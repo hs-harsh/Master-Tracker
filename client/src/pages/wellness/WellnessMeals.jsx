@@ -173,7 +173,7 @@ export default function WellnessMeals() {
   const currentPerson = activePerson || personName;
 
   // planner state
-  const [view,      setView]      = useState('planner');
+  const [view,      setView]      = useState('ideas');
   const [weekStart, setWeekStart] = useState(() => getMonday(todayStr()));
   const [plan,      setPlan]      = useState(null);
   const [entries,   setEntries]   = useState({});
@@ -1061,7 +1061,7 @@ export default function WellnessMeals() {
         </div>
       </div>
 
-      {loading && <div className="text-center py-10 text-muted text-sm fade-up-1">Loading…</div>}
+      {loading && view === 'planner' && <div className="text-center py-10 text-muted text-sm fade-up-1">Loading…</div>}
 
       {!loading && view === 'planner'  && Planner()}
       {           view === 'ideas'     && HealthyIdeas()}
