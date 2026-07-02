@@ -700,9 +700,21 @@ export default function WellnessHabits() {
 
         {/* line chart — daily total score vs target */}
         <div className="card p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp size={14} className="text-accent" />
-            <p className="text-xs text-muted uppercase tracking-widest font-mono">Daily total score vs target ({dailyTarget}/{statMaxScore})</p>
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <TrendingUp size={14} className="text-accent" />
+              <p className="text-xs text-muted uppercase tracking-widest font-mono">Daily total score vs target ({dailyTarget}/{statMaxScore})</p>
+            </div>
+            <div className="flex gap-1 rounded-lg overflow-hidden border border-white/8">
+              {PERIODS.map(p => (
+                <button key={p} onClick={() => setPeriod(p)}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    period === p ? 'bg-accent text-ink' : 'text-soft hover:text-white bg-surface/50'
+                  }`}>
+                  {p}
+                </button>
+              ))}
+            </div>
           </div>
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
@@ -749,18 +761,6 @@ export default function WellnessHabits() {
           <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Weekly habit tracker & analytics</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {view === 'analytics' && (
-            <div className="flex gap-1 rounded-lg overflow-hidden border border-white/8">
-              {PERIODS.map(p => (
-                <button key={p} onClick={() => setPeriod(p)}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                    period === p ? 'bg-accent text-ink' : 'text-soft hover:text-white bg-surface/50'
-                  }`}>
-                  {p}
-                </button>
-              ))}
-            </div>
-          )}
           <div className="flex gap-1 p-1 rounded-xl"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
             {[{ key: 'planner', label: 'Plan Week' }, { key: 'analytics', label: 'Analytics' }].map(({ key, label }) => (
