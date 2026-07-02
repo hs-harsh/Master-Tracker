@@ -221,6 +221,13 @@ export default function WellnessMeals() {
   const [analytics, setAnalytics] = useState(null);
   const [aLoading,  setALoading]  = useState(false);
 
+  // healthy ideas state
+  const [ideas, setIdeas] = useState({ breakfast_snacks: [], lunch_dinner: [] });
+  const [ideasLoading, setIdeasLoading] = useState(false);
+  const [ideaDrafts, setIdeaDrafts] = useState({ breakfast_snacks: '', lunch_dinner: '' });
+  const [ideaSaving, setIdeaSaving] = useState(null); // category being saved
+  const [expandedIdeaSections, setExpandedIdeaSections] = useState(new Set(['breakfast_snacks', 'lunch_dinner']));
+
   // Reload preferences when person changes — instant from cache, then hydrate from DB
   useEffect(() => {
     const cached = loadPreferences(currentPerson);
@@ -281,6 +288,54 @@ export default function WellnessMeals() {
   useEffect(() => {
     if (view === 'analytics') loadAnalytics(period, currentPerson);
   }, [view, period, currentPerson, loadAnalytics]);
+
+  // ── healthy ideas ────────────────────────────────────────────────────────────
+  const loadIdeas = useCallback(async (person) => {
+    setIdeasLoading(true);
+    try {
+      const { data } = await api.get(`/meals/ideas?person=${encodeURIComponent(person || '')}`);
+      setIdeas({ breakfast_snacks: data.breakfast_snacks || [], lunch_dinner: data.lunch_dinner || [] });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIdeasLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view === 'ideas') loadIdeas(currentPerson);
+  }, [view, currentPerson, loadIdeas]);
+
+  const toggleIdeaSection = (category) => setExpandedIdeaSections(prev => {
+    const next = new Set(prev);
+    next.has(category) ? next.delete(category) : next.add(category);
+    return next;
+  });
+
+  const addIdea = async (category) => {
+    const text = (ideaDrafts[category] || '').trim();
+    if (!text) return;
+    setIdeaSaving(category);
+    try {
+      const { data } = await api.post('/meals/ideas', { person: currentPerson || '', category, text });
+      setIdeas(prev => ({ ...prev, [category]: [data, ...prev[category]] }));
+      setIdeaDrafts(prev => ({ ...prev, [category]: '' }));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIdeaSaving(null);
+    }
+  };
+
+  const deleteIdea = async (category, id) => {
+    setIdeas(prev => ({ ...prev, [category]: prev[category].filter(i => i.id !== id) }));
+    try {
+      await api.delete(`/meals/ideas/${id}`);
+    } catch (err) {
+      console.error(err);
+      loadIdeas(currentPerson); // resync on failure
+    }
+  };
 
   // ── save entries ───────────────────────────────────────────────────────────
   async function saveEntries(entriesOverride) {
@@ -947,6 +1002,81 @@ export default function WellnessMeals() {
     );
   }
 
+  // ── healthy ideas ───────────────────────────────────────────────────────────
+  const IDEA_SECTIONS = [
+    { key: 'breakfast_snacks', label: 'Breakfast / Snacks' },
+    { key: 'lunch_dinner',     label: 'Lunch / Dinner' },
+  ];
+
+  function HealthyIdeas() {
+    if (ideasLoading) return <div className="text-center py-10 text-muted text-sm fade-up-1">Loading…</div>;
+    return (
+      <div className="space-y-4 fade-up-1">
+        <p className="text-muted text-xs">Jot down healthy meal ideas as they come to you, grouped by when you'd eat them — refer back whenever you're planning the week.</p>
+        {IDEA_SECTIONS.map(({ key, label }) => {
+          const open = expandedIdeaSections.has(key);
+          const list = ideas[key] || [];
+          return (
+            <div key={key} className="card overflow-hidden">
+              <button
+                type="button"
+                onClick={() => toggleIdeaSection(key)}
+                className="w-full flex items-center justify-between py-3 px-4 hover:bg-surface/40 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  {open ? <ChevronDown size={14} className="text-muted" /> : <ChevronRight size={14} className="text-muted" />}
+                  <span className="font-display text-sm font-semibold text-white">{label}</span>
+                </div>
+                <span className="text-muted text-xs font-mono">{list.length}</span>
+              </button>
+              {open && (
+                <div className="px-4 pb-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={ideaDrafts[key]}
+                      onChange={e => setIdeaDrafts(prev => ({ ...prev, [key]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') addIdea(key); }}
+                      placeholder="Add a new idea…"
+                      className="input flex-1 py-2 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => addIdea(key)}
+                      disabled={ideaSaving === key || !ideaDrafts[key]?.trim()}
+                      className="btn-primary flex items-center gap-1 px-3 py-2 text-sm disabled:opacity-40"
+                    >
+                      <Plus size={14} /> Add
+                    </button>
+                  </div>
+                  {list.length === 0 ? (
+                    <p className="text-muted text-xs py-2">No ideas yet — add your first one above.</p>
+                  ) : (
+                    <ul className="divide-y divide-border/40">
+                      {list.map(idea => (
+                        <li key={idea.id} className="flex items-center justify-between gap-3 py-2">
+                          <span className="text-soft text-sm">{idea.text}</span>
+                          <button
+                            type="button"
+                            onClick={() => deleteIdea(key, idea.id)}
+                            className="text-muted hover:text-rose transition-colors shrink-0"
+                            title="Remove idea"
+                          >
+                            <X size={14} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   // ── edit modal ─────────────────────────────────────────────────────────────
   function EditModal() {
     if (!editCell) return null;
@@ -1177,7 +1307,7 @@ export default function WellnessMeals() {
           )}
           <div className="flex gap-1 p-1 rounded-xl"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            {[{ key: 'planner', label: 'Plan Week' }, { key: 'analytics', label: 'Analytics' }].map(({ key, label }) => (
+            {[{ key: 'planner', label: 'Plan Week' }, { key: 'analytics', label: 'Analytics' }, { key: 'ideas', label: 'Healthy Ideas' }].map(({ key, label }) => (
               <button key={key} onClick={() => setView(key)}
                 className={`px-4 py-2 rounded-lg text-sm font-body transition-all ${
                   view === key ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'
@@ -1193,6 +1323,7 @@ export default function WellnessMeals() {
 
       {!loading && view === 'planner'  && Planner()}
       {           view === 'analytics' && Analytics()}
+      {           view === 'ideas'     && HealthyIdeas()}
 
       {EditModal()}
     </div>

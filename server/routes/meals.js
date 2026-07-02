@@ -631,4 +631,57 @@ router.post('/week/:id/send-email', async (req, res) => {
   }
 });
 
+const MEAL_IDEA_CATEGORIES = ['breakfast_snacks', 'lunch_dinner'];
+
+// ── GET /api/meals/ideas?person=X ─────────────────────────────────────────────
+router.get('/ideas', async (req, res) => {
+  try {
+    const person = req.query.person || '';
+    const { rows } = await pool.query(
+      `SELECT id, category, text, created_at
+       FROM meal_ideas WHERE user_id=$1 AND person_name=$2
+       ORDER BY created_at DESC`,
+      [req.user.id, person]
+    );
+    const result = { breakfast_snacks: [], lunch_dinner: [] };
+    rows.forEach(r => { if (result[r.category]) result[r.category].push(r); });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/meals/ideas ─────────────────────────────────────────────────────
+router.post('/ideas', async (req, res) => {
+  try {
+    const { person = '', category, text } = req.body;
+    if (!MEAL_IDEA_CATEGORIES.includes(category)) {
+      return res.status(400).json({ error: 'Invalid category' });
+    }
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return res.status(400).json({ error: 'text required' });
+    const { rows } = await pool.query(
+      `INSERT INTO meal_ideas (user_id, person_name, category, text)
+       VALUES ($1, $2, $3, $4) RETURNING id, category, text, created_at`,
+      [req.user.id, person, category, trimmed]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/meals/ideas/:id ────────────────────────────────────────────────
+router.delete('/ideas/:id', async (req, res) => {
+  try {
+    await pool.query(
+      `DELETE FROM meal_ideas WHERE id=$1 AND user_id=$2`,
+      [req.params.id, req.user.id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

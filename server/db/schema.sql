@@ -472,6 +472,18 @@ CREATE TABLE IF NOT EXISTS habit_config (
 );
 CREATE INDEX IF NOT EXISTS idx_habit_config_user_person ON habit_config(user_id, person_name);
 
+-- ─── Healthy Meal Ideas ────────────────────────────────────────────────────────
+-- Stores per-user/person free-form meal idea lists, split by meal grouping
+CREATE TABLE IF NOT EXISTS meal_ideas (
+  id             SERIAL PRIMARY KEY,
+  user_id        INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  person_name    VARCHAR(50) NOT NULL DEFAULT '',
+  category       VARCHAR(30) NOT NULL,   -- 'breakfast_snacks' | 'lunch_dinner'
+  text           TEXT NOT NULL,
+  created_at     TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_meal_ideas_user_person ON meal_ideas(user_id, person_name, category);
+
 -- Add scores JSONB column to habit_entries for dynamic/custom habit values
 DO $$
 BEGIN
