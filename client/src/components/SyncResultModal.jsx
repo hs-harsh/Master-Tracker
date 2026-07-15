@@ -30,7 +30,7 @@ export async function downloadBackupCsv(type) {
 
 export default function SyncResultModal({ result, syncType, onClose }) {
   const section = (syncType === 'transactions' ? result?.transactions : result?.investments) || { added: 0, errors: [], totalRows: 0 };
-  const label = syncType === 'transactions' ? 'Transactions' : 'Liquid Investments';
+  const label = syncType === 'transactions' ? 'Transactions' : 'Investments';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/80" onClick={onClose}>

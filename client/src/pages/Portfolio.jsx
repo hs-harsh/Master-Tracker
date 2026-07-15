@@ -249,9 +249,9 @@ export default function Portfolio() {
       </div>
 
 
-      {/* Section header — Liquid Investments */}
+      {/* Section header — Investments */}
       <div className="flex items-center gap-3">
-        <span className="text-xs text-muted uppercase tracking-widest font-semibold whitespace-nowrap">Liquid Investments</span>
+        <span className="text-xs text-muted uppercase tracking-widest font-semibold whitespace-nowrap">Investments</span>
         <div className="flex-1 h-px bg-white/8" />
       </div>
 
@@ -602,7 +602,7 @@ export default function Portfolio() {
               </div>
               <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm font-mono">
                 <div>
-                  <div className="text-muted text-xs">Liquid Investments</div>
+                  <div className="text-muted text-xs">Investments</div>
                   <div className="text-white font-semibold">{fmt(investmentsBase)}</div>
                 </div>
                 <div>

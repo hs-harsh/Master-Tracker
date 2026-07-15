@@ -163,7 +163,7 @@ export default function Admin() {
           <StatCard label="Total Users" value={stats.totalUsers} icon={Users} color="bg-blue-500"
             sub={`${stats.activeUsers} active`} />
           <StatCard label="Transactions" value={stats.totalTransactions} icon={BarChart3} color="bg-green-500" />
-          <StatCard label="Liquid Investments" value={stats.totalInvestments} icon={BarChart3} color="bg-purple-500" />
+          <StatCard label="Investments" value={stats.totalInvestments} icon={BarChart3} color="bg-purple-500" />
           <StatCard label="Auth Methods" icon={KeyRound} color="bg-amber-500"
             value={`${stats.passwordUsers}pw / ${stats.otpOnlyUsers}otp`} />
         </div>
