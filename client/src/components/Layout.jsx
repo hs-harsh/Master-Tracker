@@ -5,7 +5,7 @@ import {
   LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase,
   Calculator, LineChart, LogOut, Settings, BarChart3,
   Menu, X, LogIn, Lock, Shield, Heart, ChevronDown, ChevronRight,
-  CheckSquare, Utensils, Dumbbell, Wallet, BarChart2,
+  CheckSquare, Utensils, Dumbbell, Wallet, BarChart2, Landmark,
 } from 'lucide-react';
 import InstallPrompt from './InstallPrompt';
 import api from '../lib/api';
@@ -20,10 +20,11 @@ const PUBLIC_NAV = [
 const FINANCE_NAV = [
   { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard',        end: true },
   { to: '/portfolio',         icon: PieChart,        label: 'Portfolio' },
-  { to: '/investments',       icon: Briefcase,       label: 'Investments' },
+  { to: '/investments',       icon: Briefcase,       label: 'Liquid Investments' },
   { to: '/cashflow',          icon: TrendingUp,      label: 'Cashflow' },
   { to: '/transactions',      icon: Receipt,         label: 'Transactions' },
   { to: '/expense-analyser',  icon: Calculator,      label: 'Expense Analyser' },
+  { to: '/other-assets',      icon: Landmark,        label: 'Illiquid Investments' },
 ];
 
 const WELLNESS_NAV = [
@@ -57,9 +58,9 @@ export default function Layout() {
   const [sidebarWellnessEnabled, setSidebarWellnessEnabled] = useState(true);
   const [sidebarLiveTradingEnabled, setSidebarLiveTradingEnabled] = useState(true);
 
-  const isFinanceRoute = ['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser'].includes(location.pathname);
+  const isFinanceRoute = ['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser', '/other-assets'].includes(location.pathname);
   useEffect(() => {
-    if (['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser'].includes(location.pathname))
+    if (['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser', '/other-assets'].includes(location.pathname))
       setFinanceOpen(true);
   }, [location.pathname]);
   useEffect(() => {
