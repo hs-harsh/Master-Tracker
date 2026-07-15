@@ -493,7 +493,7 @@ export default function OtherAssets() {
   const snapshotChartData = snapshots.map(s => ({
     date: s.date,
     'Net Worth': +(Number(s.net_worth) / 100000).toFixed(2),
-    'Other Assets': +(Number(s.other_assets_value) / 100000).toFixed(2),
+    'Illiquid Investments': +(Number(s.other_assets_value) / 100000).toFixed(2),
     'Loans': +(Number(s.other_loans) / 100000).toFixed(2),
   }));
 

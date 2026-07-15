@@ -13,6 +13,7 @@ import { useAuth } from '../hooks/useAuth';
 const RISK_COLORS  = { Low: '#60a5fa', Medium: '#fbbf24', High: '#f97316' };
 const ASSET_COLORS = { Equity: '#f97316', Debt: '#60a5fa', Gold: '#fbbf24', Cash: '#6b7280', 'Real Estate': '#a78bfa', Crypto: '#ec4899' };
 const BROKER_COLORS = ['#2dd4bf', '#f0c040', '#60a5fa', '#a78bfa', '#fb7185', '#34d399', '#f97316', '#6b7280'];
+const ILLIQUID_TYPE_COLORS = { Property: '#a78bfa', Vehicle: '#60a5fa', Gold: '#fbbf24', PPF: '#34d399', NPS: '#2dd4bf' };
 
 const riskForAsset = asset => {
   switch (asset) {
@@ -507,12 +508,18 @@ export default function Portfolio() {
               <button onClick={() => setShowPricePanel(false)} className="btn-ghost text-sm">Dismiss</button>
               <span className="text-muted text-xs ml-auto">
                 {Object.values(priceStatus).filter(s => s.status === 'error').length > 0 &&
-                  `${Object.values(priceStatus).filter(s => s.status === 'error').length} not found — add Yahoo ticker in Investments tab`}
+                  `${Object.values(priceStatus).filter(s => s.status === 'error').length} not found — add Yahoo ticker in Liquid Investments tab`}
               </span>
             </div>
           )}
         </div>
       )}
+
+      {/* Section header — Liquid Investments */}
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-muted uppercase tracking-widest font-semibold whitespace-nowrap">Liquid Investments</span>
+        <div className="flex-1 h-px bg-white/8" />
+      </div>
 
       {/* Key metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -552,36 +559,6 @@ export default function Portfolio() {
           <span className="font-mono text-lg font-bold" style={{ color: ASSET_COLORS.Gold }}>{(goldVal / totalAbs * 100).toFixed(1)}%</span>
         </div>
       </div>
-
-      {/* ── Net Worth Summary (investments + other assets − loans) ─────── */}
-      {hasOtherAssets && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-2">
-            <p className="stat-label text-xs">Net Worth (All Assets)</p>
-            <a href="/other-assets" className="text-xs text-accent hover:underline">Manage Other Assets →</a>
-          </div>
-          <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm font-mono">
-            <div>
-              <div className="text-muted text-xs">Investments</div>
-              <div className="text-white font-semibold">{fmt(investmentsBase)}</div>
-            </div>
-            <div>
-              <div className="text-muted text-xs">Other Assets</div>
-              <div className="text-a78bfa font-semibold" style={{ color: '#a78bfa' }}>{fmt(otherAssetsValue)}</div>
-            </div>
-            {otherLoans > 0 && (
-              <div>
-                <div className="text-muted text-xs">Loans</div>
-                <div className="text-rose-400 font-semibold">−{fmt(otherLoans)}</div>
-              </div>
-            )}
-            <div className="border-l border-border pl-8">
-              <div className="text-muted text-xs">Total Net Worth</div>
-              <div className={`text-xl font-bold font-display ${netWorth >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{fmt(netWorth)}</div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Per-currency breakdown ──────────────────────────────────────── */}
       {Object.keys(ccyBreakdown.inv).some(c => c !== 'INR') && (
@@ -897,6 +874,127 @@ export default function Portfolio() {
           </table>
         </div>
       </div>
+
+      {/* ── Illiquid Investments Section ──────────────────────────────────── */}
+      {hasOtherAssets && (() => {
+        // Per-type totals
+        const typeMap = {};
+        otherAssetsData.forEach(a => {
+          if (!typeMap[a.asset_type]) typeMap[a.asset_type] = { value: 0, loan: 0 };
+          typeMap[a.asset_type].value += Number(a.current_value) || 0;
+          typeMap[a.asset_type].loan  += Number(a.loan_outstanding) || 0;
+        });
+        const typePieData = Object.entries(typeMap)
+          .filter(([, v]) => v.value > 0)
+          .map(([name, v]) => ({ name, value: v.value }));
+        const assetBarData = otherAssetsData
+          .map(a => ({
+            name: a.name.length > 16 ? a.name.slice(0, 14) + '…' : a.name,
+            fullName: a.name,
+            type: a.asset_type,
+            Value: +(Number(a.current_value) / 100000).toFixed(2),
+            Loan:  +(Number(a.loan_outstanding) / 100000).toFixed(2),
+          }))
+          .sort((a, b) => b.Value - a.Value);
+
+        return (
+          <>
+            <div className="flex items-center gap-3 mt-2">
+              <span className="text-xs text-muted uppercase tracking-widest font-semibold whitespace-nowrap">Illiquid Investments</span>
+              <div className="flex-1 h-px bg-white/8" />
+            </div>
+
+            {/* Summary cards */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="card flex flex-col">
+                <div className="flex items-center gap-2 text-muted mb-1"><Wallet size={14} /><span className="stat-label text-xs">Total Value</span></div>
+                <span className="font-mono text-lg font-bold text-white">{fmt(otherAssetsValue)}</span>
+              </div>
+              <div className="card flex flex-col">
+                <div className="flex items-center gap-2 text-muted mb-1"><TrendingUp size={14} /><span className="stat-label text-xs">Total Loans</span></div>
+                <span className="font-mono text-lg font-bold text-rose-400">{otherLoans > 0 ? fmt(otherLoans) : '—'}</span>
+              </div>
+              <div className="card flex flex-col">
+                <div className="flex items-center gap-2 text-muted mb-1"><Target size={14} /><span className="stat-label text-xs">Net Equity</span></div>
+                <span className={`font-mono text-lg font-bold ${(otherAssetsValue - otherLoans) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{fmt(otherAssetsValue - otherLoans)}</span>
+              </div>
+            </div>
+
+            {/* Charts */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Type allocation donut */}
+              <div className="card">
+                <p className="stat-label mb-3">By Asset Type</p>
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={typePieData} cx="50%" cy="45%" innerRadius={45} outerRadius={70} dataKey="value" strokeWidth={0} labelLine={false}>
+                      {typePieData.map(d => <Cell key={d.name} fill={ILLIQUID_TYPE_COLORS[d.name] || '#9ca3af'} />)}
+                    </Pie>
+                    <Legend layout="horizontal" align="center" verticalAlign="bottom" formatter={v => <span style={{ color: '#e5e7eb', fontSize: 12 }}>{v}</span>} iconType="circle" iconSize={8} wrapperStyle={{ paddingTop: 8 }} />
+                    <Tooltip contentStyle={TT} content={({ active, payload }) => active && payload?.[0] ? (
+                      <div style={{ padding: '6px 10px', ...TT }}><strong>{payload[0].name}</strong>: {fmt(payload[0].value)}</div>
+                    ) : null} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Value vs Loan per asset */}
+              <div className="card">
+                <p className="stat-label mb-3">Value vs Loan by Asset (₹L)</p>
+                <ResponsiveContainer width="100%" height={Math.max(160, assetBarData.length * 40 + 50)}>
+                  <BarChart layout="vertical" data={assetBarData} margin={{ top: 4, right: 24, bottom: 4, left: 0 }}>
+                    <XAxis type="number" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `${v}L`} />
+                    <YAxis type="category" dataKey="name" width={90} tick={{ fill: '#9ca3af', fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={TT} content={({ active, payload }) => active && payload?.length ? (
+                      <div style={{ padding: '6px 10px', ...TT }}>
+                        <div className="font-bold mb-1">{payload[0]?.payload?.fullName}</div>
+                        {payload.map(p => <div key={p.name}><span style={{ color: p.color }}>{p.name}</span>: ₹{(p.value * 100000).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>)}
+                      </div>
+                    ) : null} />
+                    <Legend wrapperStyle={{ fontSize: 11, color: '#888' }} />
+                    <Bar dataKey="Value" radius={[0, 4, 4, 0]}>
+                      {assetBarData.map(d => <Cell key={d.name} fill={ILLIQUID_TYPE_COLORS[d.type] || '#9ca3af'} />)}
+                    </Bar>
+                    <Bar dataKey="Loan" fill="#fb7185" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Net Worth combined */}
+            <div className="flex items-center gap-3 mt-2">
+              <span className="text-xs text-muted uppercase tracking-widest font-semibold whitespace-nowrap">Net Worth</span>
+              <div className="flex-1 h-px bg-white/8" />
+            </div>
+            <div className="card">
+              <div className="flex items-center justify-between mb-2">
+                <p className="stat-label text-xs">Net Worth (All Assets)</p>
+                <a href="/other-assets" className="text-xs text-accent hover:underline">Manage Illiquid →</a>
+              </div>
+              <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm font-mono">
+                <div>
+                  <div className="text-muted text-xs">Liquid Investments</div>
+                  <div className="text-white font-semibold">{fmt(investmentsBase)}</div>
+                </div>
+                <div>
+                  <div className="text-muted text-xs">Illiquid Investments</div>
+                  <div className="font-semibold" style={{ color: '#a78bfa' }}>{fmt(otherAssetsValue)}</div>
+                </div>
+                {otherLoans > 0 && (
+                  <div>
+                    <div className="text-muted text-xs">Loans</div>
+                    <div className="text-rose-400 font-semibold">−{fmt(otherLoans)}</div>
+                  </div>
+                )}
+                <div className="border-l border-border pl-8">
+                  <div className="text-muted text-xs">Total Net Worth</div>
+                  <div className={`text-xl font-bold font-display ${netWorth >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{fmt(netWorth)}</div>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

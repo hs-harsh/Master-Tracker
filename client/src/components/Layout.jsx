@@ -20,11 +20,11 @@ const PUBLIC_NAV = [
 const FINANCE_NAV = [
   { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard',        end: true },
   { to: '/portfolio',         icon: PieChart,        label: 'Portfolio' },
-  { to: '/investments',       icon: Briefcase,       label: 'Investments' },
+  { to: '/investments',       icon: Briefcase,       label: 'Liquid Investments' },
   { to: '/cashflow',          icon: TrendingUp,      label: 'Cashflow' },
   { to: '/transactions',      icon: Receipt,         label: 'Transactions' },
   { to: '/expense-analyser',  icon: Calculator,      label: 'Expense Analyser' },
-  { to: '/other-assets',      icon: Landmark,        label: 'Other Assets' },
+  { to: '/other-assets',      icon: Landmark,        label: 'Illiquid Investments' },
 ];
 
 const WELLNESS_NAV = [
