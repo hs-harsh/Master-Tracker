@@ -579,3 +579,27 @@ CREATE TABLE IF NOT EXISTS net_worth_snapshots (
   UNIQUE(user_id, snapshot_date)
 );
 CREATE INDEX IF NOT EXISTS idx_net_worth_snapshots_user_date ON net_worth_snapshots(user_id, snapshot_date);
+
+-- Per-asset value/loan history (recorded on each update)
+CREATE TABLE IF NOT EXISTS other_asset_history (
+  id               SERIAL PRIMARY KEY,
+  asset_id         INT NOT NULL REFERENCES other_assets(id) ON DELETE CASCADE,
+  user_id          INT NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
+  current_value    NUMERIC(14,2) NOT NULL,
+  loan_outstanding NUMERIC(14,2) DEFAULT 0,
+  as_of_date       DATE NOT NULL DEFAULT CURRENT_DATE,
+  created_at       TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_other_asset_history_asset ON other_asset_history(asset_id, as_of_date);
+
+-- User-defined asset categories
+CREATE TABLE IF NOT EXISTS user_asset_types (
+  id         SERIAL PRIMARY KEY,
+  user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type_name  VARCHAR(50) NOT NULL,
+  color      VARCHAR(7)  NOT NULL DEFAULT '#9ca3af',
+  has_loan   BOOLEAN     NOT NULL DEFAULT false,
+  has_qty    BOOLEAN     NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, type_name)
+);
