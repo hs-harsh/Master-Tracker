@@ -133,6 +133,7 @@ router.post('/', auth, async (req, res) => {
     const {
       account, asset_type, name,
       purchase_value, current_value, loan_outstanding, loan_emi, loan_interest_rate,
+      loan_start_date, loan_tenure_months,
       quantity, currency = 'INR', notes, as_of_date,
     } = req.body;
 
@@ -144,8 +145,10 @@ router.post('/', auth, async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO other_assets
          (user_id, account, asset_type, name, purchase_value, current_value,
-          loan_outstanding, loan_emi, loan_interest_rate, quantity, currency, notes, as_of_date)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          loan_outstanding, loan_emi, loan_interest_rate,
+          loan_start_date, loan_tenure_months,
+          quantity, currency, notes, as_of_date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [
         req.user.id, account, asset_type, name,
@@ -154,6 +157,8 @@ router.post('/', auth, async (req, res) => {
         loan_outstanding || 0,
         loan_emi || null,
         loan_interest_rate || null,
+        loan_start_date || null,
+        loan_tenure_months ? Number(loan_tenure_months) : null,
         quantity || null,
         currency.toUpperCase(),
         notes || null,
@@ -181,6 +186,7 @@ router.put('/:id', auth, async (req, res) => {
     const {
       account, asset_type, name,
       purchase_value, current_value, loan_outstanding, loan_emi, loan_interest_rate,
+      loan_start_date, loan_tenure_months,
       quantity, currency = 'INR', notes, as_of_date,
     } = req.body;
 
@@ -192,18 +198,20 @@ router.put('/:id', auth, async (req, res) => {
     const asOfDate = as_of_date || new Date().toISOString().slice(0, 10);
     const { rows } = await pool.query(
       `UPDATE other_assets SET
-         account            = $3,
-         asset_type         = $4,
-         name               = $5,
-         purchase_value     = $6,
-         current_value      = $7,
-         loan_outstanding   = $8,
-         loan_emi           = $9,
-         loan_interest_rate = $10,
-         quantity           = $11,
-         currency           = $12,
-         notes              = $13,
-         as_of_date         = $14
+         account             = $3,
+         asset_type          = $4,
+         name                = $5,
+         purchase_value      = $6,
+         current_value       = $7,
+         loan_outstanding    = $8,
+         loan_emi            = $9,
+         loan_interest_rate  = $10,
+         loan_start_date     = $11,
+         loan_tenure_months  = $12,
+         quantity            = $13,
+         currency            = $14,
+         notes               = $15,
+         as_of_date          = $16
        WHERE id = $1 AND user_id = $2
        RETURNING *`,
       [
@@ -214,6 +222,8 @@ router.put('/:id', auth, async (req, res) => {
         Number(loan_outstanding) || 0,
         loan_emi || null,
         loan_interest_rate || null,
+        loan_start_date || null,
+        loan_tenure_months ? Number(loan_tenure_months) : null,
         quantity || null,
         (currency || 'INR').toUpperCase(),
         notes || null,

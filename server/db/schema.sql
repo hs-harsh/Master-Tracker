@@ -592,6 +592,10 @@ CREATE TABLE IF NOT EXISTS other_asset_history (
 );
 CREATE INDEX IF NOT EXISTS idx_other_asset_history_asset ON other_asset_history(asset_id, as_of_date);
 
+-- Add loan start date and tenure to other_assets (idempotent)
+ALTER TABLE other_assets ADD COLUMN IF NOT EXISTS loan_start_date     DATE;
+ALTER TABLE other_assets ADD COLUMN IF NOT EXISTS loan_tenure_months  INT;
+
 -- User-defined asset categories
 CREATE TABLE IF NOT EXISTS user_asset_types (
   id         SERIAL PRIMARY KEY,
