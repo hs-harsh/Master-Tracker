@@ -5,7 +5,7 @@ import {
   LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase,
   Calculator, LineChart, LogOut, Settings, BarChart3,
   Menu, X, LogIn, Lock, Shield, Heart, ChevronDown, ChevronRight,
-  CheckSquare, Utensils, Dumbbell, Wallet, BarChart2, Landmark,
+  CheckSquare, Utensils, Dumbbell, Wallet, BarChart2, Landmark, Archive,
 } from 'lucide-react';
 import InstallPrompt from './InstallPrompt';
 import api from '../lib/api';
@@ -18,13 +18,16 @@ const PUBLIC_NAV = [
 ];
 
 const FINANCE_NAV = [
-  { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard',        end: true },
-  { to: '/portfolio',         icon: PieChart,        label: 'Portfolio' },
-  { to: '/investments',       icon: Briefcase,       label: 'Liquid Investments' },
-  { to: '/cashflow',          icon: TrendingUp,      label: 'Cashflow' },
-  { to: '/transactions',      icon: Receipt,         label: 'Transactions' },
-  { to: '/expense-analyser',  icon: Calculator,      label: 'Expense Analyser' },
-  { to: '/other-assets',      icon: Landmark,        label: 'Illiquid Investments' },
+  { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard',           end: true },
+  { to: '/portfolio',    icon: PieChart,        label: 'Portfolio' },
+  { to: '/investments',  icon: Briefcase,       label: 'Liquid Investments' },
+  { to: '/other-assets', icon: Landmark,        label: 'Illiquid Investments' },
+  { to: '/cashflow',     icon: TrendingUp,      label: 'Cashflow' },
+  { to: '/transactions', icon: Receipt,         label: 'Transactions' },
+];
+
+const ARCHIVE_NAV = [
+  { to: '/expense-analyser', icon: Calculator, label: 'Expense Analyser' },
 ];
 
 const WELLNESS_NAV = [
@@ -54,14 +57,17 @@ export default function Layout() {
   const [financeOpen, setFinanceOpen] = useState(true);
   const [wellnessOpen, setWellnessOpen] = useState(false);
   const [tradingOpen, setTradingOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [sidebarFinanceEnabled, setSidebarFinanceEnabled] = useState(true);
   const [sidebarWellnessEnabled, setSidebarWellnessEnabled] = useState(true);
   const [sidebarLiveTradingEnabled, setSidebarLiveTradingEnabled] = useState(true);
 
-  const isFinanceRoute = ['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser', '/other-assets'].includes(location.pathname);
+  const isFinanceRoute = ['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/other-assets'].includes(location.pathname);
   useEffect(() => {
-    if (['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/expense-analyser', '/other-assets'].includes(location.pathname))
+    if (['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/other-assets'].includes(location.pathname))
       setFinanceOpen(true);
+    if (['/expense-analyser'].includes(location.pathname))
+      setArchiveOpen(true);
   }, [location.pathname]);
   useEffect(() => {
     if (location.pathname.startsWith('/wellness')) setWellnessOpen(true);
@@ -333,6 +339,64 @@ export default function Layout() {
             )}
           </div>
           )}
+
+          {/* Archive (collapsible) */}
+          <div className="space-y-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (!archiveOpen) {
+                  setArchiveOpen(true);
+                  navigate('/expense-analyser');
+                } else {
+                  setArchiveOpen(false);
+                }
+              }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] w-full text-left ${
+                location.pathname === '/expense-analyser'
+                  ? 'text-accent bg-accent/8'
+                  : 'text-soft hover:text-white hover:bg-white/[0.04]'
+              }`}
+            >
+              <Archive size={16} className="shrink-0" />
+              <span className="flex-1">Archive</span>
+              {archiveOpen ? (
+                <ChevronDown size={14} className="text-muted shrink-0" />
+              ) : (
+                <ChevronRight size={14} className="text-muted shrink-0" />
+              )}
+            </button>
+            {archiveOpen && (
+              <div className="pl-4 space-y-0.5">
+                {ARCHIVE_NAV.map(({ to, icon: Icon, label }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[38px] relative ${
+                        isActive ? 'text-accent bg-accent/8' : 'text-muted hover:text-soft hover:bg-white/[0.03]'
+                      }`
+                    }
+                    onClick={closeSidebar}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && (
+                          <span
+                            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full"
+                            style={{ background: 'var(--accent, #f0c040)' }}
+                          />
+                        )}
+                        <Icon size={14} className="shrink-0" />
+                        <span>{label}</span>
+                        {!isAuth && <Lock size={11} className="text-muted/40 shrink-0 ml-auto" />}
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Live Trading (collapsible) */}
           {isAuth && sidebarLiveTradingEnabled && (

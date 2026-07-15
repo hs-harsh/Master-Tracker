@@ -3,7 +3,7 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, Legend,
 } from 'recharts';
-import { PieChart as PieIcon, Target, Wallet, Loader2, ChevronDown, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
+import { PieChart as PieIcon, Target, Wallet, Loader2, ChevronDown, ChevronRight, ArrowUp, ArrowDown, TrendingUp } from 'lucide-react';
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 import TradeFeedbackCard from '../components/TradeFeedbackCard';

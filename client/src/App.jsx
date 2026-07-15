@@ -454,9 +454,9 @@ export default function App() {
                 <Route path="investments" element={<Investments />} />
                 <Route path="cashflow" element={<Cashflow />} />
                 <Route path="transactions" element={<Transactions />} />
-                <Route path="expense-analyser" element={<ExpenseAnalyser />} />
                 <Route path="other-assets" element={<OtherAssets />} />
               </Route>
+              <Route path="expense-analyser" element={<ExpenseAnalyser />} />
               <Route path="wellness" element={<Navigate to="/wellness/habits" replace />} />
               <Route path="wellness/habits" element={<WellnessHabits />} />
               <Route path="wellness/meals" element={<WellnessMeals />} />
