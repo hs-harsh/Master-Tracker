@@ -16,6 +16,10 @@ import { useNavigate } from 'react-router-dom';
 
 const RISK_COLORS = ['#60a5fa', '#fbbf24', '#f97316'];
 
+const ILLIQUID_COLORS = {
+  Property: '#a78bfa', Vehicle: '#60a5fa', Gold: '#fbbf24', PPF: '#34d399', NPS: '#2dd4bf',
+};
+
 const TT = {
   contentStyle: { background: '#0f1117', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, fontSize: 12, color: '#e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' },
   labelStyle:   { color: '#8b95a5', marginBottom: 4, fontWeight: 600 },
@@ -306,7 +310,7 @@ function RangePills({ range, setRange }) {
 }
 
 // ── Full person panel ─────────────────────────────────────────────────────────
-function PersonPanel({ person, cashflowData, investments }) {
+function PersonPanel({ person, cashflowData, investments, otherAssets }) {
   const [range, setRangeRaw] = useState(() => localStorage.getItem(FINANCE_RANGE_KEY) || '1Y');
   const setRange = (r) => { setRangeRaw(r); localStorage.setItem(FINANCE_RANGE_KEY, r); };
   const color   = colorFor(person);
@@ -356,6 +360,20 @@ function PersonPanel({ person, cashflowData, investments }) {
     { name: 'Med',  value: parseFloat(latest.medium_risk_pct || 0) * 100 },
     { name: 'High', value: parseFloat(latest.high_risk_pct   || 0) * 100 },
   ].filter(d => d.value > 0) : [];
+
+  // Illiquid computations
+  const oa             = otherAssets || [];
+  const illiquidValue  = oa.reduce((s, a) => s + Number(a.current_value   || 0), 0);
+  const illiquidLoans  = oa.reduce((s, a) => s + Number(a.loan_outstanding || 0), 0);
+  const illiquidEquity = illiquidValue - illiquidLoans;
+  const illiquidBreakdown = Object.values(
+    oa.reduce((acc, a) => {
+      const t = a.asset_type || 'Other';
+      acc[t] = acc[t] || { name: t, value: 0 };
+      acc[t].value += Number(a.current_value || 0);
+      return acc;
+    }, {})
+  ).filter(d => d.value > 0);
 
   return (
     <div className="space-y-5">
@@ -409,6 +427,87 @@ function PersonPanel({ person, cashflowData, investments }) {
           trend={savingsRate !== '—' && Number(savingsRate) >= 20 ? 1 : -1}
         />
       </div>
+
+      {/* ── Investment overview: Liquid vs Illiquid ─────────────────── */}
+      {(totalInvested > 0 || illiquidValue > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 fade-up">
+          {/* Liquid Investments */}
+          <div className="card">
+            <p className="stat-label mb-1">Liquid Investments</p>
+            <p className="stat-value text-accent mb-0.5">{fmt(totalInvested)}</p>
+            <p className="text-xs text-muted mb-3">net deployed (buys − sells)</p>
+            {assetBreakdown.length > 0 && (
+              <>
+                <ResponsiveContainer width="100%" height={110}>
+                  <PieChart>
+                    <Pie data={assetBreakdown} cx="50%" cy="50%" innerRadius={28} outerRadius={46} dataKey="value" strokeWidth={0}>
+                      {assetBreakdown.map((_, i) => <Cell key={i} fill={Object.values(ASSET_COLORS)[i % 10]} />)}
+                    </Pie>
+                    <Tooltip {...TT} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                  {assetBreakdown.map((d, i) => (
+                    <span key={d.name} className="text-xs text-muted flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full inline-block" style={{ background: Object.values(ASSET_COLORS)[i % 10] }} />
+                      {d.name}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Illiquid Investments */}
+          <div className="card">
+            <p className="stat-label mb-1">Illiquid Investments</p>
+            {oa.length === 0 ? (
+              <p className="text-xs text-muted mt-2">No illiquid assets recorded.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div>
+                    <p className="text-xs text-muted mb-0.5">Total Value</p>
+                    <p className="font-mono text-sm font-semibold text-white">{fmt(illiquidValue)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted mb-0.5">Loans</p>
+                    <p className="font-mono text-sm font-semibold text-rose">{fmt(illiquidLoans)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted mb-0.5">Net Equity</p>
+                    <p className={`font-mono text-sm font-semibold ${illiquidEquity >= 0 ? 'text-teal' : 'text-rose'}`}>{fmt(illiquidEquity)}</p>
+                  </div>
+                </div>
+                {illiquidBreakdown.length > 0 && (
+                  <>
+                    <ResponsiveContainer width="100%" height={110}>
+                      <PieChart>
+                        <Pie data={illiquidBreakdown} cx="50%" cy="50%" innerRadius={28} outerRadius={46} dataKey="value" strokeWidth={0}>
+                          {illiquidBreakdown.map((d, i) => (
+                            <Cell key={i} fill={ILLIQUID_COLORS[d.name] || `hsl(${i * 55}, 60%, 55%)`} />
+                          ))}
+                        </Pie>
+                        <Tooltip {...TT} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                      {illiquidBreakdown.map((d, i) => (
+                        <span key={d.name} className="text-xs text-muted flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full inline-block"
+                            style={{ background: ILLIQUID_COLORS[d.name] || `hsl(${i * 55}, 60%, 55%)` }} />
+                          {d.name}
+                          {illiquidValue > 0 && ` ${((d.value / illiquidValue) * 100).toFixed(0)}%`}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Charts with range selector */}
       <div className="flex items-center justify-between fade-up">
@@ -540,9 +639,10 @@ function PersonPanelCompact({ person, cashflowData, investments }) {
 /* ── Dashboard page ──────────────────────────────────────────────────────── */
 export default function Dashboard() {
   const { personName, persons, activePerson, setActivePerson } = useAuth();
-  const [cashflowMap, setCashflowMap]   = useState({});
+  const [cashflowMap, setCashflowMap]       = useState({});
   const [investmentsMap, setInvestmentsMap] = useState({});
-  const [loading, setLoading]           = useState(true);
+  const [otherAssetsMap, setOtherAssetsMap] = useState({});
+  const [loading, setLoading]               = useState(true);
 
   const currentPerson = activePerson || personName;
 
@@ -554,14 +654,20 @@ export default function Dashboard() {
         Promise.all([
           api.get(`/cashflow?person=${p}`),
           api.get(`/investments?account=${p}`),
-        ]).then(([cf, inv]) => ({ person: p, cashflow: cf.data, investments: inv.data }))
+          api.get(`/other-assets?account=${p}`),
+        ]).then(([cf, inv, oa]) => ({ person: p, cashflow: cf.data, investments: inv.data, otherAssets: oa.data }))
       )
     )
       .then(results => {
-        const cfMap = {}, invMap = {};
-        results.forEach(r => { cfMap[r.person] = r.cashflow; invMap[r.person] = r.investments; });
+        const cfMap = {}, invMap = {}, oaMap = {};
+        results.forEach(r => {
+          cfMap[r.person]  = r.cashflow;
+          invMap[r.person] = r.investments;
+          oaMap[r.person]  = r.otherAssets;
+        });
         setCashflowMap(cfMap);
         setInvestmentsMap(invMap);
+        setOtherAssetsMap(oaMap);
       })
       .finally(() => setLoading(false));
   }, [persons]);
@@ -586,6 +692,7 @@ export default function Dashboard() {
         person={currentPerson}
         cashflowData={cashflowMap[currentPerson] || []}
         investments={investmentsMap[currentPerson] || []}
+        otherAssets={otherAssetsMap[currentPerson] || []}
       />
     </div>
   );
