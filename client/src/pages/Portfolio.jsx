@@ -34,6 +34,7 @@ export default function Portfolio() {
   const [fxRates, setFxRates] = useState({ INR: 1 });
   const [fxFetching, setFxFetching] = useState(false);
   const [mktAsOf, setMktAsOf] = useState(null); // YYYY-MM-DD from last saved refresh (DB)
+  const [otherAssetsData, setOtherAssetsData] = useState([]);
   // Price fetch panel state
   const [showPricePanel, setShowPricePanel] = useState(false);
   const [fetchStatus, setFetchStatus] = useState('idle'); // idle | fetching | done
@@ -125,6 +126,11 @@ export default function Portfolio() {
   };
   useEffect(() => { if (token) fetchFxRates(); }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    api.get('/other-assets').then(r => setOtherAssetsData(r.data || [])).catch(() => {});
+  }, [token]);
+
   const goals   = useMemo(() => Array.from(new Set(data.map(d => d.goal))).sort(), [data]);
   const brokers = useMemo(() => Array.from(new Set(data.map(d => d.broker || '').filter(Boolean))).sort(), [data]);
 
@@ -212,6 +218,13 @@ export default function Portfolio() {
   const totalMktValue  = enriched.filter(r => r.mktValue !== null).reduce((s, r) => s + r.mktValue, 0);
   const totalReturn    = hasMktData ? totalMktValue - pricedInvested : null;
   const totalReturnPct = totalReturn !== null && pricedInvested > 0 ? (totalReturn / pricedInvested * 100) : null;
+
+  // ── Other assets net worth contribution ──────────────────────────────────
+  const otherAssetsValue = otherAssetsData.reduce((s, a) => s + (Number(a.current_value) || 0), 0);
+  const otherLoans       = otherAssetsData.reduce((s, a) => s + (Number(a.loan_outstanding) || 0), 0);
+  const hasOtherAssets   = otherAssetsData.length > 0;
+  const investmentsBase  = hasMktData ? totalMktValue : totalNet;
+  const netWorth         = investmentsBase + otherAssetsValue - otherLoans;
 
   // ── Per-currency breakdown (invested & market value in each currency) ────
   const ccyBreakdown = useMemo(() => {
@@ -539,6 +552,36 @@ export default function Portfolio() {
           <span className="font-mono text-lg font-bold" style={{ color: ASSET_COLORS.Gold }}>{(goldVal / totalAbs * 100).toFixed(1)}%</span>
         </div>
       </div>
+
+      {/* ── Net Worth Summary (investments + other assets − loans) ─────── */}
+      {hasOtherAssets && (
+        <div className="card">
+          <div className="flex items-center justify-between mb-2">
+            <p className="stat-label text-xs">Net Worth (All Assets)</p>
+            <a href="/other-assets" className="text-xs text-accent hover:underline">Manage Other Assets →</a>
+          </div>
+          <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm font-mono">
+            <div>
+              <div className="text-muted text-xs">Investments</div>
+              <div className="text-white font-semibold">{fmt(investmentsBase)}</div>
+            </div>
+            <div>
+              <div className="text-muted text-xs">Other Assets</div>
+              <div className="text-a78bfa font-semibold" style={{ color: '#a78bfa' }}>{fmt(otherAssetsValue)}</div>
+            </div>
+            {otherLoans > 0 && (
+              <div>
+                <div className="text-muted text-xs">Loans</div>
+                <div className="text-rose-400 font-semibold">−{fmt(otherLoans)}</div>
+              </div>
+            )}
+            <div className="border-l border-border pl-8">
+              <div className="text-muted text-xs">Total Net Worth</div>
+              <div className={`text-xl font-bold font-display ${netWorth >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{fmt(netWorth)}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Per-currency breakdown ──────────────────────────────────────── */}
       {Object.keys(ccyBreakdown.inv).some(c => c !== 'INR') && (

@@ -544,3 +544,38 @@ CREATE TABLE IF NOT EXISTS expense_analyser_snapshots (
   results JSONB NOT NULL DEFAULT '[]',
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ─── Other Assets (immovable / long-term) ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS other_assets (
+  id                 SERIAL PRIMARY KEY,
+  user_id            INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  account            VARCHAR(50)  NOT NULL,
+  asset_type         VARCHAR(20)  NOT NULL CHECK (asset_type IN ('Property','Vehicle','Gold','PPF','NPS')),
+  name               VARCHAR(100) NOT NULL,
+  purchase_value     NUMERIC(14,2),
+  current_value      NUMERIC(14,2) NOT NULL DEFAULT 0,
+  loan_outstanding   NUMERIC(14,2) DEFAULT 0,
+  loan_emi           NUMERIC(14,2),
+  loan_interest_rate NUMERIC(5,2),
+  quantity           NUMERIC(10,4),
+  currency           VARCHAR(3)   DEFAULT 'INR',
+  notes              TEXT,
+  as_of_date         DATE         NOT NULL DEFAULT CURRENT_DATE,
+  created_at         TIMESTAMPTZ  DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_other_assets_user ON other_assets(user_id);
+
+-- Quarterly net-worth snapshots for trend chart
+CREATE TABLE IF NOT EXISTS net_worth_snapshots (
+  id                 SERIAL PRIMARY KEY,
+  user_id            INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  snapshot_date      DATE NOT NULL,
+  investments_cost   NUMERIC(14,2) DEFAULT 0,
+  investments_mkt    NUMERIC(14,2),
+  other_assets_value NUMERIC(14,2) DEFAULT 0,
+  other_loans        NUMERIC(14,2) DEFAULT 0,
+  net_worth          NUMERIC(14,2) NOT NULL,
+  created_at         TIMESTAMPTZ  DEFAULT now(),
+  UNIQUE(user_id, snapshot_date)
+);
+CREATE INDEX IF NOT EXISTS idx_net_worth_snapshots_user_date ON net_worth_snapshots(user_id, snapshot_date);

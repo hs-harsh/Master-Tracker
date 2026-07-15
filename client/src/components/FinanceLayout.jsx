@@ -6,6 +6,7 @@ import {
   TrendingUp,
   Receipt,
   Calculator,
+  Landmark,
 } from 'lucide-react';
 
 const FINANCE_TABS = [
@@ -15,6 +16,7 @@ const FINANCE_TABS = [
   { to: '/cashflow', icon: TrendingUp, label: 'Cashflow' },
   { to: '/transactions', icon: Receipt, label: 'Transactions' },
   { to: '/expense-analyser', icon: Calculator, label: 'Expense Analyser' },
+  { to: '/other-assets', icon: Landmark, label: 'Other Assets' },
 ];
 
 export default function FinanceLayout() {
