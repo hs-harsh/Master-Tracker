@@ -607,3 +607,22 @@ CREATE TABLE IF NOT EXISTS user_asset_types (
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE(user_id, type_name)
 );
+
+
+-- ─── Workout Exercise Logs (structured log-driven workouts) ──────────────────
+-- One row per exercise performed within a workout_entries day. Sourced from AI
+-- parsing of free-text logs; feeds the muscle map, recommendations and trends.
+CREATE TABLE IF NOT EXISTS workout_exercise_logs (
+  id               SERIAL PRIMARY KEY,
+  workout_entry_id INT NOT NULL REFERENCES workout_entries(id) ON DELETE CASCADE,
+  user_id          INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  seq              INT NOT NULL DEFAULT 0,
+  exercise_name    VARCHAR(255) NOT NULL,
+  category         VARCHAR(20) NOT NULL DEFAULT 'strength', -- strength | cardio | flexibility
+  muscles          JSONB NOT NULL DEFAULT '[]', -- [{"muscle":"quads","role":"primary"|"secondary"}]
+  sets             JSONB NOT NULL DEFAULT '[]', -- [{"set":1,"weight_kg":109,"weight_raw":"109","reps":12,"note":"single leg"}]
+  duration_min     INT,
+  created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_workout_exercise_logs_user  ON workout_exercise_logs(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_workout_exercise_logs_entry ON workout_exercise_logs(workout_entry_id);

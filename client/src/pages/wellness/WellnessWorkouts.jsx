@@ -3,16 +3,18 @@ import { NavLink } from 'react-router-dom';
 import {
   CheckSquare, Utensils, Dumbbell,
   ChevronLeft, ChevronRight, X,
-  Check, Save, Sparkles, AlertTriangle,
-  RotateCcw, Flame, Target, TrendingUp,
-  ChevronDown, ChevronUp, RefreshCw, Plus, Trash2,
+  Check, Sparkles, AlertTriangle,
+  Flame, Target, TrendingUp, Award,
+  ChevronDown, ChevronUp, Plus, Trash2, Pencil,
 } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
 import { parseD, todayStr, getMonday, getWeekDays, fmtWeekRange } from '../../lib/utils';
+import { MUSCLE_GROUPS, muscleLabel } from '../../lib/muscles';
+import MuscleBodyMap from '../../components/MuscleBodyMap';
 
 // ─── nav ──────────────────────────────────────────────────────────────────────
 const SUB_TABS = [
@@ -23,8 +25,14 @@ const SUB_TABS = [
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const PERIODS = ['1M', '3M', '1Y'];
-const MAX_PREFERENCES = 8;
 const WELLNESS_PERIOD_KEY = 'wellness_analytics_period';
+const TRENDS_EXERCISE_KEY = 'wellness_trends_exercise_filter';
+const VIEWS = [
+  { key: 'log',       label: 'Log' },
+  { key: 'muscles',   label: 'Muscles' },
+  { key: 'analytics', label: 'Analytics' },
+];
+const CHART_PALETTE = ['#f59e0b', '#60a5fa', '#34d399', '#f472b6', '#a78bfa', '#fb923c', '#22d3ee', '#facc15', '#f87171', '#94a3b8'];
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function dateRangeFor(period) {
@@ -35,7 +43,7 @@ function dateRangeFor(period) {
   return { from: d.toISOString().slice(0, 10), to };
 }
 
-// Parse exercises from notes field (JSON array or plain text fallback)
+// Parse exercises from legacy notes field (JSON array or plain text fallback)
 function parseExercises(notes) {
   if (!notes) return [];
   try {
@@ -49,14 +57,46 @@ function countSets(exercises) {
   return exercises.reduce((sum, ex) => sum + (Number(ex.sets) || 0), 0);
 }
 
-// localStorage preference helpers (per-person, used as instant-load cache)
-function loadPreferences(person) {
-  const key = `workout_prompts_${person || 'default'}`;
-  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; }
+function fmtShort(ds) {
+  return parseD(ds).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
-function cachePreferences(person, prefs) {
-  const key = `workout_prompts_${person || 'default'}`;
-  try { localStorage.setItem(key, JSON.stringify(prefs)); } catch {}
+
+function uniqJoin(vals) {
+  const u = [...new Set(vals.filter(v => v != null && v !== ''))];
+  return u.length ? u.join('/') : null;
+}
+
+// Structured exercise → display row {weight, sets, reps}
+function summarizeStructured(ex) {
+  const sets = Array.isArray(ex.sets) ? ex.sets : [];
+  return {
+    weight: uniqJoin(sets.map(s => s.weight_raw ?? (s.weight_kg != null ? String(s.weight_kg) : null))),
+    sets: sets.length || null,
+    reps: uniqJoin(sets.map(s => s.reps)),
+    notes: uniqJoin(sets.map(s => s.note)),
+  };
+}
+
+// Legacy notes exercise → structured draft (for editing pre-rebuild entries)
+function legacyToStructured(exs) {
+  return exs.map(ex => {
+    const n = parseInt(ex.sets, 10) || 1;
+    const w = ex.weight != null && ex.weight !== '' ? parseFloat(String(ex.weight)) : NaN;
+    const reps = parseInt(ex.reps, 10);
+    return {
+      name: ex.name || '',
+      category: 'strength',
+      muscles: [],
+      sets: Array.from({ length: n }, (_, i) => ({
+        set: i + 1,
+        weight_kg: isFinite(w) ? w : null,
+        weight_raw: ex.weight != null && ex.weight !== '' ? String(ex.weight) : null,
+        reps: isFinite(reps) ? reps : null,
+        note: null,
+      })),
+      duration_min: null,
+    };
+  });
 }
 
 // ─── component ────────────────────────────────────────────────────────────────
@@ -64,60 +104,53 @@ export default function WellnessWorkouts() {
   const { personName, activePerson } = useAuth();
   const currentPerson = activePerson || personName;
 
-  const [view,       setViewRaw]    = useState(() => localStorage.getItem('wellness_workouts_view') || 'planner');
+  const [view, setViewRaw] = useState(() => {
+    const v = localStorage.getItem('wellness_workouts_view');
+    if (!v || v === 'planner') return 'log'; // migrate retired planner view
+    return VIEWS.some(x => x.key === v) ? v : 'log';
+  });
   const setView = (v) => { setViewRaw(v); localStorage.setItem('wellness_workouts_view', v); };
-  const [weekStart,  setWeekStart]  = useState(() => getMonday(todayStr()));
-  const [plan,       setPlan]       = useState(null);
-  const [gymDays,    setGymDays]    = useState(new Set());
-  const [generated,  setGenerated]  = useState(null);
-  const [loading,    setLoading]    = useState(false);
-  const [saving,     setSaving]     = useState(false);
-  const [accepting,  setAccepting]  = useState(false);
-  const [resetting,  setResetting]  = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [aiError,    setAiError]    = useState('');
-  const [reasoning,  setReasoning]  = useState('');
-  const [showReasoning, setShowReasoning] = useState(false);
 
-  // Prompt state (top-level — never inside inner functions)
-  const [aiPrompt,          setAiPrompt]          = useState('');
-  const [preferences,       setPreferences]        = useState(() => loadPreferences(activePerson || personName));
-  const [selectedPref,      setSelectedPref]       = useState(null); // chip selected
+  const [weekStart, setWeekStart] = useState(() => getMonday(todayStr()));
+  const [plan,      setPlan]      = useState(null);
+  const [entries,   setEntries]   = useState([]);
+  const [loading,   setLoading]   = useState(false);
 
-  const [period, setPeriodRaw] = useState(() => localStorage.getItem(WELLNESS_PERIOD_KEY) || '1M');
-  const setPeriod = (p) => { setPeriodRaw(p); localStorage.setItem(WELLNESS_PERIOD_KEY, p); };
-  const [analytics, setAnalytics] = useState(null);
-  const [aLoading,  setALoading]  = useState(false);
-
-  // Add Workout with AI — parse a free-text log of a single day's workout
-  const [showAiLog,    setShowAiLog]    = useState(false);
+  // AI log panel (primary CTA)
+  const [showAiLog,    setShowAiLog]    = useState(true);
   const [aiLogDate,    setAiLogDate]    = useState(null);
   const [aiLogPrompt,  setAiLogPrompt]  = useState('');
   const [aiLogParsing, setAiLogParsing] = useState(false);
   const [aiLogError,   setAiLogError]   = useState('');
-  const [aiLogPreview, setAiLogPreview] = useState(null); // { workout_type, title, duration, exercises }
+  const [aiLogPreview, setAiLogPreview] = useState(null); // { entry, exercises }
   const [aiLogSaving,  setAiLogSaving]  = useState(false);
+
+  // Per-day edit state
+  const [editEntryId, setEditEntryId] = useState(null);
+  const [editDraft,   setEditDraft]   = useState(null); // { entry_date, workout_type, title, duration, exercises }
+  const [editSaving,  setEditSaving]  = useState(false);
+  const [editError,   setEditError]   = useState('');
+
+  // Muscles view
+  const [muscleData,     setMuscleData]     = useState(null);
+  const [mLoading,       setMLoading]       = useState(false);
+  const [selectedMuscle, setSelectedMuscle] = useState(null);
+  const [rec,        setRec]        = useState(null);
+  const [recLoading, setRecLoading] = useState(false);
+  const [recError,   setRecError]   = useState('');
+
+  // Analytics view
+  const [period, setPeriodRaw] = useState(() => localStorage.getItem(WELLNESS_PERIOD_KEY) || '1M');
+  const setPeriod = (p) => { setPeriodRaw(p); localStorage.setItem(WELLNESS_PERIOD_KEY, p); };
+  const [analytics, setAnalytics] = useState(null);
+  const [aLoading,  setALoading]  = useState(false);
+  const [trends,        setTrends]        = useState(null);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+  const [trendExercise, setTrendExerciseRaw] = useState(() => localStorage.getItem(TRENDS_EXERCISE_KEY) || '');
+  const setTrendExercise = (v) => { setTrendExerciseRaw(v); localStorage.setItem(TRENDS_EXERCISE_KEY, v); };
 
   const today    = todayStr();
   const weekDays = getWeekDays(weekStart);
-  const isAccepted = plan?.status === 'accepted';
-
-  // Reload preferences when person changes — load from cache first, then hydrate from DB
-  useEffect(() => {
-    const cached = loadPreferences(currentPerson);
-    setPreferences(cached);
-    setSelectedPref(null);
-    setAiPrompt('');
-    api.get(`/settings/wellness-prefs?type=workout&person=${encodeURIComponent(currentPerson || '')}`)
-      .then(r => {
-        const dbPrefs = r.data?.prefs;
-        if (Array.isArray(dbPrefs)) {
-          setPreferences(dbPrefs);
-          cachePreferences(currentPerson, dbPrefs);
-        }
-      })
-      .catch(() => {});
-  }, [currentPerson]);
 
   // ── load week ──────────────────────────────────────────────────────────────
   const loadWeek = useCallback(async (ws, person) => {
@@ -125,22 +158,9 @@ export default function WellnessWorkouts() {
     try {
       const { data } = await api.get(`/workouts/week?week_start=${ws}&person=${encodeURIComponent(person || '')}`);
       setPlan(data.plan);
-      const entries = data.entries || [];
-      if (entries.length) {
-        const wDays = getWeekDays(ws);
-        const gymSet = new Set();
-        entries.forEach(e => {
-          const dayIdx = wDays.indexOf(String(e.entry_date).slice(0, 10));
-          if (e.workout_type === 'strength' && dayIdx >= 0) gymSet.add(dayIdx);
-        });
-        setGymDays(gymSet);
-        setGenerated(entries);
-      } else {
-        setGymDays(new Set());
-        setGenerated(null);
-      }
-      setReasoning('');
-      setShowReasoning(false);
+      setEntries(data.entries || []);
+      setEditEntryId(null);
+      setEditDraft(null);
     } catch (err) {
       console.error(err);
     } finally {
@@ -152,11 +172,29 @@ export default function WellnessWorkouts() {
     loadWeek(weekStart, currentPerson);
   }, [weekStart, currentPerson, loadWeek]);
 
-  // ── load analytics ─────────────────────────────────────────────────────────
+  // ── load muscle map ────────────────────────────────────────────────────────
+  const loadMuscles = useCallback(async (ws, person) => {
+    setMLoading(true);
+    try {
+      const { data } = await api.get(`/workouts/muscle-week?week_start=${ws}&person=${encodeURIComponent(person || '')}`);
+      setMuscleData(data.muscles || {});
+    } catch {
+      setMuscleData({});
+    } finally {
+      setMLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view === 'muscles') loadMuscles(weekStart, currentPerson);
+  }, [view, weekStart, currentPerson, loadMuscles]);
+
+  // ── load analytics + trends ────────────────────────────────────────────────
   const loadAnalytics = useCallback(async (p, person) => {
     setALoading(true);
+    setTrendsLoading(true);
+    const { from, to } = dateRangeFor(p);
     try {
-      const { from, to } = dateRangeFor(p);
       const { data } = await api.get(`/workouts/calendar?from=${from}&to=${to}&person=${encodeURIComponent(person || '')}`);
       setAnalytics(data.entries || []);
     } catch {
@@ -164,99 +202,42 @@ export default function WellnessWorkouts() {
     } finally {
       setALoading(false);
     }
+    try {
+      const { data } = await api.get(`/workouts/trends?from=${from}&to=${to}&person=${encodeURIComponent(person || '')}`);
+      setTrends(data);
+    } catch {
+      setTrends(null);
+    } finally {
+      setTrendsLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     if (view === 'analytics') loadAnalytics(period, currentPerson);
   }, [view, period, currentPerson, loadAnalytics]);
 
-  // ── toggle gym day ─────────────────────────────────────────────────────────
-  function toggleGymDay(idx) {
-    if (isAccepted) return;
-    setGymDays(prev => {
-      const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx); else next.add(idx);
+  function shiftWeek(dir) {
+    const d = new Date(weekStart + 'T12:00:00');
+    d.setDate(d.getDate() + dir * 7);
+    setWeekStart(d.toISOString().slice(0, 10));
+    setSelectedMuscle(null);
+  }
+
+  // Insert/replace a saved entry into local state (no page refresh)
+  function upsertEntry(saved) {
+    setEntries(prev => {
+      const next = prev.filter(e => String(e.entry_date).slice(0, 10) !== String(saved.entry_date).slice(0, 10));
+      next.push(saved);
+      next.sort((a, b) => String(a.entry_date).localeCompare(String(b.entry_date)));
       return next;
     });
-    setGenerated(null);
   }
 
-  // ── inline exercise edit ───────────────────────────────────────────────────
-  function updateExercise(dateStr, exIdx, field, value) {
-    setGenerated(prev => prev.map(entry => {
-      if (String(entry.entry_date).slice(0, 10) !== dateStr) return entry;
-      const rawNotes = typeof entry.notes === 'string' ? entry.notes : JSON.stringify(entry.notes || []);
-      const exs = parseExercises(rawNotes);
-      exs[exIdx] = { ...exs[exIdx], [field]: value };
-      return { ...entry, notes: JSON.stringify(exs) };
-    }));
-  }
-
-  // ── preference helpers ─────────────────────────────────────────────────────
-  function addPreference(text) {
-    if (!text.trim()) return;
-    const next = [text, ...preferences.filter(p => p !== text)].slice(0, MAX_PREFERENCES);
-    setPreferences(next);
-    cachePreferences(currentPerson, next);
-    api.put('/settings/wellness-prefs', { type: 'workout', person: currentPerson || '', prefs: next }).catch(() => {});
-  }
-  function deletePreference(text) {
-    const next = preferences.filter(p => p !== text);
-    setPreferences(next);
-    cachePreferences(currentPerson, next);
-    api.put('/settings/wellness-prefs', { type: 'workout', person: currentPerson || '', prefs: next }).catch(() => {});
-    if (selectedPref === text) setSelectedPref(null);
-  }
-
-  // ── generate plan ─────────────────────────────────────────────────────────
-  async function generatePlan() {
-    if (!plan) return;
-    setGenerating(true); setAiError(''); setReasoning(''); setShowReasoning(false);
-    // Combine selected preference + typed prompt
-    const combined = [selectedPref, aiPrompt.trim()].filter(Boolean).join(' | ');
-    // Auto-save typed prompt to preferences
-    if (aiPrompt.trim()) addPreference(aiPrompt.trim());
-    try {
-      const selectedDays = weekDays.filter((_, i) => gymDays.has(i));
-      const { data } = await api.post(`/workouts/week/${plan.id}/generate`, {
-        prompt: combined || 'Balanced strength training',
-        gym_days: selectedDays,
-      });
-      setGenerated(data.entries || []);
-      if (data.reasoning) { setReasoning(data.reasoning); setShowReasoning(true); }
-    } catch (err) {
-      setAiError(err.response?.data?.error || 'Generation failed. Check your API key in Settings.');
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  // ── save + accept ──────────────────────────────────────────────────────────
-  async function saveEntries(entriesToSave) {
-    if (!plan) return;
-    setSaving(true);
-    try {
-      const src = entriesToSave ?? generated ?? [];
-      const toSave = src
-        .filter(e => e.title || e.notes)
-        .map(e => ({
-          entry_date: String(e.entry_date).slice(0, 10),
-          workout_type: e.workout_type || 'rest',
-          title: e.title || null,
-          notes: typeof e.notes === 'string' ? e.notes : (e.notes ? JSON.stringify(e.notes) : null),
-          duration: e.duration != null ? parseInt(e.duration, 10) : null,
-        }));
-      await api.put(`/workouts/week/${plan.id}`, { entries: toSave });
-    } catch (err) { console.error(err); } finally { setSaving(false); }
-  }
-
-  // ── Add Workout with AI ─────────────────────────────────────────────────────
+  // ── AI log panel actions ───────────────────────────────────────────────────
   function toggleAiLog() {
     if (!showAiLog) {
       setAiLogDate(weekDays.includes(today) ? today : weekDays[0]);
-      setAiLogPrompt('');
       setAiLogError('');
-      setAiLogPreview(null);
     }
     setShowAiLog(o => !o);
   }
@@ -267,9 +248,9 @@ export default function WellnessWorkouts() {
     try {
       const { data } = await api.post(`/workouts/week/${plan.id}/ai-log`, {
         prompt: aiLogPrompt.trim(),
-        entry_date: aiLogDate,
+        entry_date: aiLogDate || (weekDays.includes(today) ? today : weekDays[0]),
       });
-      setAiLogPreview(data.entry);
+      setAiLogPreview({ entry: data.entry, exercises: data.exercises || [] });
     } catch (err) {
       setAiLogError(err.response?.data?.error || 'Parsing failed. Check your API key in Settings.');
     } finally {
@@ -277,480 +258,284 @@ export default function WellnessWorkouts() {
     }
   }
 
-  function updateAiLogExercise(idx, field, value) {
-    setAiLogPreview(prev => {
-      const exs = [...(JSON.parse(typeof prev.notes === 'string' ? prev.notes : JSON.stringify(prev.notes || [])))];
-      exs[idx] = { ...exs[idx], [field]: value };
-      return { ...prev, notes: JSON.stringify(exs) };
-    });
-  }
-  function addAiLogExercise() {
-    setAiLogPreview(prev => {
-      const exs = [...parseExercises(prev.notes), { name: '', weight: '', sets: null, reps: '' }];
-      return { ...prev, notes: JSON.stringify(exs) };
-    });
-  }
-  function removeAiLogExercise(idx) {
-    setAiLogPreview(prev => {
-      const exs = parseExercises(prev.notes).filter((_, i) => i !== idx);
-      return { ...prev, notes: JSON.stringify(exs) };
-    });
-  }
-
   async function saveAiLog() {
-    if (!aiLogPreview) return;
-    setAiLogSaving(true);
+    if (!plan || !aiLogPreview) return;
+    setAiLogSaving(true); setAiLogError('');
     try {
-      const merged = [
-        ...(generated || []).filter(e => String(e.entry_date).slice(0, 10) !== aiLogPreview.entry_date),
-        aiLogPreview,
-      ];
-      setGenerated(merged);
-      await saveEntries(merged);
-      setShowAiLog(false);
+      const { data } = await api.post(`/workouts/week/${plan.id}/log-entry`, {
+        entry_date: aiLogPreview.entry.entry_date,
+        workout_type: aiLogPreview.entry.workout_type,
+        title: aiLogPreview.entry.title,
+        duration: aiLogPreview.entry.duration,
+        exercises: aiLogPreview.exercises,
+      });
+      upsertEntry(data.entry);
+      setAiLogPreview(null);
+      setAiLogPrompt('');
     } catch (err) {
-      console.error(err);
+      setAiLogError(err.response?.data?.error || 'Save failed');
     } finally {
       setAiLogSaving(false);
     }
   }
 
-  async function acceptPlan() {
-    if (!plan || !generated?.length) return;
-    setAccepting(true);
-    try {
-      await saveEntries(generated);
-      const { data } = await api.post(`/workouts/week/${plan.id}/accept`);
-      setPlan(data.plan);
-    } catch (err) { console.error(err); } finally { setAccepting(false); }
-  }
-
-  async function resetPlan() {
-    if (!plan || !confirm('Reset this plan to draft? You can then edit or regenerate it.')) return;
-    setResetting(true);
-    try {
-      const { data } = await api.post(`/workouts/week/${plan.id}/reset`);
-      setPlan(data.plan);
-    } catch (err) { console.error(err); } finally { setResetting(false); }
-  }
-
-  function shiftWeek(dir) {
-    const d = new Date(weekStart + 'T12:00:00');
-    d.setDate(d.getDate() + dir * 7);
-    setWeekStart(d.toISOString().slice(0, 10));
-  }
-
-  // ── plan stats ─────────────────────────────────────────────────────────────
-  function computePlanStats(entries) {
-    if (!entries?.length) return null;
-    const gymEntries = entries.filter(e => e.workout_type === 'strength');
-    let totalSets = 0;
-    let totalExercises = 0;
-    gymEntries.forEach(e => {
-      const exs = parseExercises(typeof e.notes === 'string' ? e.notes : JSON.stringify(e.notes || []));
-      totalSets += countSets(exs);
-      totalExercises += exs.length;
+  // ── per-day edit / delete ──────────────────────────────────────────────────
+  function startEdit(entry) {
+    const structured = entry.exercise_logs?.length
+      ? entry.exercise_logs.map(l => ({
+          name: l.exercise_name,
+          category: l.category,
+          muscles: Array.isArray(l.muscles) ? l.muscles : [],
+          sets: Array.isArray(l.sets) ? l.sets : [],
+          duration_min: l.duration_min,
+        }))
+      : legacyToStructured(parseExercises(entry.notes));
+    setEditEntryId(entry.id);
+    setEditError('');
+    setEditDraft({
+      entry_date: String(entry.entry_date).slice(0, 10),
+      workout_type: entry.workout_type || 'strength',
+      title: entry.title || '',
+      duration: entry.duration,
+      exercises: structured,
     });
-    return { gymDays: gymEntries.length, totalSets, totalExercises };
   }
 
-  // ── analytics helpers ──────────────────────────────────────────────────────
-  function buildWeeklyData(entries) {
-    if (!entries?.length) return null;
-    const weekMap = {};
-    entries.forEach(e => {
-      if (e.workout_type !== 'strength') return;
-      const ws = getMonday(String(e.entry_date).slice(0, 10));
-      if (!weekMap[ws]) weekMap[ws] = { sessions: 0, sets: 0 };
-      const exs = parseExercises(e.notes);
-      weekMap[ws].sessions += 1;
-      weekMap[ws].sets += countSets(exs);
-    });
-    return Object.entries(weekMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([ws, d]) => ({
-        week: parseD(ws).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
-        Sessions: d.sessions,
-        Sets: d.sets,
-      }));
+  async function saveEdit() {
+    if (!plan || !editDraft) return;
+    setEditSaving(true); setEditError('');
+    try {
+      const { data } = await api.post(`/workouts/week/${plan.id}/log-entry`, editDraft);
+      upsertEntry(data.entry);
+      setEditEntryId(null);
+      setEditDraft(null);
+    } catch (err) {
+      setEditError(err.response?.data?.error || 'Save failed');
+    } finally {
+      setEditSaving(false);
+    }
   }
 
-  function CustomTooltip({ active, payload, label }) {
-    if (!active || !payload?.length) return null;
+  async function deleteEntry(entry) {
+    if (!confirm(`Delete the ${fmtShort(String(entry.entry_date).slice(0, 10))} workout?`)) return;
+    try {
+      await api.delete(`/workouts/entries/${entry.id}`);
+      setEntries(prev => prev.filter(e => e.id !== entry.id));
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // ── recommendation (F3) ────────────────────────────────────────────────────
+  async function generateRec() {
+    setRecLoading(true); setRecError('');
+    try {
+      const { data } = await api.post('/workouts/recommend-next', { person: currentPerson || '' });
+      setRec(data);
+    } catch (err) {
+      setRecError(err.response?.data?.error || 'Recommendation failed. Check your API key in Settings.');
+    } finally {
+      setRecLoading(false);
+    }
+  }
+
+  function useRecInLog() {
+    if (!rec) return;
+    const text = `${rec.focus}: ` + rec.exercises.map(e => {
+      const parts = [e.name];
+      if (e.sets) parts.push(`${e.sets} sets`);
+      if (e.reps) parts.push(`x ${e.reps}`);
+      if (e.suggested_weight) parts.push(`@ ${e.suggested_weight}`);
+      return parts.join(' ');
+    }).join(', ');
+    setAiLogPrompt(text);
+    setAiLogPreview(null);
+    setShowAiLog(true);
+    setAiLogDate(weekDays.includes(today) ? today : weekDays[0]);
+    setView('log');
+  }
+
+  // ── shared week header ─────────────────────────────────────────────────────
+  function WeekHeader() {
     return (
-      <div className="card p-3 text-xs space-y-1">
-        <p className="text-muted font-mono mb-1">{label}</p>
-        {payload.map(p => (
-          <div key={p.name} className="flex justify-between gap-4">
-            <span style={{ color: p.fill || p.color }}>{p.name}</span>
-            <span className="text-white font-mono">{p.value}</span>
+      <div className="card p-4">
+        <div className="flex items-center gap-2">
+          <button onClick={() => shiftWeek(-1)}
+            className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+            <ChevronLeft size={18} />
+          </button>
+          <p className="text-white text-sm font-semibold font-body flex-1 text-center sm:text-left">{fmtWeekRange(weekStart)}</p>
+          <button onClick={() => shiftWeek(1)}
+            className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── structured exercise editor (shared by AI preview + day edit) ───────────
+  function ExercisesEditor({ exercises, onChange }) {
+    const update = (i, patch) => onChange(exercises.map((ex, j) => j === i ? { ...ex, ...patch } : ex));
+    const updateSet = (i, si, patch) =>
+      update(i, { sets: exercises[i].sets.map((s, j) => j === si ? { ...s, ...patch } : s) });
+
+    return (
+      <div className="space-y-3">
+        {exercises.map((ex, i) => (
+          <div key={i} className="rounded-xl border border-white/8 bg-white/[0.02] p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                className="bg-transparent text-white text-sm font-semibold flex-1 min-w-0 outline-none placeholder-white/20"
+                value={ex.name}
+                onChange={e => update(i, { name: e.target.value })}
+                placeholder="Exercise name"
+              />
+              <select
+                className="input text-xs py-1 w-auto"
+                value={ex.category}
+                onChange={e => update(i, { category: e.target.value })}>
+                <option value="strength">Strength</option>
+                <option value="cardio">Cardio</option>
+                <option value="flexibility">Flexibility</option>
+              </select>
+              <button onClick={() => onChange(exercises.filter((_, j) => j !== i))}
+                className="text-muted hover:text-red-400 transition-colors p-1">
+                <Trash2 size={13} />
+              </button>
+            </div>
+
+            {ex.category === 'strength' && (
+              <>
+                {/* muscle chips */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {ex.muscles.map((m, mi) => (
+                    <span key={m.muscle}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-mono cursor-pointer transition-colors ${
+                        m.role === 'primary'
+                          ? 'bg-accent/15 border-accent/40 text-accent'
+                          : 'border-white/15 text-soft'
+                      }`}
+                      title={`${muscleLabel(m.muscle)} — ${m.role} (click to toggle role)`}
+                      onClick={() => update(i, {
+                        muscles: ex.muscles.map((mm, mj) => mj === mi
+                          ? { ...mm, role: mm.role === 'primary' ? 'secondary' : 'primary' } : mm),
+                      })}>
+                      {muscleLabel(m.muscle)}{m.role === 'secondary' ? ' ·2°' : ''}
+                      <button onClick={e => { e.stopPropagation(); update(i, { muscles: ex.muscles.filter((_, mj) => mj !== mi) }); }}
+                        className="text-current opacity-60 hover:opacity-100">
+                        <X size={9} />
+                      </button>
+                    </span>
+                  ))}
+                  <select
+                    className="bg-transparent border border-white/15 rounded-full text-[10px] text-muted px-2 py-0.5 outline-none cursor-pointer"
+                    value=""
+                    onChange={e => {
+                      const id = e.target.value;
+                      if (id && !ex.muscles.some(m => m.muscle === id)) {
+                        update(i, { muscles: [...ex.muscles, { muscle: id, role: 'primary' }] });
+                      }
+                    }}>
+                    <option value="">+ muscle</option>
+                    {MUSCLE_GROUPS.filter(g => !ex.muscles.some(m => m.muscle === g.id)).map(g => (
+                      <option key={g.id} value={g.id}>{g.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* per-set table */}
+                <div className="overflow-x-auto rounded-lg border border-white/8">
+                  <table className="w-full text-xs min-w-[320px]">
+                    <thead>
+                      <tr className="border-b border-white/5">
+                        <th className="text-left px-3 py-1.5 text-muted font-mono uppercase tracking-wider text-[10px]">Set</th>
+                        <th className="text-center px-2 py-1.5 text-muted font-mono uppercase tracking-wider text-[10px]">Weight (kg)</th>
+                        <th className="text-center px-2 py-1.5 text-muted font-mono uppercase tracking-wider text-[10px]">Reps</th>
+                        <th className="text-left px-2 py-1.5 text-muted font-mono uppercase tracking-wider text-[10px]">Note</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ex.sets.map((s, si) => (
+                        <tr key={si} className="border-b border-white/[0.03] last:border-0">
+                          <td className="px-3 py-1 text-muted font-mono">{si + 1}</td>
+                          <td className="px-2 py-1">
+                            <input type="number" step="0.5"
+                              className="bg-transparent text-soft text-xs text-center w-16 outline-none font-mono focus:text-white"
+                              value={s.weight_kg ?? ''}
+                              onChange={e => updateSet(i, si, {
+                                weight_kg: e.target.value === '' ? null : Number(e.target.value),
+                                weight_raw: e.target.value === '' ? null : e.target.value,
+                              })}
+                              placeholder="—"
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input type="number"
+                              className="bg-transparent text-soft text-xs text-center w-12 outline-none font-mono focus:text-white"
+                              value={s.reps ?? ''}
+                              onChange={e => updateSet(i, si, { reps: e.target.value === '' ? null : parseInt(e.target.value, 10) })}
+                              placeholder="—"
+                            />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input
+                              className="bg-transparent text-soft text-xs w-full min-w-[70px] outline-none focus:text-white"
+                              value={s.note ?? ''}
+                              onChange={e => updateSet(i, si, { note: e.target.value || null })}
+                              placeholder="e.g. single leg"
+                            />
+                          </td>
+                          <td className="px-1">
+                            <button onClick={() => update(i, { sets: ex.sets.filter((_, j) => j !== si) })}
+                              className="text-muted hover:text-red-400 transition-colors p-1">
+                              <X size={11} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button
+                  onClick={() => update(i, { sets: [...ex.sets, { set: ex.sets.length + 1, weight_kg: null, weight_raw: null, reps: null, note: null }] })}
+                  className="text-accent hover:opacity-80 text-xs flex items-center gap-1">
+                  <Plus size={11} />Add set
+                </button>
+              </>
+            )}
+
+            {ex.category !== 'strength' && (
+              <div className="flex items-center gap-2 text-xs text-soft">
+                <span className="text-muted font-mono uppercase text-[10px]">Duration (min)</span>
+                <input type="number"
+                  className="input w-20 text-xs py-1 text-center font-mono"
+                  value={ex.duration_min ?? ''}
+                  onChange={e => update(i, { duration_min: e.target.value === '' ? null : parseInt(e.target.value, 10) })}
+                />
+              </div>
+            )}
           </div>
         ))}
-      </div>
-    );
-  }
-
-  // ── planner view ───────────────────────────────────────────────────────────
-  function Planner() {
-    const planStats = computePlanStats(generated);
-
-    return (
-      <div className="space-y-4 fade-up-1">
-        {/* Week header */}
-        <div className="card p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <button onClick={() => shiftWeek(-1)}
-                className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
-                <ChevronLeft size={18} />
-              </button>
-              <div>
-                <p className="text-white text-sm font-semibold font-body">{fmtWeekRange(weekStart)}</p>
-                {isAccepted
-                  ? <span className="flex items-center gap-1 text-xs text-emerald-400 font-mono"><Check size={10} /> Accepted</span>
-                  : <span className="text-xs text-amber-400/60 font-mono">Draft</span>}
-              </div>
-              <button onClick={() => shiftWeek(1)}
-                className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
-                <ChevronRight size={18} />
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              {isAccepted && (
-                <>
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
-                    <Check size={13} /> Plan Accepted
-                  </span>
-                  <button onClick={resetPlan} disabled={resetting}
-                    title="Reset to draft so you can edit or regenerate"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
-                      border border-white/15 text-soft hover:text-white hover:border-white/30 transition-colors disabled:opacity-50">
-                    <RefreshCw size={12} />{resetting ? 'Resetting…' : 'Reset Plan'}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {!isAccepted && AiLogPanel()}
-
-        {/* Onboarding callout */}
-        {!isAccepted && !generated && (
-          <div className="px-4 py-3 rounded-xl border border-white/8 bg-white/[0.02] text-xs text-muted font-mono">
-            <span className="text-white/70">① Pick gym days</span>
-            {' → '}
-            <span className="text-white/70">② Describe your workout style</span>
-            {' → '}
-            <span className="text-white/70">③ Generate &amp; accept your plan</span>
-          </div>
-        )}
-
-        {/* Step 1: Gym Day Picker */}
-        <div className="card p-4">
-          <p className="text-xs text-muted uppercase tracking-widest font-mono mb-3">
-            {isAccepted ? 'Gym Days This Week' : 'Step 1 — Pick Your Gym Days'}
-          </p>
-          <div className="grid grid-cols-7 gap-2">
-            {weekDays.map((ds, i) => {
-              const d     = parseD(ds);
-              const isT   = ds === today;
-              const isGym = gymDays.has(i);
-              return (
-                <button key={ds}
-                  onClick={() => toggleGymDay(i)}
-                  disabled={isAccepted}
-                  className={`flex flex-col items-center gap-1 py-3 px-1 rounded-xl border transition-all
-                    ${isGym
-                      ? 'bg-accent/15 border-accent/40 text-accent'
-                      : isT
-                        ? 'bg-white/5 border-white/15 text-white'
-                        : 'bg-transparent border-white/8 text-soft hover:border-white/20 hover:text-white'}
-                    ${isAccepted ? 'cursor-default' : 'cursor-pointer'}`}>
-                  <span className="text-[10px] font-mono uppercase">{DAY_LABELS[i]}</span>
-                  <span className={`text-lg font-bold font-display ${isT && !isGym ? 'text-accent' : ''}`}>{d.getDate()}</span>
-                  {isGym
-                    ? <Dumbbell size={12} className="text-accent" />
-                    : <span className="h-3 w-3 rounded-full border border-white/15" />}
-                </button>
-              );
-            })}
-          </div>
-          {!isAccepted && gymDays.size === 0 && (
-            <p className="text-xs text-muted/60 mt-3 text-center">Click days above to mark them as gym days</p>
-          )}
-          {!isAccepted && gymDays.size > 0 && !generated && (
-            <p className="text-xs text-soft mt-3 text-center">
-              {gymDays.size} gym {gymDays.size === 1 ? 'day' : 'days'} selected — generate your workout plan below
-            </p>
-          )}
-          {isAccepted && (
-            <p className="text-xs text-muted/60 font-mono mt-3 text-center">
-              This week's plan is accepted. Navigate to another week to plan ahead.
-            </p>
-          )}
-        </div>
-
-        {/* Step 2: AI Generate */}
-        {!isAccepted && gymDays.size > 0 && (
-          <div className="card p-4 space-y-3">
-            <p className="text-xs text-muted uppercase tracking-widest font-mono">Step 2 — Generate Workout Plan</p>
-            <div className="flex gap-2 items-center">
-              <div className="flex items-center gap-1.5 text-xs text-purple-400 font-semibold shrink-0">
-                <Sparkles size={13} />AI
-              </div>
-              <input
-                className="input flex-1 text-xs py-1.5"
-                placeholder="e.g. Push Pull Legs, Upper Lower, 4-day split, chest focus…"
-                value={aiPrompt}
-                onChange={e => setAiPrompt(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !generating && generatePlan()}
-              />
-              <button onClick={generatePlan} disabled={generating}
-                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
-                  bg-purple-500/20 text-purple-300 border border-purple-500/30
-                  hover:bg-purple-500/30 transition-colors disabled:opacity-50">
-                <Sparkles size={12} />{generating ? 'Generating…' : 'Generate'}
-              </button>
-              {generated && !generating && (
-                <button onClick={generatePlan} disabled={generating}
-                  title="Regenerate"
-                  className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs
-                    text-muted hover:text-white border border-white/10 hover:border-white/20 transition-colors">
-                  <RotateCcw size={12} />
-                  <span>Retry</span>
-                </button>
-              )}
-            </div>
-            {/* Saved Preferences chips */}
-            {preferences.length > 0 && (
-              <div>
-                <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-2">Saved Preferences</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {preferences.map((pref, i) => (
-                    <div key={i}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs transition-all cursor-pointer ${
-                        selectedPref === pref
-                          ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
-                          : 'border-white/10 text-soft hover:border-purple-500/30 hover:text-white'
-                      }`}
-                      onClick={() => setSelectedPref(prev => prev === pref ? null : pref)}>
-                      <span className="truncate max-w-[180px]">{pref}</span>
-                      <button
-                        onClick={e => { e.stopPropagation(); deletePreference(pref); }}
-                        className="text-muted hover:text-red-400 transition-colors ml-0.5 flex-shrink-0">
-                        <X size={10} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                {selectedPref && (
-                  <p className="text-[10px] text-purple-400/70 mt-1.5 font-mono">
-                    Preference selected — will be combined with your prompt
-                  </p>
-                )}
-              </div>
-            )}
-            {aiError && <p className="text-xs text-red-400">{aiError}</p>}
-          </div>
-        )}
-
-        {/* Reasoning panel */}
-        {reasoning && (
-          <div className="card overflow-hidden">
-            <button
-              onClick={() => setShowReasoning(r => !r)}
-              className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors">
-              <div className="flex items-center gap-2">
-                <Sparkles size={13} className="text-purple-400" />
-                <span className="text-xs text-purple-300 font-semibold uppercase tracking-wider">AI Reasoning</span>
-              </div>
-              {showReasoning ? <ChevronUp size={14} className="text-muted" /> : <ChevronDown size={14} className="text-muted" />}
-            </button>
-            {showReasoning && (
-              <div className="px-4 pb-4 text-sm text-soft leading-relaxed border-t border-white/5">
-                {reasoning}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step 3: Generated Plan */}
-        {generated && generated.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted uppercase tracking-widest font-mono">
-                {isAccepted ? 'This Week\'s Plan' : 'Step 3 — Review & Accept'}
-              </p>
-              {!isAccepted && (
-                <div className="flex gap-2">
-                  <button onClick={() => saveEntries(generated)} disabled={saving}
-                    className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5">
-                    <Save size={13} />{saving ? 'Saving…' : 'Save Draft'}
-                  </button>
-                  <button onClick={acceptPlan} disabled={accepting || saving}
-                    className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5">
-                    <Check size={13} />{accepting ? 'Accepting…' : 'Accept Plan'}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Stats banner */}
-            {computePlanStats(generated) && (
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: 'Gym Days',   value: computePlanStats(generated).gymDays,      icon: Dumbbell, color: 'text-accent'     },
-                  { label: 'Total Sets', value: computePlanStats(generated).totalSets,     icon: Target,   color: 'text-blue-400'   },
-                  { label: 'Exercises',  value: computePlanStats(generated).totalExercises, icon: Flame,   color: 'text-orange-400' },
-                ].map(({ label, value, icon: Icon, color }) => (
-                  <div key={label} className="card px-4 py-3 flex items-center gap-3">
-                    <Icon size={18} className={`${color} shrink-0`} />
-                    <div>
-                      <p className="text-[10px] text-muted uppercase tracking-wider">{label}</p>
-                      <p className={`font-mono text-xl font-bold text-white`}>{value}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Per-day workout cards */}
-            {weekDays.map((ds, i) => {
-              const entry = generated.find(e => String(e.entry_date).slice(0, 10) === ds);
-              if (!entry) return null;
-              const isT   = ds === today;
-              const isGym = entry.workout_type === 'strength';
-              const rawNotes = typeof entry.notes === 'string' ? entry.notes : JSON.stringify(entry.notes || []);
-              const exs   = isGym ? parseExercises(rawNotes) : [];
-
-              return (
-                <div key={ds} className={`card overflow-hidden ${isT ? 'ring-1 ring-accent/30' : ''}`}>
-                  <div className={`flex items-center justify-between px-4 py-3 border-b border-white/5
-                    ${isGym ? 'bg-accent/5' : 'bg-white/[0.02]'}`}>
-                    <div className="flex items-center gap-3">
-                      <div className="text-center min-w-[42px]">
-                        <p className={`text-[10px] font-mono uppercase ${isT ? 'text-accent' : 'text-muted'}`}>{DAY_LABELS[i]}</p>
-                        <p className={`text-2xl font-bold font-display leading-none ${isT ? 'text-accent' : 'text-white'}`}>
-                          {parseD(ds).getDate()}
-                        </p>
-                      </div>
-                      <div>
-                        <p className={`font-semibold text-sm ${isGym ? 'text-white' : 'text-soft'}`}>{entry.title || 'Rest Day'}</p>
-                        {isGym && (
-                          <p className="text-[10px] text-muted mt-0.5">
-                            {exs.length} exercises · {countSets(exs)} sets
-                            {entry.duration ? ` · ${entry.duration} min` : ''}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    {isGym
-                      ? <Dumbbell size={16} className="text-accent/60 shrink-0" />
-                      : <span className="text-[10px] text-muted/50 font-mono">REST</span>}
-                  </div>
-
-                  {isGym && exs.length > 0 && (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b border-white/5">
-                            <th className="text-left px-4 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Exercise</th>
-                            <th className="text-center px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Weight</th>
-                            <th className="text-center px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Sets</th>
-                            <th className="text-center px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Reps</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {exs.map((ex, j) => (
-                            <tr key={j} className="border-b border-white/[0.03] last:border-0 hover:bg-white/[0.02]">
-                              <td className="px-4 py-2 text-soft">
-                                {!isAccepted ? (
-                                  <input
-                                    className="bg-transparent text-soft text-xs w-full outline-none focus:text-white placeholder-white/20"
-                                    value={ex.name || ''}
-                                    onChange={e => updateExercise(ds, j, 'name', e.target.value)}
-                                    placeholder="Exercise name"
-                                  />
-                                ) : ex.name}
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                {!isAccepted ? (
-                                  <input
-                                    className="bg-transparent text-soft text-xs text-center w-16 outline-none font-mono"
-                                    value={ex.weight ?? ''}
-                                    onChange={e => updateExercise(ds, j, 'weight', e.target.value)}
-                                    placeholder="20kg"
-                                  />
-                                ) : (
-                                  <span className="text-soft font-mono">{ex.weight ?? '—'}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                {!isAccepted ? (
-                                  <input
-                                    type="number"
-                                    className="bg-accent/10 text-accent text-xs text-center w-12 outline-none font-mono font-semibold rounded px-1.5 py-0.5"
-                                    value={ex.sets ?? ''}
-                                    onChange={e => updateExercise(ds, j, 'sets', e.target.value)}
-                                    min="1"
-                                  />
-                                ) : (
-                                  <span className="inline-block min-w-[28px] text-center font-mono font-semibold text-accent bg-accent/10 rounded px-1.5 py-0.5">
-                                    {ex.sets ?? '—'}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                {!isAccepted ? (
-                                  <input
-                                    className="bg-transparent text-soft text-xs text-center w-16 outline-none font-mono"
-                                    value={ex.reps ?? ''}
-                                    onChange={e => updateExercise(ds, j, 'reps', e.target.value)}
-                                    placeholder="8-12"
-                                  />
-                                ) : (
-                                  <span className="text-soft font-mono">{ex.reps ?? '—'}</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {!generated && !loading && (
-          <div className="card p-8 text-center text-muted text-sm">
-            {gymDays.size === 0
-              ? 'Select your gym days above to get started.'
-              : 'Generate a workout plan to see your schedule.'}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ── Add Workout with AI — inline collapsible panel (matches Investments' "Add with AI") ──
-  function AiLogPanel() {
-    const previewExercises = aiLogPreview ? parseExercises(aiLogPreview.notes) : [];
-    const isGymPreview = aiLogPreview?.workout_type === 'strength';
-
-    return (
-      <div className="card border-teal-500/30 bg-gradient-to-br from-teal-500/5 to-transparent">
         <button
-          onClick={toggleAiLog}
-          className="w-full flex items-center justify-between gap-2 text-left"
-        >
+          onClick={() => onChange([...exercises, { name: '', category: 'strength', muscles: [], sets: [{ set: 1, weight_kg: null, weight_raw: null, reps: null, note: null }], duration_min: null }])}
+          className="text-accent hover:opacity-80 text-xs flex items-center gap-1.5">
+          <Plus size={12} />Add exercise
+        </button>
+      </div>
+    );
+  }
+
+  // ── AI log panel (primary CTA) ─────────────────────────────────────────────
+  function AiLogPanel() {
+    return (
+      <div className="card border-accent/30 bg-gradient-to-br from-accent/5 to-transparent">
+        <button onClick={toggleAiLog} className="w-full flex items-center justify-between gap-2 text-left">
           <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-teal-400" />
-            <span className="font-display font-semibold text-white text-sm">Add Workout with AI</span>
-            <span className="text-xs text-muted">— describe a workout you did, AI logs it to a day</span>
+            <Sparkles size={16} className="text-accent" />
+            <span className="font-display font-semibold text-white text-sm">Log a workout with AI</span>
+            <span className="text-xs text-muted hidden sm:inline">— describe what you did, AI structures it</span>
           </div>
           {showAiLog ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
         </button>
@@ -761,11 +546,10 @@ export default function WellnessWorkouts() {
               <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5 block">Day</label>
               <select
                 className="input w-full text-sm py-2"
-                value={aiLogDate || ''}
-                onChange={e => setAiLogDate(e.target.value)}
-              >
+                value={aiLogDate || (weekDays.includes(today) ? today : weekDays[0])}
+                onChange={e => setAiLogDate(e.target.value)}>
                 {weekDays.map((ds, i) => (
-                  <option key={ds} value={ds}>{DAY_LABELS[i]} · {parseD(ds).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</option>
+                  <option key={ds} value={ds}>{DAY_LABELS[i]} · {fmtShort(ds)}</option>
                 ))}
               </select>
             </div>
@@ -774,7 +558,7 @@ export default function WellnessWorkouts() {
               <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5 block">What did you do?</label>
               <textarea
                 className="input w-full text-sm py-2 min-h-[80px] resize-none"
-                placeholder="e.g. Chest day — bench press 20kg 4x8, incline dumbbell press 15kg 3x10, cable fly 10kg 3x12"
+                placeholder="e.g. Leg day — Steppers 5 min, Leg press 109-127-155, Squats 15kg 3 sets, Stretching"
                 value={aiLogPrompt}
                 onChange={e => setAiLogPrompt(e.target.value)}
               />
@@ -796,17 +580,16 @@ export default function WellnessWorkouts() {
                     <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1 block">Title</label>
                     <input
                       className="input w-full text-sm py-1.5"
-                      value={aiLogPreview.title || ''}
-                      onChange={e => setAiLogPreview(prev => ({ ...prev, title: e.target.value }))}
+                      value={aiLogPreview.entry.title || ''}
+                      onChange={e => setAiLogPreview(prev => ({ ...prev, entry: { ...prev.entry, title: e.target.value } }))}
                     />
                   </div>
                   <div>
                     <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1 block">Type</label>
                     <select
                       className="input w-full text-sm py-1.5"
-                      value={aiLogPreview.workout_type}
-                      onChange={e => setAiLogPreview(prev => ({ ...prev, workout_type: e.target.value }))}
-                    >
+                      value={aiLogPreview.entry.workout_type}
+                      onChange={e => setAiLogPreview(prev => ({ ...prev, entry: { ...prev.entry, workout_type: e.target.value } }))}>
                       <option value="strength">Strength</option>
                       <option value="cardio">Cardio</option>
                       <option value="flexibility">Flexibility</option>
@@ -815,75 +598,10 @@ export default function WellnessWorkouts() {
                   </div>
                 </div>
 
-                {isGymPreview && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-[10px] text-muted uppercase tracking-widest font-mono">Exercises</label>
-                      <button onClick={addAiLogExercise} className="text-teal-400 hover:text-teal-300 text-xs flex items-center gap-1">
-                        <Plus size={12} />Add row
-                      </button>
-                    </div>
-                    <div className="overflow-x-auto rounded-lg border border-white/8">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b border-white/5">
-                            <th className="text-left px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Exercise</th>
-                            <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Weight</th>
-                            <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Sets</th>
-                            <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Reps</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {previewExercises.map((ex, j) => (
-                            <tr key={j} className="border-b border-white/[0.03] last:border-0">
-                              <td className="px-3 py-1.5">
-                                <input
-                                  className="bg-transparent text-soft text-xs w-full outline-none focus:text-white"
-                                  value={ex.name || ''}
-                                  onChange={e => updateAiLogExercise(j, 'name', e.target.value)}
-                                  placeholder="Exercise name"
-                                />
-                              </td>
-                              <td className="px-2 py-1.5">
-                                <input
-                                  className="bg-transparent text-soft text-xs text-center w-16 outline-none font-mono"
-                                  value={ex.weight ?? ''}
-                                  onChange={e => updateAiLogExercise(j, 'weight', e.target.value)}
-                                  placeholder="20kg"
-                                />
-                              </td>
-                              <td className="px-2 py-1.5">
-                                <input
-                                  type="number"
-                                  className="bg-accent/10 text-accent text-xs text-center w-12 outline-none font-mono font-semibold rounded px-1 py-0.5"
-                                  value={ex.sets ?? ''}
-                                  onChange={e => updateAiLogExercise(j, 'sets', e.target.value)}
-                                />
-                              </td>
-                              <td className="px-2 py-1.5">
-                                <input
-                                  className="bg-transparent text-soft text-xs text-center w-14 outline-none font-mono"
-                                  value={ex.reps ?? ''}
-                                  onChange={e => updateAiLogExercise(j, 'reps', e.target.value)}
-                                  placeholder="8-12"
-                                />
-                              </td>
-                              <td className="px-1">
-                                <button onClick={() => removeAiLogExercise(j)} className="text-muted hover:text-red-400 transition-colors p-1">
-                                  <Trash2 size={12} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                          {previewExercises.length === 0 && (
-                            <tr><td colSpan={5} className="px-3 py-3 text-center text-muted/60 text-xs">No exercises — add a row above</td></tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
+                {ExercisesEditor({
+                  exercises: aiLogPreview.exercises,
+                  onChange: (exs) => setAiLogPreview(prev => ({ ...prev, exercises: exs })),
+                })}
 
                 <div className="flex gap-2 pt-1">
                   <button onClick={() => setAiLogPreview(null)} className="btn-ghost text-xs px-3 py-1.5 flex-1">
@@ -891,7 +609,7 @@ export default function WellnessWorkouts() {
                   </button>
                   <button onClick={saveAiLog} disabled={aiLogSaving}
                     className="btn-primary text-xs px-3 py-1.5 flex-1 flex items-center justify-center gap-1.5">
-                    <Check size={13} />{aiLogSaving ? 'Saving…' : 'Save to Day'}
+                    <Check size={13} />{aiLogSaving ? 'Saving…' : 'Save Workout'}
                   </button>
                 </div>
               </div>
@@ -902,8 +620,377 @@ export default function WellnessWorkouts() {
     );
   }
 
-  // ── analytics view ─────────────────────────────────────────────────────────
-  function Analytics() {
+  // ── day card (read-only + edit/delete) ─────────────────────────────────────
+  function DayCard(entry) {
+    const ds = String(entry.entry_date).slice(0, 10);
+    const dayIdx = weekDays.indexOf(ds);
+    const isT = ds === today;
+    const structured = entry.exercise_logs?.length ? entry.exercise_logs : null;
+    const legacy = structured ? null : parseExercises(entry.notes);
+    const isEditing = editEntryId === entry.id;
+
+    const totalSets = structured
+      ? structured.reduce((s, l) => s + (Array.isArray(l.sets) ? l.sets.length : 0), 0)
+      : countSets(legacy || []);
+    const exCount = structured ? structured.length : (legacy?.length || 0);
+
+    return (
+      <div key={entry.id} className={`card overflow-hidden ${isT ? 'ring-1 ring-accent/30' : ''}`}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-accent/5">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="text-center min-w-[42px]">
+              <p className={`text-[10px] font-mono uppercase ${isT ? 'text-accent' : 'text-muted'}`}>
+                {dayIdx >= 0 ? DAY_LABELS[dayIdx] : ''}
+              </p>
+              <p className={`text-2xl font-bold font-display leading-none ${isT ? 'text-accent' : 'text-white'}`}>
+                {parseD(ds).getDate()}
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-sm text-white truncate">{entry.title || 'Workout'}</p>
+              <p className="text-[10px] text-muted mt-0.5">
+                {entry.workout_type}{exCount ? ` · ${exCount} exercises` : ''}{totalSets ? ` · ${totalSets} sets` : ''}
+                {entry.duration ? ` · ${entry.duration} min` : ''}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {!isEditing && (
+              <button onClick={() => startEdit(entry)} title="Edit"
+                className="p-2 rounded-lg text-muted hover:text-white hover:bg-white/5 transition-colors">
+                <Pencil size={14} />
+              </button>
+            )}
+            <button onClick={() => deleteEntry(entry)} title="Delete"
+              className="p-2 rounded-lg text-muted hover:text-red-400 hover:bg-white/5 transition-colors">
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+
+        {isEditing && editDraft ? (
+          <div className="p-4 space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                className="input w-full text-sm py-1.5"
+                value={editDraft.title}
+                onChange={e => setEditDraft(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="Title"
+              />
+              <select
+                className="input w-full text-sm py-1.5"
+                value={editDraft.workout_type}
+                onChange={e => setEditDraft(prev => ({ ...prev, workout_type: e.target.value }))}>
+                <option value="strength">Strength</option>
+                <option value="cardio">Cardio</option>
+                <option value="flexibility">Flexibility</option>
+                <option value="rest">Rest</option>
+              </select>
+            </div>
+            {ExercisesEditor({
+              exercises: editDraft.exercises,
+              onChange: (exs) => setEditDraft(prev => ({ ...prev, exercises: exs })),
+            })}
+            {editError && <p className="text-xs text-red-400">{editError}</p>}
+            <div className="flex gap-2">
+              <button onClick={() => { setEditEntryId(null); setEditDraft(null); }} className="btn-ghost text-xs px-3 py-1.5 flex-1">
+                Cancel
+              </button>
+              <button onClick={saveEdit} disabled={editSaving}
+                className="btn-primary text-xs px-3 py-1.5 flex-1 flex items-center justify-center gap-1.5">
+                <Check size={13} />{editSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          (structured || legacy?.length) ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs min-w-[420px]">
+                <thead>
+                  <tr className="border-b border-white/5">
+                    <th className="text-left px-4 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Exercise</th>
+                    <th className="text-center px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Weight</th>
+                    <th className="text-center px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Sets</th>
+                    <th className="text-center px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Reps</th>
+                    <th className="text-left px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Muscles</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(structured || legacy).map((ex, j) => {
+                    const s = structured ? summarizeStructured(ex) : { weight: ex.weight, sets: ex.sets, reps: ex.reps };
+                    const name = structured ? ex.exercise_name : ex.name;
+                    const cat = structured ? ex.category : null;
+                    const muscles = structured && Array.isArray(ex.muscles) ? ex.muscles : [];
+                    return (
+                      <tr key={j} className="border-b border-white/[0.03] last:border-0 hover:bg-white/[0.02]">
+                        <td className="px-4 py-2 text-soft">
+                          {name}
+                          {cat === 'cardio' && ex.duration_min ? <span className="text-muted font-mono"> · {ex.duration_min} min</span> : null}
+                          {cat && cat !== 'strength' && <span className="ml-1.5 text-[9px] font-mono uppercase text-muted/70">{cat}</span>}
+                        </td>
+                        <td className="px-3 py-2 text-center text-soft font-mono whitespace-nowrap">{s.weight ?? '—'}</td>
+                        <td className="px-3 py-2 text-center">
+                          <span className="inline-block min-w-[28px] text-center font-mono font-semibold text-accent bg-accent/10 rounded px-1.5 py-0.5">
+                            {s.sets ?? '—'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-center text-soft font-mono whitespace-nowrap">{s.reps ?? '—'}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap gap-1">
+                            {muscles.map(m => (
+                              <span key={m.muscle}
+                                className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono border ${
+                                  m.role === 'primary' ? 'bg-accent/10 border-accent/30 text-accent' : 'border-white/10 text-muted'
+                                }`}>
+                                {muscleLabel(m.muscle)}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null
+        )}
+      </div>
+    );
+  }
+
+  // ── Log view ───────────────────────────────────────────────────────────────
+  function LogView() {
+    const sorted = [...entries].sort((a, b) => String(a.entry_date).localeCompare(String(b.entry_date)));
+    return (
+      <div className="space-y-4 fade-up-1">
+        {WeekHeader()}
+        {AiLogPanel()}
+        {sorted.length === 0 && !loading && (
+          <div className="card p-8 text-center text-muted text-sm">
+            Nothing logged this week — describe a workout above.
+          </div>
+        )}
+        {sorted.map(entry => DayCard(entry))}
+      </div>
+    );
+  }
+
+  // ── Muscles view ───────────────────────────────────────────────────────────
+  function RecommendCard() {
+    return (
+      <div className="card p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-xs text-muted uppercase tracking-widest font-mono">Next session recommendation</p>
+          <button onClick={generateRec} disabled={recLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+              bg-purple-500/20 text-purple-300 border border-purple-500/30
+              hover:bg-purple-500/30 transition-colors disabled:opacity-50">
+            <Sparkles size={12} />{recLoading ? 'Thinking…' : (rec ? 'Regenerate' : 'Generate')}
+          </button>
+        </div>
+        {recError && <p className="text-xs text-red-400">{recError}</p>}
+        {rec && (
+          <div className="space-y-3">
+            <div>
+              <p className="text-white text-sm font-semibold font-body">{rec.focus}</p>
+              <p className="text-xs text-soft leading-relaxed mt-1">{rec.rationale}</p>
+            </div>
+            <div className="overflow-x-auto rounded-lg border border-white/8">
+              <table className="w-full text-xs min-w-[420px]">
+                <thead>
+                  <tr className="border-b border-white/5">
+                    <th className="text-left px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Exercise</th>
+                    <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Sets</th>
+                    <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Reps</th>
+                    <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Weight</th>
+                    <th className="text-left px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Muscles</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rec.exercises.map((e, i) => (
+                    <tr key={i} className="border-b border-white/[0.03] last:border-0">
+                      <td className="px-3 py-2 text-soft">{e.name}</td>
+                      <td className="px-2 py-2 text-center text-soft font-mono">{e.sets ?? '—'}</td>
+                      <td className="px-2 py-2 text-center text-soft font-mono">{e.reps ?? '—'}</td>
+                      <td className="px-2 py-2 text-center text-soft font-mono whitespace-nowrap">{e.suggested_weight ?? '—'}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          {e.muscles.map(m => (
+                            <span key={m} className="px-1.5 py-0.5 rounded-full text-[9px] font-mono border border-white/10 text-muted">
+                              {muscleLabel(m)}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button onClick={useRecInLog} className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5">
+              <Dumbbell size={13} />Use in log
+            </button>
+          </div>
+        )}
+        {!rec && !recError && !recLoading && (
+          <p className="text-xs text-muted/70">Generate a recommendation for your next gym session based on what you've trained recently.</p>
+        )}
+      </div>
+    );
+  }
+
+  function MusclesView() {
+    return (
+      <div className="space-y-4 fade-up-1">
+        {WeekHeader()}
+        {RecommendCard()}
+        {mLoading
+          ? <div className="card h-72 animate-pulse bg-white/[0.03]" />
+          : <MuscleBodyMap muscles={muscleData} selected={selectedMuscle} onSelect={(id) => setSelectedMuscle(prev => prev === id ? null : id)} />}
+      </div>
+    );
+  }
+
+  // ── analytics helpers ──────────────────────────────────────────────────────
+  function buildWeeklyData(list) {
+    if (!list?.length) return null;
+    const weekMap = {};
+    list.forEach(e => {
+      if (e.workout_type !== 'strength') return;
+      const ws = getMonday(String(e.entry_date).slice(0, 10));
+      if (!weekMap[ws]) weekMap[ws] = { sessions: 0, sets: 0 };
+      const exs = parseExercises(e.notes);
+      weekMap[ws].sessions += 1;
+      weekMap[ws].sets += countSets(exs);
+    });
+    return Object.entries(weekMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([ws, d]) => ({
+        week: fmtShort(ws),
+        Sessions: d.sessions,
+        Sets: d.sets,
+      }));
+  }
+
+  function CustomTooltip({ active, payload, label }) {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="card p-3 text-xs space-y-1">
+        <p className="text-muted font-mono mb-1">{label}</p>
+        {payload.map(p => (
+          <div key={p.name} className="flex justify-between gap-4">
+            <span style={{ color: p.fill || p.color || p.stroke }}>{p.name}</span>
+            <span className="text-white font-mono">{p.value}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ── trends (F4) ────────────────────────────────────────────────────────────
+  function TrendsSection() {
+    if (trendsLoading) return <div className="card h-56 animate-pulse bg-white/[0.03]" />;
+    if (!trends?.exercises?.length) {
+      return (
+        <div className="card p-6 text-center text-muted text-sm">
+          No structured exercise logs in this period yet — log workouts with AI to see strength trends.
+        </div>
+      );
+    }
+
+    const names = trends.exercises.map(e => e.name);
+    const active = names.includes(trendExercise) ? trendExercise : names[0];
+    const activeEx = trends.exercises.find(e => e.name === active);
+    const chartData = (activeEx?.sessions || []).map(s => ({
+      date: fmtShort(s.date),
+      'Top set (kg)': s.top_set_kg,
+      'Volume (kg)': s.volume_kg,
+      Sets: s.sets,
+    }));
+    const hasLoad = chartData.some(d => d['Top set (kg)'] != null);
+
+    const prs = trends.exercises.filter(e => e.pr)
+      .sort((a, b) => b.pr.date.localeCompare(a.pr.date))
+      .slice(0, 8);
+
+    // per-muscle weekly stacked bars — muscles present in the period, capped to 8 by volume
+    const muscleTotals = {};
+    for (const w of trends.muscle_weekly || []) {
+      for (const [m, sets] of Object.entries(w.muscles)) muscleTotals[m] = (muscleTotals[m] || 0) + sets;
+    }
+    const topMuscles = Object.entries(muscleTotals).sort(([, a], [, b]) => b - a).slice(0, 8).map(([m]) => m);
+    const muscleBars = (trends.muscle_weekly || []).map(w => {
+      const row = { week: fmtShort(w.week_start) };
+      for (const m of topMuscles) row[muscleLabel(m)] = w.muscles[m] || 0;
+      return row;
+    });
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-muted uppercase tracking-widest font-mono">Strength & load trends</p>
+          <select className="input text-xs py-1.5 w-auto" value={active} onChange={e => setTrendExercise(e.target.value)}>
+            {names.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+
+        {prs.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {prs.map(e => (
+              <span key={e.name}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/10 border border-accent/25 text-accent text-[11px] font-mono">
+                <Award size={11} />{e.name} PR: {e.pr.weight_kg} kg · {fmtShort(e.pr.date)}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="card p-4">
+          <p className="text-xs text-muted uppercase tracking-widest font-mono mb-4">{active} — top set & volume</p>
+          {hasLoad ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <YAxis yAxisId="w" tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <YAxis yAxisId="v" orientation="right" tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Line yAxisId="w" type="monotone" dataKey="Top set (kg)" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                <Line yAxisId="v" type="monotone" dataKey="Volume (kg)" stroke="#60a5fa" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-xs text-muted py-8 text-center">
+              Bodyweight exercise — {chartData.reduce((s, d) => s + (d.Sets || 0), 0)} sets logged across {chartData.length} session{chartData.length === 1 ? '' : 's'}, no load to chart.
+            </p>
+          )}
+        </div>
+
+        {muscleBars.length > 0 && (
+          <div className="card p-4">
+            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-4">Weekly primary sets per muscle</p>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={muscleBars} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <XAxis dataKey="week" tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                {topMuscles.map((m, i) => (
+                  <Bar key={m} dataKey={muscleLabel(m)} stackId="m" fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Analytics view ─────────────────────────────────────────────────────────
+  function AnalyticsView() {
     if (aLoading) return (
       <div className="space-y-3 fade-up-1">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -917,12 +1004,14 @@ export default function WellnessWorkouts() {
 
     const weekData = buildWeeklyData(analytics);
     if (!weekData?.length) return (
-      <div className="card p-8 text-center fade-up-1">
-        <p className="text-muted text-sm">No accepted workout data for this period. Accept a week plan to see analytics.</p>
-        <button onClick={() => setView('planner')}
-          className="mt-4 text-xs text-accent underline hover:text-accent/80 transition-colors">
-          Go to Planner →
-        </button>
+      <div className="space-y-4 fade-up-1">
+        <div className="card p-8 text-center">
+          <p className="text-muted text-sm">No workouts logged in this period yet.</p>
+          <button onClick={() => setView('log')}
+            className="mt-4 text-xs text-accent underline hover:opacity-80 transition-opacity">
+            Go to Log →
+          </button>
+        </div>
       </div>
     );
 
@@ -988,6 +1077,8 @@ export default function WellnessWorkouts() {
             </ResponsiveContainer>
           </div>
         </div>
+
+        {TrendsSection()}
       </div>
     );
   }
@@ -1013,7 +1104,7 @@ export default function WellnessWorkouts() {
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight">
             {currentPerson ? `${currentPerson}'s Workouts` : 'Workouts'}
           </h1>
-          <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Weekly gym planner & analytics</p>
+          <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Training log, muscle map & analytics</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {view === 'analytics' && (
@@ -1030,7 +1121,7 @@ export default function WellnessWorkouts() {
           )}
           <div className="flex gap-1 p-1 rounded-xl"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            {[{ key: 'planner', label: 'Plan Week' }, { key: 'analytics', label: 'Analytics' }].map(({ key, label }) => (
+            {VIEWS.map(({ key, label }) => (
               <button key={key} onClick={() => setView(key)}
                 className={`px-4 py-2 rounded-lg text-sm font-body transition-all ${
                   view === key ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'
@@ -1042,16 +1133,16 @@ export default function WellnessWorkouts() {
         </div>
       </div>
 
-      {loading && view === 'planner' && (
+      {loading && view === 'log' && (
         <div className="space-y-3 fade-up-1">
           <div className="card h-24 animate-pulse bg-white/[0.03]" />
           <div className="card h-48 animate-pulse bg-white/[0.03]" />
-          <div className="card h-32 animate-pulse bg-white/[0.03]" />
         </div>
       )}
 
-      {!loading && view === 'planner'  && Planner()}
-      {           view === 'analytics' && Analytics()}
+      {!loading && view === 'log'      && LogView()}
+      {           view === 'muscles'   && MusclesView()}
+      {           view === 'analytics' && AnalyticsView()}
     </div>
   );
 }
