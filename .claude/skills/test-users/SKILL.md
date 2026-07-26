@@ -9,7 +9,26 @@ Purpose: turn "cross-user isolation assumed from code reading" into "actually pr
 
 ## Safety gate (run FIRST, non-negotiable)
 
-Check the `DATABASE_URL` the server is using (repo-root `.env`). If it is unset, or does not point at `localhost`/`127.0.0.1`, **STOP** — do not create users, do not offer an override. Report: "test-users requires a local Postgres; DATABASE_URL points at <host>. Point it at a local DB (or run a local postgres + `node server/db/seed.js`) and retry." Creating QA accounts in the Railway production DB is never acceptable.
+Check the `DATABASE_URL` the server is actually using. Env resolution is
+**`.env.local` first, then `.env`** (see `server/loadEnv.js`) — `.env.local` wins,
+and `.env` still holds the Railway **production** credentials, so never read
+`.env` alone and assume that is the target.
+
+The running server prints the resolved target on every boot:
+
+```
+🔌 env: .env.local → .env | db: postgres@localhost:5433/investment_tracker
+```
+
+If that host is not `localhost`/`127.0.0.1`, or `DATABASE_URL` is unset, **STOP** —
+do not create users, do not offer an override. Report: "test-users requires a
+local Postgres; DATABASE_URL points at <host>. Run `cp .env.local.example .env.local
+&& npm run db:up && npm run db:reset` and retry." Creating QA accounts in the
+Railway production DB is never acceptable.
+
+Belt and braces: `server/db/guard.js` already refuses to start a non-deployed
+process against a remote database, so a correctly-run local server cannot be
+pointed at production by accident. Verify anyway — the gate is cheap.
 
 ## Setup
 
@@ -40,7 +59,13 @@ Record each probe as endpoint / expectation / actual / PASS-FAIL. Any cross-user
 ```
 DELETE FROM users WHERE username LIKE 'qa-test-%@example.test';
 ```
-via psql or a one-off node script using `server/db/index.js`. `ON DELETE CASCADE` removes their child rows. Verify: the same SELECT returns zero rows. Report cleanup as done.
+via `npm run db:psql` or a one-off node script using `server/db/index.js`.
+`ON DELETE CASCADE` removes their child rows. Verify: the same SELECT returns
+zero rows. Report cleanup as done.
+
+Never touch the `demo-full@example.test` / `demo-sparse@example.test` fixtures —
+those are the seeded visual-QA users created by `npm run db:seed`, a separate
+concept from these throwaway probe accounts.
 
 ## Boundaries
 

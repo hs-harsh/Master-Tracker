@@ -280,6 +280,16 @@ function buildCronReminderHtml(personName, staleAssets) {
 
 // ── Start all cron jobs ───────────────────────────────────────────────────────
 function startCronJobs() {
+  // These jobs send REAL email to real profiles. Never start them in local
+  // development. isDeployedEnv() is NODE_ENV=production OR any RAILWAY_*
+  // variable — deliberately generous so a missing NODE_ENV cannot silently
+  // disable production reminders. ENABLE_CRON=1 forces them on for testing.
+  const { isDeployedEnv } = require('./db/guard');
+  if (!isDeployedEnv() && process.env.ENABLE_CRON !== '1') {
+    console.log('⏸  Cron jobs disabled (not a deployed env). Set ENABLE_CRON=1 to force.');
+    return;
+  }
+
   // Habits reminder: every alternate day at 9:00 AM
   cron.schedule('0 9 */2 * *', () => {
     sendHabitsReminder().catch(err => console.error('cron: habits reminder error:', err.message));

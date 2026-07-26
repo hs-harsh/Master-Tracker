@@ -1,4 +1,5 @@
-require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
+// Loads .env.local (if present) then .env, without overriding. Must come first.
+require('./loadEnv');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -6,7 +7,11 @@ const fs = require('fs');
 const pool = require('./db');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+// SERVER_PORT wins over PORT: some tooling injects PORT=5173 into the
+// environment, which outranks .env (dotenv never overrides a real env var) and
+// used to move the API onto Vite's port. Railway sets only PORT, so the
+// fallback keeps the deploy working unchanged.
+const PORT = process.env.SERVER_PORT || process.env.PORT || 3001;
 
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5173',

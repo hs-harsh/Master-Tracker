@@ -37,10 +37,14 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_user_persons_user_id ON user_persons(user_id);
 
 -- Drop CHECK constraints that restrict person/account to specific names (run once on migration)
+-- NOTE: these blocks run BEFORE the tables below are created, so they must
+-- tolerate the tables not existing yet (fresh/empty database). to_regclass()
+-- returns NULL instead of raising, unlike the ::regclass cast.
 DO $$
 DECLARE
   cname TEXT;
 BEGIN
+  IF to_regclass('monthly_cashflow') IS NULL THEN RETURN; END IF;
   SELECT conname INTO cname FROM pg_constraint
     WHERE conrelid = 'monthly_cashflow'::regclass AND contype = 'c' LIMIT 1;
   IF cname IS NOT NULL THEN
@@ -51,6 +55,7 @@ DO $$
 DECLARE
   cname TEXT;
 BEGIN
+  IF to_regclass('transactions') IS NULL THEN RETURN; END IF;
   SELECT conname INTO cname FROM pg_constraint
     WHERE conrelid = 'transactions'::regclass AND contype = 'c' LIMIT 1;
   IF cname IS NOT NULL THEN
@@ -61,6 +66,7 @@ DO $$
 DECLARE
   cname TEXT;
 BEGIN
+  IF to_regclass('investments') IS NULL THEN RETURN; END IF;
   FOR cname IN SELECT conname FROM pg_constraint WHERE conrelid = 'investments'::regclass AND contype = 'c' AND conname LIKE '%account%' LOOP
     EXECUTE 'ALTER TABLE investments DROP CONSTRAINT ' || quote_ident(cname);
   END LOOP;

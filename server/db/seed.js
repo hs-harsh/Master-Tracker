@@ -1,4 +1,6 @@
-require('dotenv').config({ path: '../.env' });
+// Must match the server's precedence (.env.local wins over .env) so this
+// seeder can never silently resolve to production while local dev is set up.
+require('../loadEnv');
 const fs = require('fs');
 const path = require('path');
 const pool = require('./index');

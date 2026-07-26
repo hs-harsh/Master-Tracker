@@ -1,0 +1,36 @@
+# Local development database.
+#
+# Host port is 5433 (NOT the default 5432) on purpose: it can never be confused
+# with — or silently shadowed by — a system Postgres install.
+#
+#   npm run db:up      start it
+#   npm run db:reset    drop the volume, recreate, apply schema.sql + dev seed
+#   npm run db:psql     psql shell inside the container (no host client needed)
+#   npm run db:down     stop it
+#
+# Connection string (see .env.local.example):
+#   postgresql://postgres:postgres@localhost:5433/investment_tracker
+
+services:
+  db:
+    image: postgres:16
+    container_name: investment-tracker-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: investment_tracker
+    ports:
+      # bound to loopback only — this DB uses trivial dev credentials and must
+      # not be reachable from the local network
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - investment_tracker_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d investment_tracker"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  investment_tracker_pgdata:

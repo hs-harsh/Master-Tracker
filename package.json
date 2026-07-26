@@ -2,13 +2,19 @@
   "name": "investment-tracker",
   "version": "1.0.0",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev": "concurrently --kill-others-on-fail \"npm run server\" \"npm run client\"",
     "test": "cd server && npm test",
     "server": "cd server && node index.js",
     "client": "cd client && npm run dev",
     "build": "cd client && npm run build",
     "start": "cd server && node index.js",
-    "install:all": "npm install && cd server && npm install && cd ../client && npm install"
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "db:up": "docker compose up -d && npm run db:wait",
+    "db:wait": "until docker compose exec -T db pg_isready -U postgres -d investment_tracker >/dev/null 2>&1; do sleep 1; done; echo '✅ local postgres ready on localhost:5433'",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d && npm run db:wait && npm run db:seed",
+    "db:seed": "cd server && node db/seedDev.js",
+    "db:psql": "docker compose exec db psql -U postgres -d investment_tracker"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

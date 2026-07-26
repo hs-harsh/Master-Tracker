@@ -1,7 +1,12 @@
 const { Pool } = require('pg');
+const { assertSafeDbTarget, isLocalTarget } = require('./guard');
 
-// Railway Postgres requires SSL even from external/local connections
-const isRemoteDb = process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost') && !process.env.DATABASE_URL.includes('127.0.0.1');
+// Logs the resolved DB target and refuses to continue if a dev process is
+// pointed at a remote (production) database. Must run before the pool exists.
+assertSafeDbTarget();
+
+// Railway Postgres requires SSL even from external/local connections.
+const isRemoteDb = !isLocalTarget();
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
