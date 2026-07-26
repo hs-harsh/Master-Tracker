@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, X,
   Check, Sparkles, AlertTriangle,
   Flame, Target, TrendingUp, Award,
-  ChevronDown, ChevronUp, Plus, Trash2, Pencil,
+  Plus, Trash2, Pencil,
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -73,7 +73,6 @@ function summarizeStructured(ex) {
     weight: uniqJoin(sets.map(s => s.weight_raw ?? (s.weight_kg != null ? String(s.weight_kg) : null))),
     sets: sets.length || null,
     reps: uniqJoin(sets.map(s => s.reps)),
-    notes: uniqJoin(sets.map(s => s.note)),
   };
 }
 
@@ -92,7 +91,6 @@ function legacyToStructured(exs) {
         weight_kg: isFinite(w) ? w : null,
         weight_raw: ex.weight != null && ex.weight !== '' ? String(ex.weight) : null,
         reps: isFinite(reps) ? reps : null,
-        note: null,
       })),
       duration_min: null,
     };
@@ -116,9 +114,11 @@ export default function WellnessWorkouts() {
   const [entries,   setEntries]   = useState([]);
   const [loading,   setLoading]   = useState(false);
 
-  // AI log panel (primary CTA)
-  const [showAiLog,    setShowAiLog]    = useState(true);
-  const [aiLogDate,    setAiLogDate]    = useState(null);
+  // Day strip selection — clicking a day box opens that day's logger/detail
+  const [logDate,   setLogDate]   = useState(null);
+  const [relogOpen, setRelogOpen] = useState(false);
+
+  // AI log panel (scoped to logDate)
   const [aiLogPrompt,  setAiLogPrompt]  = useState('');
   const [aiLogParsing, setAiLogParsing] = useState(false);
   const [aiLogError,   setAiLogError]   = useState('');
@@ -221,6 +221,29 @@ export default function WellnessWorkouts() {
     d.setDate(d.getDate() + dir * 7);
     setWeekStart(d.toISOString().slice(0, 10));
     setSelectedMuscle(null);
+    closeDay();
+  }
+
+  const entryFor = (ds) => entries.find(e => String(e.entry_date).slice(0, 10) === ds) || null;
+
+  // Open a day box: pre-scopes the AI logger (or the day's detail) to that date.
+  function openDay(ds) {
+    if (logDate === ds) { closeDay(); return; }
+    setLogDate(ds);
+    setRelogOpen(false);
+    setAiLogPrompt('');
+    setAiLogPreview(null);
+    setAiLogError('');
+    setEditEntryId(null);
+    setEditDraft(null);
+  }
+
+  function closeDay() {
+    setLogDate(null);
+    setRelogOpen(false);
+    setAiLogPrompt('');
+    setAiLogPreview(null);
+    setAiLogError('');
   }
 
   // Insert/replace a saved entry into local state (no page refresh)
@@ -234,21 +257,13 @@ export default function WellnessWorkouts() {
   }
 
   // ── AI log panel actions ───────────────────────────────────────────────────
-  function toggleAiLog() {
-    if (!showAiLog) {
-      setAiLogDate(weekDays.includes(today) ? today : weekDays[0]);
-      setAiLogError('');
-    }
-    setShowAiLog(o => !o);
-  }
-
   async function parseAiLog() {
-    if (!plan || !aiLogPrompt.trim()) return;
+    if (!plan || !logDate || !aiLogPrompt.trim()) return;
     setAiLogParsing(true); setAiLogError(''); setAiLogPreview(null);
     try {
       const { data } = await api.post(`/workouts/week/${plan.id}/ai-log`, {
         prompt: aiLogPrompt.trim(),
-        entry_date: aiLogDate || (weekDays.includes(today) ? today : weekDays[0]),
+        entry_date: logDate,
       });
       setAiLogPreview({ entry: data.entry, exercises: data.exercises || [] });
     } catch (err) {
@@ -272,6 +287,7 @@ export default function WellnessWorkouts() {
       upsertEntry(data.entry);
       setAiLogPreview(null);
       setAiLogPrompt('');
+      setLogDate(null);
     } catch (err) {
       setAiLogError(err.response?.data?.error || 'Save failed');
     } finally {
@@ -321,6 +337,7 @@ export default function WellnessWorkouts() {
     try {
       await api.delete(`/workouts/entries/${entry.id}`);
       setEntries(prev => prev.filter(e => e.id !== entry.id));
+      if (logDate === String(entry.entry_date).slice(0, 10)) closeDay();
     } catch (err) {
       console.error(err);
     }
@@ -348,10 +365,11 @@ export default function WellnessWorkouts() {
       if (e.suggested_weight) parts.push(`@ ${e.suggested_weight}`);
       return parts.join(' ');
     }).join(', ');
+    setLogDate(weekDays.includes(today) ? today : weekDays[0]);
+    setRelogOpen(true);
     setAiLogPrompt(text);
     setAiLogPreview(null);
-    setShowAiLog(true);
-    setAiLogDate(weekDays.includes(today) ? today : weekDays[0]);
+    setAiLogError('');
     setView('log');
   }
 
@@ -369,6 +387,81 @@ export default function WellnessWorkouts() {
             className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
             <ChevronRight size={18} />
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── clickable weekly day strip (Log view) ──────────────────────────────────
+  // Mirrors the Habits planner weekly header: chevron week navigator + range
+  // label top-left, hint top-right, then seven day columns. Clicking a column
+  // opens the AI logger (or the logged day's detail) pre-scoped to that date.
+  function WeekDayStrip() {
+    const currentWeekStart = getMonday(today);
+    const isCurrentWeek = weekStart === currentWeekStart;
+    return (
+      <div className="card p-3 sm:p-4 overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => shiftWeek(-1)} title="Previous week"
+              className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+              <ChevronLeft size={18} />
+            </button>
+            <p className="text-white text-sm font-semibold font-body">{fmtWeekRange(weekStart)}</p>
+            <button onClick={() => shiftWeek(1)} title="Next week"
+              className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+              <ChevronRight size={18} />
+            </button>
+            {!isCurrentWeek && (
+              <button onClick={() => { setWeekStart(currentWeekStart); closeDay(); }}
+                className="px-2.5 py-1 rounded-lg text-xs font-mono bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors">
+                Today
+              </button>
+            )}
+          </div>
+          <p className="text-[10px] sm:text-xs text-muted font-mono">Tap a day to log or edit it</p>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 sm:gap-2">
+          {weekDays.map((ds, i) => {
+            const entry    = entryFor(ds);
+            const isT      = ds === today;
+            const isSel    = logDate === ds;
+            const logged   = !!entry;
+            const setCount = entry?.exercise_logs?.length
+              ? entry.exercise_logs.reduce((s, l) => s + (Array.isArray(l.sets) ? l.sets.length : 0), 0)
+              : countSets(parseExercises(entry?.notes));
+            return (
+              <button key={ds} onClick={() => openDay(ds)}
+                title={logged ? `${entry.title || 'Workout'} — tap to view or edit` : 'Tap to log a workout'}
+                className={`min-h-[68px] rounded-xl border px-0.5 py-2 flex flex-col items-center justify-center gap-0.5 transition-colors ${
+                  isSel
+                    ? 'border-accent bg-accent/15'
+                    : logged
+                      ? 'border-accent/30 bg-accent/[0.07] hover:bg-accent/15'
+                      // border-border + accent hover: both are theme-aware, unlike
+                      // white/N tints which vanish on a white light-mode card.
+                      : 'border-dashed border-border hover:bg-accent/10'
+                } ${isT && !isSel ? 'ring-1 ring-accent/30' : ''}`}>
+                <span className={`text-[9px] sm:text-[10px] font-mono uppercase tracking-wide ${isT ? 'text-accent' : 'text-muted'}`}>
+                  {DAY_LABELS[i]}
+                </span>
+                <span className={`text-lg sm:text-xl font-bold font-display leading-none ${isT ? 'text-accent' : logged ? 'text-white' : 'text-soft'}`}>
+                  {parseD(ds).getDate()}
+                </span>
+                <span className="text-[9px] text-muted font-mono leading-none">
+                  {parseD(ds).toLocaleDateString('en-IN', { month: 'short' })}
+                </span>
+                {logged ? (
+                  <span className="flex items-center gap-0.5 text-[9px] font-mono text-accent leading-none mt-0.5">
+                    <Check size={8} />{setCount || ''}
+                  </span>
+                ) : (
+                  <Plus size={10} className="text-muted/40 mt-0.5" />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     );
@@ -405,10 +498,9 @@ export default function WellnessWorkouts() {
               </button>
             </div>
 
-            {ex.category === 'strength' && (
-              <>
-                {/* muscle chips */}
-                <div className="flex flex-wrap items-center gap-1.5">
+            {/* muscle chips — every category, cardio included, so no muscle
+                group is silently uncovered */}
+            <div className="flex flex-wrap items-center gap-1.5">
                   {ex.muscles.map((m, mi) => (
                     <span key={m.muscle}
                       className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-mono cursor-pointer transition-colors ${
@@ -442,8 +534,10 @@ export default function WellnessWorkouts() {
                       <option key={g.id} value={g.id}>{g.label}</option>
                     ))}
                   </select>
-                </div>
+            </div>
 
+            {ex.category === 'strength' && (
+              <>
                 {/* per-set table */}
                 <div className="overflow-x-auto rounded-lg border border-white/8">
                   <table className="w-full text-xs min-w-[320px]">
@@ -452,7 +546,6 @@ export default function WellnessWorkouts() {
                         <th className="text-left px-3 py-1.5 text-muted font-mono uppercase tracking-wider text-[10px]">Set</th>
                         <th className="text-center px-2 py-1.5 text-muted font-mono uppercase tracking-wider text-[10px]">Weight (kg)</th>
                         <th className="text-center px-2 py-1.5 text-muted font-mono uppercase tracking-wider text-[10px]">Reps</th>
-                        <th className="text-left px-2 py-1.5 text-muted font-mono uppercase tracking-wider text-[10px]">Note</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -479,14 +572,6 @@ export default function WellnessWorkouts() {
                               placeholder="—"
                             />
                           </td>
-                          <td className="px-2 py-1">
-                            <input
-                              className="bg-transparent text-soft text-xs w-full min-w-[70px] outline-none focus:text-white"
-                              value={s.note ?? ''}
-                              onChange={e => updateSet(i, si, { note: e.target.value || null })}
-                              placeholder="e.g. single leg"
-                            />
-                          </td>
                           <td className="px-1">
                             <button onClick={() => update(i, { sets: ex.sets.filter((_, j) => j !== si) })}
                               className="text-muted hover:text-red-400 transition-colors p-1">
@@ -499,7 +584,7 @@ export default function WellnessWorkouts() {
                   </table>
                 </div>
                 <button
-                  onClick={() => update(i, { sets: [...ex.sets, { set: ex.sets.length + 1, weight_kg: null, weight_raw: null, reps: null, note: null }] })}
+                  onClick={() => update(i, { sets: [...ex.sets, { set: ex.sets.length + 1, weight_kg: null, weight_raw: null, reps: null }] })}
                   className="text-accent hover:opacity-80 text-xs flex items-center gap-1">
                   <Plus size={11} />Add set
                 </button>
@@ -519,7 +604,7 @@ export default function WellnessWorkouts() {
           </div>
         ))}
         <button
-          onClick={() => onChange([...exercises, { name: '', category: 'strength', muscles: [], sets: [{ set: 1, weight_kg: null, weight_raw: null, reps: null, note: null }], duration_min: null }])}
+          onClick={() => onChange([...exercises, { name: '', category: 'strength', muscles: [], sets: [{ set: 1, weight_kg: null, weight_raw: null, reps: null }], duration_min: null }])}
           className="text-accent hover:opacity-80 text-xs flex items-center gap-1.5">
           <Plus size={12} />Add exercise
         </button>
@@ -527,33 +612,31 @@ export default function WellnessWorkouts() {
     );
   }
 
-  // ── AI log panel (primary CTA) ─────────────────────────────────────────────
-  function AiLogPanel() {
+  // ── AI log panel — always scoped to the day picked in the strip ────────────
+  function AiLogPanel({ dateStr, relog = false }) {
+    const dayIdx = weekDays.indexOf(dateStr);
     return (
       <div className="card border-accent/30 bg-gradient-to-br from-accent/5 to-transparent">
-        <button onClick={toggleAiLog} className="w-full flex items-center justify-between gap-2 text-left">
-          <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-accent" />
-            <span className="font-display font-semibold text-white text-sm">Log a workout with AI</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles size={16} className="text-accent shrink-0" />
+            <span className="font-display font-semibold text-white text-sm truncate">
+              {relog ? 'Re-log' : 'Log'} {dayIdx >= 0 ? `${DAY_LABELS[dayIdx]} · ` : ''}{fmtShort(dateStr)}
+            </span>
             <span className="text-xs text-muted hidden sm:inline">— describe what you did, AI structures it</span>
           </div>
-          {showAiLog ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
-        </button>
+          <button onClick={closeDay} title="Close"
+            className="p-1.5 rounded-lg text-muted hover:text-white hover:bg-white/5 transition-colors shrink-0">
+            <X size={14} />
+          </button>
+        </div>
 
-        {showAiLog && (
-          <div className="mt-4 space-y-3">
-            <div>
-              <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5 block">Day</label>
-              <select
-                className="input w-full text-sm py-2"
-                value={aiLogDate || (weekDays.includes(today) ? today : weekDays[0])}
-                onChange={e => setAiLogDate(e.target.value)}>
-                {weekDays.map((ds, i) => (
-                  <option key={ds} value={ds}>{DAY_LABELS[i]} · {fmtShort(ds)}</option>
-                ))}
-              </select>
-            </div>
-
+        <div className="mt-4 space-y-3">
+            {relog && (
+              <p className="text-[11px] text-amber-300/80">
+                Saving will replace the workout already logged for this day.
+              </p>
+            )}
             <div>
               <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5 block">What did you do?</label>
               <textarea
@@ -614,8 +697,7 @@ export default function WellnessWorkouts() {
                 </div>
               </div>
             )}
-          </div>
-        )}
+        </div>
       </div>
     );
   }
@@ -762,16 +844,43 @@ export default function WellnessWorkouts() {
   // ── Log view ───────────────────────────────────────────────────────────────
   function LogView() {
     const sorted = [...entries].sort((a, b) => String(a.entry_date).localeCompare(String(b.entry_date)));
+    const selected = logDate ? entryFor(logDate) : null;
+
     return (
       <div className="space-y-4 fade-up-1">
-        {WeekHeader()}
-        {AiLogPanel()}
-        {sorted.length === 0 && !loading && (
-          <div className="card p-8 text-center text-muted text-sm">
-            Nothing logged this week — describe a workout above.
-          </div>
+        {WeekDayStrip()}
+
+        {/* A day is picked in the strip → log it, or view/edit what's logged */}
+        {logDate && !selected && AiLogPanel({ dateStr: logDate })}
+        {logDate && selected && (
+          <>
+            {DayCard(selected)}
+            {relogOpen
+              ? AiLogPanel({ dateStr: logDate, relog: true })
+              : (
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => { setRelogOpen(true); setAiLogPreview(null); setAiLogError(''); }}
+                    className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5">
+                    <Sparkles size={13} />Re-log this day with AI
+                  </button>
+                  <button onClick={closeDay} className="btn-ghost text-xs px-3 py-1.5">
+                    Close
+                  </button>
+                </div>
+              )}
+          </>
         )}
-        {sorted.map(entry => DayCard(entry))}
+
+        {/* Nothing picked → overview of everything logged this week */}
+        {!logDate && (
+          sorted.length === 0
+            ? (
+              <div className="card p-8 text-center text-muted text-sm">
+                Nothing logged this week — tap a day above to log a workout.
+              </div>
+            )
+            : sorted.map(entry => DayCard(entry))
+        )}
       </div>
     );
   }
@@ -970,7 +1079,8 @@ export default function WellnessWorkouts() {
 
         {muscleBars.length > 0 && (
           <div className="card p-4">
-            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-4">Weekly primary sets per muscle</p>
+            <p className="text-xs text-muted uppercase tracking-widest font-mono mb-1">Weekly weighted sets per muscle</p>
+            <p className="text-[10px] text-muted/60 font-mono mb-3">primary set = 1 · secondary set = 0.25</p>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={muscleBars} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />

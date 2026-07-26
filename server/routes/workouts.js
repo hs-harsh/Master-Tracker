@@ -4,7 +4,11 @@ const pool    = require('../db');
 const auth    = require('../middleware/auth');
 const { getAnthropicApiKey } = require('../utils/anthropicKey');
 const { getMonday, todayStr } = require('../utils/dateHelpers');
-const { MUSCLE_IDS, muscleLabel, validateExercises } = require('../utils/muscles');
+const { MUSCLE_IDS, muscleLabel, validateExercises, completeExerciseMuscles } = require('../utils/muscles');
+
+// Weighting for the weekly muscle score: a set counts fully for a primary
+// mover and a quarter for an assisting (secondary) muscle.
+const SECONDARY_WEIGHT = 0.25;
 
 router.use(auth);
 
@@ -70,26 +74,35 @@ async function fetchLogsForWeek(userId, person, weekStart) {
   return rows;
 }
 
-// Per-muscle aggregation: score = min(10, primary_sets + 0.5×secondary_sets).
-// Cardio/flexibility contribute 0 sets.
+// Per-muscle aggregation: score = min(10, primary_sets + 0.25×secondary_sets),
+// the unit being logged sets. Cardio/flexibility have no sets, so they add no
+// score, but they are still listed against the muscles they worked.
 function aggregateMuscles(rows) {
   const byMuscle = {};
   for (const id of MUSCLE_IDS) byMuscle[id] = { score: 0, sets: 0, _raw: 0, exercises: [] };
   for (const r of rows) {
-    if (r.category !== 'strength') continue;
     const sets = Array.isArray(r.sets) ? r.sets.length : 0;
-    if (!sets) continue;
     const muscles = Array.isArray(r.muscles) ? r.muscles : [];
+    if (!muscles.length) continue;
+    // Only strength sets carry score; cardio/flexibility bouts have no sets but
+    // are still surfaced under the muscles they worked.
+    const scored = r.category === 'strength' && sets > 0;
     for (const m of muscles) {
       const slot = byMuscle[m.muscle];
       if (!slot) continue;
-      slot._raw += m.role === 'primary' ? sets : 0.5 * sets;
-      slot.sets += sets;
-      slot.exercises.push({ name: r.exercise_name, date: r.entry_date, sets, role: m.role });
+      if (scored) {
+        slot._raw += m.role === 'primary' ? sets : SECONDARY_WEIGHT * sets;
+        slot.sets += sets;
+      }
+      slot.exercises.push({
+        name: r.exercise_name, date: r.entry_date, sets, role: m.role,
+        category: r.category, duration_min: r.duration_min ?? null,
+      });
     }
   }
   for (const id of MUSCLE_IDS) {
-    byMuscle[id].score = Math.min(10, Math.round(byMuscle[id]._raw * 10) / 10);
+    // 2dp so quarter-set increments (0.25) stay exact rather than rounding to 0.3
+    byMuscle[id].score = Math.min(10, Math.round(byMuscle[id]._raw * 100) / 100);
     delete byMuscle[id]._raw;
   }
   return byMuscle;
@@ -259,8 +272,8 @@ Return ONLY a valid JSON object with no explanation, no markdown, no code fences
     {
       "name": "Leg Press",
       "category": "strength|cardio|flexibility",
-      "muscles": [{"muscle":"quads","role":"primary"},{"muscle":"glutes","role":"secondary"}],
-      "sets": [{"set":1,"weight_kg":109,"weight_raw":"109","reps":12,"note":null}],
+      "muscles": [{"muscle":"quads","role":"primary"},{"muscle":"glutes","role":"primary"},{"muscle":"hamstrings","role":"secondary"},{"muscle":"calves","role":"secondary"}],
+      "sets": [{"set":1,"weight_kg":109,"weight_raw":"109","reps":12}],
       "duration_min": null
     }
   ]
@@ -270,11 +283,30 @@ Rules:
 - Assume kg unless another unit is stated. weight_kg is numeric kilograms (convert lb→kg if needed, rounded to 1 decimal); null for bodyweight/no load.
 - weight_raw is the weight text VERBATIM as the user wrote it for that set (e.g. "109", "15kg", "0 weight"); null if none given.
 - A dash sequence like "109-127-155" means 3 sets at those weights, in order.
-- Parenthetical breakdowns like "(30-23)" and modifiers like "single leg" or "set of 20" belong in that set's "note" (keep weight_kg as the main stated weight where identifiable).
+- A parenthetical breakdown like "(30-23)" means per-set reps for those sets; a modifier like "single leg" belongs in the exercise NAME (e.g. "Single Leg Leg Press"). Do not emit a "note" field — it is ignored.
 - "3 sets" at one weight → that many identical set objects. If reps are not stated, reps is null. If set count is unknown for a strength exercise, use 1 set.
 - Cardio bouts (e.g. "Steppers 5 min") are their own exercise with category "cardio", duration_min set, and sets [].
 - Stretching/yoga → category "flexibility", sets [], duration_min if stated.
-- muscles: choose ONLY from this list: ${MUSCLE_IDS.join(', ')}. "primary" = main mover, "secondary" = assisting. Give every strength exercise at least one primary muscle. Cardio/flexibility may have an empty muscles array.
+
+MUSCLE TAGGING — the most important part. Tag EVERY exercise, including cardio and machine work, with a COMPLETE anatomical picture: all primary movers AND all meaningful assisting muscles.
+- Choose ONLY from this list: ${MUSCLE_IDS.join(', ')}.
+- "primary" = a main mover doing the bulk of the work. "secondary" = a muscle that meaningfully assists, stabilises, or is worked isometrically.
+- NEVER return an empty muscles array, and never stop at a single muscle for a compound or cardio movement. A compound lift or cardio machine typically has 2-3 primaries and 2-4 secondaries. Only a strict single-joint isolation move (e.g. leg extension, wrist curl) may have just one primary.
+- Cardio and machine cardio MUST be tagged too — they are not exempt. Reference examples:
+  · Steppers / stair climber → quads + glutes PRIMARY; calves + hamstrings SECONDARY.
+  · Treadmill run / jogging → quads + calves primary; hamstrings + glutes secondary.
+  · Cycling / spin bike → quads primary; glutes + hamstrings + calves secondary.
+  · Elliptical / cross trainer → quads + glutes primary; hamstrings + calves secondary.
+  · Rowing machine → upper-back + lats + quads primary; biceps + rear-delts + glutes + hamstrings + forearms secondary.
+  · Skipping / jump rope → calves primary; quads + hamstrings + forearms secondary.
+- Compound strength reference examples:
+  · Squat → quads + glutes primary; hamstrings + lower-back + abs + calves secondary.
+  · Deadlift → hamstrings + glutes + lower-back primary; quads + upper-back + lats + forearms + abs secondary.
+  · Bench press → chest primary; triceps + front-delts secondary.
+  · Lat pulldown / pull up → lats primary; upper-back + biceps + rear-delts + forearms secondary.
+  · Overhead press → front-delts primary; side-delts + triceps + abs secondary.
+- Flexibility/stretching: tag the muscles being stretched (all of them), primary for the main target. E.g. Downward Dog → hamstrings + calves primary; lats + front-delts + upper-back secondary.
+- Watch out for leg-vs-arm naming: a "Hamstring Curl" / "Leg Curl" / "Nordic Curl" is HAMSTRINGS (never biceps); only a bicep/hammer/preacher/barbell curl is biceps.
 - workout_type: "strength" if any weight training present, else "cardio"/"flexibility"/"rest" as appropriate.
 - duration: total session minutes if stated, else null.`;
 
@@ -282,7 +314,9 @@ Rules:
     const ai = await callClaude(systemPrompt, userMessage, 4096);
     if (ai.error) return res.status(ai.status).json({ error: ai.error });
 
-    const exercises = validateExercises(ai.parsed.exercises);
+    // Static catalog fills in anything the model left thin, so no muscle group
+    // is silently uncovered. Parse path only — user edits are never overridden.
+    const exercises = validateExercises(completeExerciseMuscles(ai.parsed.exercises));
     const entry = {
       entry_date: String(entry_date).slice(0, 10),
       workout_type: ['strength', 'cardio', 'flexibility', 'rest'].includes(ai.parsed.workout_type)
@@ -442,12 +476,12 @@ router.get('/trends', async (req, res) => {
         }
       }
 
-      // Per-muscle weekly primary-set volume
+      // Per-muscle weekly weighted set volume (primary + 0.25×secondary)
       const week = getMonday(r.entry_date);
       for (const m of (Array.isArray(r.muscles) ? r.muscles : [])) {
-        if (m.role !== 'primary') continue;
+        const load = m.role === 'primary' ? sets.length : SECONDARY_WEIGHT * sets.length;
         muscleWeekMap[week] ||= {};
-        muscleWeekMap[week][m.muscle] = (muscleWeekMap[week][m.muscle] || 0) + sets.length;
+        muscleWeekMap[week][m.muscle] = Math.round(((muscleWeekMap[week][m.muscle] || 0) + load) * 100) / 100;
       }
     }
 
@@ -498,7 +532,7 @@ router.post('/recommend-next', async (req, res) => {
       [req.user.id, person, cutoff]
     );
 
-    // Per-muscle recency + 7/14-day set volume (primary + 0.5×secondary)
+    // Per-muscle recency + 7/14-day set volume (primary + 0.25×secondary)
     const daysAgo = (d) => Math.round((new Date(today + 'T12:00:00') - new Date(d + 'T12:00:00')) / 86400000);
     const muscleStats = {};
     for (const id of MUSCLE_IDS) muscleStats[id] = { last_trained: null, sets_7d: 0, sets_14d: 0 };
@@ -510,10 +544,10 @@ router.post('/recommend-next', async (req, res) => {
           const st = muscleStats[m.muscle];
           if (!st) continue;
           if (!st.last_trained || r.entry_date > st.last_trained) st.last_trained = r.entry_date;
-          const load = m.role === 'primary' ? sets.length : 0.5 * sets.length;
+          const load = m.role === 'primary' ? sets.length : SECONDARY_WEIGHT * sets.length;
           const age = daysAgo(r.entry_date);
-          if (age <= 7)  st.sets_7d  += load;
-          if (age <= 14) st.sets_14d += load;
+          if (age <= 7)  st.sets_7d  += Math.round(load * 100) / 100;
+          if (age <= 14) st.sets_14d += Math.round(load * 100) / 100;
         }
         const maxW = Math.max(...sets.map(s => s.weight_kg != null ? Number(s.weight_kg) : -1));
         if (maxW >= 0) {
@@ -540,7 +574,7 @@ Return ONLY a valid JSON object with no explanation, no markdown, no code fences
   ]
 }
 Rules:
-- muscles entries must come ONLY from: ${MUSCLE_IDS.join(', ')}.
+- muscles entries must come ONLY from: ${MUSCLE_IDS.join(', ')}. List every muscle the exercise works — main movers and assisting muscles alike, not just one.
 - Prioritise muscles NOT trained in the last 7 days; avoid muscles trained heavily in the last 2-3 days.
 - 5-7 exercises, realistic set/rep schemes.
 - If an exercise appears in the user's last-weights list, suggested_weight must be at least that last logged weight (same or a small progressive increase). For new exercises give a conservative starting suggestion or "bodyweight".
@@ -548,7 +582,7 @@ Rules:
 
     const userMessage = `Today is ${today}.
 
-Per-muscle training summary (last 28 days):
+Per-muscle training summary (last 28 days). Set counts are weighted: a set counts 1 for a primary mover and 0.25 for a secondary/assisting muscle.
 ${summaryLines}
 
 Last logged top-set weights per exercise:

@@ -97,6 +97,9 @@ function Figure({ title, shapes, muscles, selected, onSelect }) {
           const info = muscles?.[id];
           const score = info?.score || 0;
           const trained = score > 0;
+          // Worked by cardio/stretching only: no scored sets, but saying
+          // "not trained" would contradict the detail panel below.
+          const cardioOnly = !trained && info?.exercises?.length > 0;
           const opacity = trained ? Math.max(0.15, score / 10) : 0;
           const isSel = selected === id;
           return (
@@ -104,7 +107,11 @@ function Figure({ title, shapes, muscles, selected, onSelect }) {
               onClick={() => onSelect(id)}
               className="cursor-pointer"
               style={{ pointerEvents: 'all' }}>
-              <title>{muscleLabel(id)}{trained ? ` — ${score}/10` : ' — not trained'}</title>
+              <title>{`${muscleLabel(id)}${
+                trained ? ` — ${score}/10`
+                  : cardioOnly ? ' — cardio/stretching only, no scored sets'
+                  : ' — not trained'
+              }`}</title>
               {defs.map((def, i) => (
                 <Shape key={i} def={def}
                   fill={trained ? 'var(--accent)' : 'transparent'}
@@ -140,7 +147,10 @@ export default function MuscleBodyMap({ muscles, selected, onSelect }) {
 
   return (
     <div className="card p-4">
-      <p className="text-xs text-muted uppercase tracking-widest font-mono mb-3">Muscles trained this week</p>
+      <p className="text-xs text-muted uppercase tracking-widest font-mono mb-1">Muscles trained this week</p>
+      <p className="text-[10px] text-muted/60 font-mono mb-3">
+        Score out of 10 = sets worked · primary set = 1 · secondary set = 0.25
+      </p>
       <div className="flex flex-col sm:flex-row gap-4 items-center sm:items-start justify-center">
         <Figure title="Front" shapes={FRONT_SHAPES} muscles={muscles} selected={selected} onSelect={onSelect} />
         <Figure title="Back"  shapes={BACK_SHAPES}  muscles={muscles} selected={selected} onSelect={onSelect} />
@@ -154,6 +164,8 @@ export default function MuscleBodyMap({ muscles, selected, onSelect }) {
               <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
                 {detail.score}/10 · {detail.sets} sets
               </span>
+            ) : detailExercises.length > 0 ? (
+              <span className="text-xs font-mono text-muted">0/10 · Cardio/stretching only, no scored sets</span>
             ) : (
               <span className="text-xs font-mono text-muted">0/10 · Not trained this week</span>
             )}
@@ -162,9 +174,13 @@ export default function MuscleBodyMap({ muscles, selected, onSelect }) {
             <div className="mt-3 space-y-1.5">
               {detailExercises.map((ex, i) => (
                 <div key={i} className="flex items-center justify-between gap-3 text-xs">
-                  <span className="text-soft truncate">{ex.name}</span>
+                  <span className="text-soft truncate">
+                    {ex.name}
+                    {ex.role === 'secondary' && <span className="ml-1 text-[9px] font-mono text-muted">2°</span>}
+                  </span>
                   <span className="text-muted font-mono shrink-0">
-                    {new Date(ex.date + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · {ex.sets} sets
+                    {new Date(ex.date + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    {ex.sets ? ` · ${ex.sets} sets` : (ex.duration_min ? ` · ${ex.duration_min} min` : '')}
                   </span>
                 </div>
               ))}

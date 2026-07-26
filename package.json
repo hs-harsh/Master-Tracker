@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "test": "cd server && npm test",
     "server": "cd server && node index.js",
     "client": "cd client && npm run dev",
     "build": "cd client && npm run build",
