@@ -1,0 +1,47 @@
+---
+name: test-users
+description: Create two throwaway local users with sample data and JWT tokens so cross-user isolation (IDOR) can actually be probed, then clean them up. Used by the qa agent's adversarial pass and data-integrity full audits. Local database only — hard-refuses against remote/production DB.
+---
+
+# Test Users — IDOR Probe Fixtures
+
+Purpose: turn "cross-user isolation assumed from code reading" into "actually probed with two real users".
+
+## Safety gate (run FIRST, non-negotiable)
+
+Check the `DATABASE_URL` the server is using (repo-root `.env`). If it is unset, or does not point at `localhost`/`127.0.0.1`, **STOP** — do not create users, do not offer an override. Report: "test-users requires a local Postgres; DATABASE_URL points at <host>. Point it at a local DB (or run a local postgres + `node server/db/seed.js`) and retry." Creating QA accounts in the Railway production DB is never acceptable.
+
+## Setup
+
+With the server running locally (`npm run dev`):
+
+1. Create two users via the API (returns tokens directly, no OTP needed):
+   ```
+   curl -s -X POST http://localhost:3001/api/auth/register -H 'Content-Type: application/json' \
+     -d '{"username":"qa-test-a@example.test","password":"<random>","personName":"QA Test A"}'
+   ```
+   and the same for `qa-test-b@example.test`. Save both tokens as TOKEN_A / TOKEN_B (scratchpad only — never in repo files, never in the report).
+2. As user A, insert a few rows through the real API into whichever tables are in scope for this QA run (e.g. an other-asset, a transaction, a habit). Record the returned row ids. User B stays empty except its auto-created person.
+
+## The probes (as user B, against user A's data)
+
+For every endpoint in scope:
+
+- **Read leak**: `GET` list endpoints with TOKEN_B — must return only B's (empty) data, never A's rows.
+- **IDOR read**: `GET /<resource>/<A's id>` with TOKEN_B → must be 403/404, never 200 with A's row.
+- **IDOR write**: `PUT`/`DELETE /<resource>/<A's id>` with TOKEN_B → must be rejected AND A's row must be verifiably unchanged afterward (re-fetch as A).
+- **Account-param abuse**: endpoints taking `?account=`/`person_name` — pass A's person name with TOKEN_B → must be rejected (this is the `checkAccountOwnership` path).
+- **No token**: each endpoint with no Authorization header → 401.
+
+Record each probe as endpoint / expectation / actual / PASS-FAIL. Any cross-user 200 or successful mutation is a CRITICAL finding.
+
+## Cleanup (always, even after failures)
+
+```
+DELETE FROM users WHERE username LIKE 'qa-test-%@example.test';
+```
+via psql or a one-off node script using `server/db/index.js`. `ON DELETE CASCADE` removes their child rows. Verify: the same SELECT returns zero rows. Report cleanup as done.
+
+## Boundaries
+
+Throwaway scripts go in the scratchpad, never the repo. Tokens and passwords never appear in reports or committed files. This skill only ever touches `qa-test-*@example.test` accounts.

@@ -9,7 +9,9 @@ Nothing reaches `main` (= production, Railway auto-deploys) without passing the 
 
 ## 1. Guard gates (diff mode — only files changed vs main)
 
-`git diff main --name-only` (plus untracked files) determines scope:
+**QA shortcut:** if the qa agent already returned PASS (or PASS WITH NOTES the user accepted) on this exact diff — no file changed since QA looked (`git diff` output matches what QA reviewed) — its report counts as the guard gates; skip re-running them and cite QA's verdict in the ship report. Any change after QA's pass, however small, voids the shortcut for the files that changed.
+
+Otherwise, `git diff main --name-only` (plus untracked files) determines scope:
 
 - Any `server/routes/`, `server/index.js`, `server/cron.js`, or page files changed → run **data-integrity** in diff mode.
 - Any server file, auth-touching client code, or new dependency → run **security-audit** in diff mode.
