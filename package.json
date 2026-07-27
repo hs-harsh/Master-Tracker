@@ -7,7 +7,7 @@
     "server": "cd server && node index.js",
     "client": "cd client && npm run dev",
     "build": "cd client && npm run build",
-    "start": "cd server && node index.js",
+    "start": "NODE_ENV=production node server/index.js",
     "install:all": "npm install && cd server && npm install && cd ../client && npm install",
     "db:up": "docker compose up -d && npm run db:wait",
     "db:wait": "until docker compose exec -T db pg_isready -U postgres -d investment_tracker >/dev/null 2>&1; do sleep 1; done; echo '✅ local postgres ready on localhost:5433'",
