@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import {
   ComposedChart, Area, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
+import { TT, AX, GRID } from '../../lib/chartTheme';
 import api from '../../lib/api';
 
 function fmtPct(v) {
@@ -171,13 +172,12 @@ export default function PostTradePage() {
                           <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" />
-                      <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} interval="preserveStartEnd" />
-                      <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false}
+                      <CartesianGrid {...GRID} vertical />
+                      <XAxis dataKey="date" {...AX} tick={{ ...AX.tick, fontSize: 10 }} interval="preserveStartEnd" />
+                      <YAxis {...AX} tick={{ ...AX.tick, fontSize: 10 }}
                         tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} width={48} />
                       <Tooltip
-                        contentStyle={{ background: '#0d0f1a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10 }}
-                        labelStyle={{ color: '#9ca3af', fontSize: 11 }}
+                        {...TT}
                         formatter={(v, name) => [name === 'equity' ? fmtCurrency(v) : `${(+v).toFixed(1)}%`, name === 'equity' ? 'Equity' : 'Drawdown']}
                       />
                       <Area type="monotone" dataKey="equity" stroke="#34d399" strokeWidth={1.5} fill="url(#ptGrad)" dot={false} />

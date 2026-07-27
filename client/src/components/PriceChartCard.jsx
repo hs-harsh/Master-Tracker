@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { TT, AX } from '../lib/chartTheme';
 import { Loader2 } from 'lucide-react';
 import api from '../lib/api';
 
@@ -126,30 +127,22 @@ export default function PriceChartCard({
               </defs>
               <XAxis
                 dataKey="date"
-                tick={{ fill: '#6b7280', fontSize: 10 }}
+                {...AX}
+                tick={{ ...AX.tick, fontSize: 10 }}
                 tickFormatter={xFormatter}
                 interval="preserveStartEnd"
                 tickCount={tickCount}
                 minTickGap={28}
               />
               <YAxis
-                tick={{ fill: '#6b7280', fontSize: 10 }}
+                {...AX}
+                tick={{ ...AX.tick, fontSize: 10 }}
                 tickFormatter={(v) => Number(v).toLocaleString('en-IN')}
                 domain={['auto', 'auto']}
                 width={62}
               />
               <Tooltip
-                contentStyle={{
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 8,
-                  fontSize: 12,
-                  color: '#0f172a',
-                  padding: '10px 14px',
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-                }}
-                labelStyle={{ color: '#0f172a', fontWeight: 600, marginBottom: 4 }}
-                itemStyle={{ color: '#0f172a' }}
+                {...TT}
                 formatter={(v) => [Number(v).toLocaleString('en-IN'), 'Close']}
                 labelFormatter={(l) => isDateKey ? formatDateLabel(l, range) : `Session ${l}`}
               />

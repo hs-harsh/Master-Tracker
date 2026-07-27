@@ -9,6 +9,7 @@ import {
   ComposedChart, Area, Bar, Line, Scatter, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
+import { TT, AX, GRID } from '../../lib/chartTheme';
 import api from '../../lib/api';
 import { SECTORS, NIFTY_INDICES } from '../../lib/indianStocks';
 
@@ -1347,13 +1348,12 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
                   <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" />
-              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} interval="preserveStartEnd" />
-              <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false}
+              <CartesianGrid {...GRID} vertical />
+              <XAxis dataKey="date" {...AX} tick={{ ...AX.tick, fontSize: 10 }} interval="preserveStartEnd" />
+              <YAxis {...AX} tick={{ ...AX.tick, fontSize: 10 }}
                 tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} width={48} />
               <Tooltip
-                contentStyle={{ background: '#0d0f1a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10 }}
-                labelStyle={{ color: '#9ca3af', fontSize: 11 }}
+                {...TT}
                 formatter={(v, name) => [name === 'equity' ? fmtCurrency(v) : `${(+v).toFixed(1)}%`, name === 'equity' ? 'Equity' : 'Drawdown']}
               />
               <Area type="monotone" dataKey="equity" stroke="#34d399" strokeWidth={1.5} fill="url(#eqGrad)" dot={false} />
@@ -1369,12 +1369,11 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
           <p className="text-[10px] text-muted mb-3">Green = entry day close · Red = exit day close</p>
           <ResponsiveContainer width="100%" height={260}>
             <ComposedChart data={priceChartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-              <CartesianGrid stroke="rgba(255,255,255,0.04)" strokeDasharray="3 3" />
-              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} interval="preserveStartEnd" />
-              <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} domain={['auto', 'auto']} width={52} />
+              <CartesianGrid {...GRID} vertical />
+              <XAxis dataKey="date" {...AX} tick={{ ...AX.tick, fontSize: 9 }} interval="preserveStartEnd" />
+              <YAxis {...AX} tick={{ ...AX.tick, fontSize: 10 }} domain={['auto', 'auto']} width={52} />
               <Tooltip
-                contentStyle={{ background: '#0d0f1a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10 }}
-                labelStyle={{ color: '#9ca3af', fontSize: 11 }}
+                {...TT}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Line type="monotone" dataKey="close" name="Close" stroke="#60a5fa" dot={false} strokeWidth={1.5} connectNulls />

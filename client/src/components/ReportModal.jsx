@@ -2,6 +2,7 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
+import { TT, AX, GRID } from '../lib/chartTheme';
 import { X, Newspaper, TrendingUp } from 'lucide-react';
 import PriceChartCard from './PriceChartCard';
 
@@ -21,16 +22,6 @@ const OUTLOOK_COLOR = {
   BULLISH: { text: 'text-green-400', bg: 'bg-green-400/10 border-green-400/30' },
   NEUTRAL: { text: 'text-amber-400', bg: 'bg-amber-400/10 border-amber-400/30' },
   BEARISH: { text: 'text-rose', bg: 'bg-rose/10 border-rose/30' },
-};
-
-const TOOLTIP_STYLE = {
-  contentStyle: {
-    background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8,
-    fontSize: 12, color: '#0f172a', padding: '8px 12px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
-  },
-  labelStyle: { color: '#0f172a', fontWeight: 600 },
-  itemStyle: { color: '#0f172a' },
 };
 
 function SectionTitle({ children }) {
@@ -210,11 +201,11 @@ function QuarterlyChart({ data }) {
       <div className="h-52">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }} barSize={10}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-            <XAxis dataKey="quarter" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} width={40}
+            <CartesianGrid {...GRID} />
+            <XAxis dataKey="quarter" {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
+            <YAxis {...AX} tick={{ ...AX.tick, fontSize: 10 }} width={40}
               tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v} />
-            <Tooltip {...TOOLTIP_STYLE} />
+            <Tooltip {...TT} />
             <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8' }} />
             <Bar dataKey="revenue" name="Revenue" fill="#60a5fa" radius={[3, 3, 0, 0]} />
             <Bar dataKey="profit" name="Profit" fill="#2dd4bf" radius={[3, 3, 0, 0]} />
@@ -236,11 +227,11 @@ function AnnualChart({ data }) {
       <div className="h-52">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-            <XAxis dataKey="year" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} width={40}
+            <CartesianGrid {...GRID} />
+            <XAxis dataKey="year" {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
+            <YAxis {...AX} tick={{ ...AX.tick, fontSize: 10 }} width={40}
               tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v} />
-            <Tooltip {...TOOLTIP_STYLE} />
+            <Tooltip {...TT} />
             <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8' }} />
             <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#60a5fa" strokeWidth={2} dot={{ fill: '#60a5fa', r: 4 }} />
             <Line type="monotone" dataKey="profit" name="Profit" stroke="#2dd4bf" strokeWidth={2} dot={{ fill: '#2dd4bf', r: 4 }} />

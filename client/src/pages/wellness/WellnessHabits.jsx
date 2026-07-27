@@ -9,6 +9,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ReferenceLine, Legend, CartesianGrid,
 } from 'recharts';
+import { TT, AX, GRID } from '../../lib/chartTheme';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
 import PageHeader from '../../components/PageHeader';
@@ -332,12 +333,12 @@ export default function WellnessHabits() {
   function HabitTooltip({ active, payload, label }) {
     if (!active || !payload?.length) return null;
     return (
-      <div className="card p-3 text-xs space-y-1 min-w-[140px]">
-        <p className="text-muted font-mono mb-1">{label}</p>
+      <div style={{ ...TT.contentStyle, minWidth: 140 }} className="text-xs space-y-1">
+        <p style={TT.labelStyle} className="font-mono">{label}</p>
         {payload.map(p => (
           <div key={p.dataKey} className="flex justify-between gap-4">
             <span style={{ color: p.color }}>{p.name}</span>
-            <span className="text-white font-mono">{p.value ?? '—'}</span>
+            <span className="font-mono" style={{ color: TT.valueColor }}>{p.value ?? '—'}</span>
           </div>
         ))}
       </div>
@@ -676,13 +677,13 @@ export default function WellnessHabits() {
             <RangeChips options={PERIODS} value={period} onChange={setPeriod} />
           </div>
           <ResponsiveContainer width="100%" height={180}>
-            <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
-              <YAxis domain={[0, statMaxScore]} tick={{ fontSize: 10, fill: '#6b7280' }} />
+            <LineChart data={chartData} margin={{ top: 12, right: 8, left: -20, bottom: 0 }}>
+              <CartesianGrid {...GRID} vertical />
+              <XAxis dataKey="date" {...AX} tick={{ ...AX.tick, fontSize: 10 }} interval="preserveStartEnd" />
+              <YAxis domain={[0, statMaxScore]} {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
               <Tooltip content={<HabitTooltip />} />
               <ReferenceLine y={dailyTarget} stroke="#f59e0b" strokeDasharray="4 4"
-                label={{ value: `Target ${dailyTarget}`, position: 'right', fontSize: 10, fill: '#f59e0b' }} />
+                label={{ value: `Target ${dailyTarget}`, position: 'insideTopRight', fontSize: 10, fill: '#f59e0b' }} />
               <Line type="monotone" dataKey="Score" stroke="#a78bfa" strokeWidth={2} dot={false} connectNulls />
             </LineChart>
           </ResponsiveContainer>

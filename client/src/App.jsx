@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import api from './lib/api';
+import { useChartTheme } from './lib/chartTheme';
 import Layout from './components/Layout';
 import FinanceLayout from './components/FinanceLayout';
 import WellnessLayout from './components/WellnessLayout';
@@ -441,6 +442,10 @@ function AdminOutlet() {
 }
 
 export default function App() {
+  // Charts resolve their chrome colours from CSS vars at render time; this
+  // re-renders the tree when applyTheme() flips theme/accent so charts already
+  // on screen repaint immediately.
+  useChartTheme();
   return (
     <AuthProvider>
       <BrowserRouter>

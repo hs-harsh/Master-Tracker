@@ -116,7 +116,7 @@ function Figure({ title, shapes, muscles, selected, onSelect }) {
                 <Shape key={i} def={def}
                   fill={trained ? 'var(--accent)' : 'transparent'}
                   fillOpacity={opacity}
-                  stroke={isSel ? 'var(--accent)' : 'currentColor'}
+                  stroke={isSel ? 'var(--accent-ink)' : 'currentColor'}
                   strokeOpacity={isSel ? 1 : (trained ? 0.55 : 0.3)}
                   strokeWidth={isSel ? 2 : 1}
                   className="text-soft transition-all"

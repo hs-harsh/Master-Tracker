@@ -10,14 +10,11 @@ import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
 import SegmentedToggle from '../components/SegmentedToggle';
 import RangeChips from '../components/RangeChips';
+import { TT, AX, GRID } from '../lib/chartTheme';
 
 // ── Shared chart helpers ───────────────────────────────────────────────────────
-const TT = {
-  contentStyle: { background: '#0f1117', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, fontSize: 12, color: '#e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' },
-  labelStyle:   { color: '#8b95a5', marginBottom: 6, fontWeight: 600 },
-  formatter:    (v, name) => [fmt(v), name],
-};
-const AX = { tick: { fill: '#6b7280', fontSize: 11 }, tickLine: false, axisLine: false };
+// Tooltip / axis / grid chrome comes from lib/chartTheme.js — see AC-4.1.
+const money = (v, name) => [fmt(v), name];
 
 function Leg({ items }) {
   return (
@@ -93,10 +90,10 @@ function MonthDrillDown({ month, person, onBack }) {
           {/* By-type bar chart */}
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={barData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
+              <CartesianGrid {...GRID} />
               <XAxis dataKey="type" {...AX} />
               <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
-              <Tooltip {...TT} />
+              <Tooltip {...TT} formatter={money} />
               <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
                 {barData.map((entry, i) => (
                   <Cell key={i} fill={TYPE_COLORS[entry.type] || '#6b7280'} />
@@ -195,10 +192,10 @@ function CorpusChart({ data, range, setRange }) {
               <stop offset="95%" stopColor="#f0c040" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
+          <CartesianGrid {...GRID} />
           <XAxis dataKey="month" {...AX} />
           <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
-          <Tooltip {...TT} />
+          <Tooltip {...TT} formatter={money} />
           <Area type="monotone" dataKey="Cumul. Income"  stroke="#f0c040" strokeWidth={1.5} fill="url(#gInc)" dot={false} strokeDasharray="4 2" />
           <Area type="monotone" dataKey="Target Corpus" stroke="#6366f1" strokeWidth={1.8} fill="url(#gPlan)" dot={false} strokeDasharray="5 3" />
           <Area type="monotone" dataKey="Actual Corpus"  stroke="#2dd4bf" strokeWidth={2.5} fill="url(#gAct)"  dot={false} />
@@ -235,11 +232,13 @@ function SavingChart({ data, range, setRange, onBarClick }) {
     if (!active || !payload?.length) return null;
     const total = payload.reduce((s, p) => p.dataKey !== 'Target Saving' ? s + (p.value || 0) : s, 0);
     return (
-      <div style={TT.contentStyle} className="text-xs space-y-1 p-2">
+      <div style={TT.contentStyle} className="text-xs space-y-1">
         <p style={TT.labelStyle}>{label}</p>
-        <p className="text-soft">Total Income: <span className="text-white font-mono">{fmt(total)}</span></p>
+        <p style={{ color: TT.labelStyle.color }}>
+          Total Income: <span className="font-mono" style={{ color: TT.valueColor }}>{fmt(total)}</span>
+        </p>
         {payload.filter(p => p.dataKey !== '_total').map(p => (
-          <p key={p.dataKey} style={{ color: p.fill || p.stroke }}>
+          <p key={p.dataKey} style={{ color: p.color || p.stroke || p.fill }}>
             {p.dataKey}: <span className="font-mono">{fmt(p.value)}</span>
           </p>
         ))}
@@ -265,7 +264,7 @@ function SavingChart({ data, range, setRange, onBarClick }) {
             const raw = chartData?.activePayload?.[0]?.payload?.monthRaw;
             if (raw && onBarClick) onBarClick(raw);
           }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
+          <CartesianGrid {...GRID} />
           <XAxis dataKey="month" {...AX} />
           <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
           <Tooltip content={<CustomTT />} />
@@ -314,10 +313,10 @@ function ExpenseChart({ data, range, setRange, onBarClick }) {
         <BarChart data={cd} barSize={18} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
           style={{ cursor: onBarClick ? 'pointer' : 'default' }}
           onClick={handleClick}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
+          <CartesianGrid {...GRID} />
           <XAxis dataKey="month" {...AX} />
           <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
-          <Tooltip {...TT} />
+          <Tooltip {...TT} formatter={money} />
           {EXP.map(([k, c], i) => (
             <Bar key={k} dataKey={k} stackId="e" fill={c}
               radius={i === EXP.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />

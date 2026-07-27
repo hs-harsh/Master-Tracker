@@ -9,6 +9,7 @@ import { fmt } from '../lib/utils';
 import TradeFeedbackCard from '../components/TradeFeedbackCard';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
+import { TT, AX } from '../lib/chartTheme';
 
 const RISK_COLORS  = { Low: '#60a5fa', Medium: '#fbbf24', High: '#f97316' };
 const ASSET_COLORS = { Equity: '#f97316', Debt: '#60a5fa', Gold: '#fbbf24', Cash: '#6b7280', 'Real Estate': '#a78bfa', Crypto: '#ec4899' };
@@ -23,7 +24,7 @@ const riskForAsset = asset => {
   }
 };
 
-const TT = { background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' };
+// Tooltip / axis chrome comes from lib/chartTheme.js — see AC-4.1.
 
 export default function Portfolio() {
   const { personName, activePerson, dataVersion, token } = useAuth();
@@ -336,9 +337,9 @@ export default function Portfolio() {
               <Pie data={riskPie} cx="50%" cy="45%" innerRadius={45} outerRadius={70} dataKey="value" strokeWidth={0} labelLine={false}>
                 {riskPie.map(d => <Cell key={d.name} fill={RISK_COLORS[d.name] || '#9ca3af'} />)}
               </Pie>
-              <Legend layout="horizontal" align="center" verticalAlign="bottom" formatter={v => <span style={{ color: '#e5e7eb', fontSize: 12 }}>{v}</span>} iconType="circle" iconSize={8} wrapperStyle={{ paddingTop: 8 }} />
-              <Tooltip contentStyle={TT} content={({ active, payload }) => active && payload?.[0] ? (
-                <div style={{ padding: '6px 10px', ...TT }}><strong>{payload[0].name}</strong>: {fmt(payload[0].value)}</div>
+              <Legend layout="horizontal" align="center" verticalAlign="bottom" formatter={v => <span className="text-soft" style={{ fontSize: 12 }}>{v}</span>} iconType="circle" iconSize={8} wrapperStyle={{ paddingTop: 8 }} />
+              <Tooltip {...TT} content={({ active, payload }) => active && payload?.[0] ? (
+                <div style={TT.contentStyle}><strong>{payload[0].name}</strong>: {fmt(payload[0].value)}</div>
               ) : null} />
             </PieChart>
           </ResponsiveContainer>
@@ -349,10 +350,10 @@ export default function Portfolio() {
           <p className="stat-label mb-3">By Asset Class (₹L)</p>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={assetCompare} margin={{ top: 4, right: 4, bottom: 20, left: 0 }}>
-              <XAxis dataKey="name" tick={{ fill: '#6b7280', fontSize: 9 }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `${v}L`} />
-              <Tooltip contentStyle={TT} content={({ active, payload }) => active && payload?.length ? (
-                <div style={{ padding: '6px 10px', ...TT }}>
+              <XAxis dataKey="name" {...AX} tick={{ ...AX.tick, fontSize: 9 }} />
+              <YAxis {...AX} tick={{ ...AX.tick, fontSize: 10 }} tickFormatter={v => `${v}L`} />
+              <Tooltip {...TT} content={({ active, payload }) => active && payload?.length ? (
+                <div style={TT.contentStyle}>
                   <div className="font-bold mb-1">{payload[0]?.payload?.name}</div>
                   {payload.map(p => <div key={p.name}><span style={{ color: p.color }}>{p.name}</span>: ₹{(p.value * 100000).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>)}
                 </div>
@@ -371,9 +372,9 @@ export default function Portfolio() {
                 <Pie data={brokerPie} cx="50%" cy="45%" innerRadius={40} outerRadius={65} dataKey="value" strokeWidth={0}>
                   {brokerPie.map((d, i) => <Cell key={d.name} fill={BROKER_COLORS[i % BROKER_COLORS.length]} />)}
                 </Pie>
-                <Legend layout="horizontal" align="center" verticalAlign="bottom" formatter={v => <span style={{ color: '#e5e7eb', fontSize: 11 }}>{v}</span>} iconType="circle" iconSize={6} wrapperStyle={{ paddingTop: 6 }} />
-                <Tooltip contentStyle={TT} content={({ active, payload }) => active && payload?.[0] ? (
-                  <div style={{ padding: '6px 10px', ...TT }}><strong>{payload[0].name}</strong>: {fmt(payload[0].value)}</div>
+                <Legend layout="horizontal" align="center" verticalAlign="bottom" formatter={v => <span className="text-soft" style={{ fontSize: 11 }}>{v}</span>} iconType="circle" iconSize={6} wrapperStyle={{ paddingTop: 6 }} />
+                <Tooltip {...TT} content={({ active, payload }) => active && payload?.[0] ? (
+                  <div style={TT.contentStyle}><strong>{payload[0].name}</strong>: {fmt(payload[0].value)}</div>
                 ) : null} />
               </PieChart>
             </ResponsiveContainer>
@@ -556,9 +557,9 @@ export default function Portfolio() {
                     <Pie data={typePieData} cx="50%" cy="45%" innerRadius={45} outerRadius={70} dataKey="value" strokeWidth={0} labelLine={false}>
                       {typePieData.map(d => <Cell key={d.name} fill={ILLIQUID_TYPE_COLORS[d.name] || '#9ca3af'} />)}
                     </Pie>
-                    <Legend layout="horizontal" align="center" verticalAlign="bottom" formatter={v => <span style={{ color: '#e5e7eb', fontSize: 12 }}>{v}</span>} iconType="circle" iconSize={8} wrapperStyle={{ paddingTop: 8 }} />
-                    <Tooltip contentStyle={TT} content={({ active, payload }) => active && payload?.[0] ? (
-                      <div style={{ padding: '6px 10px', ...TT }}><strong>{payload[0].name}</strong>: {fmt(payload[0].value)}</div>
+                    <Legend layout="horizontal" align="center" verticalAlign="bottom" formatter={v => <span className="text-soft" style={{ fontSize: 12 }}>{v}</span>} iconType="circle" iconSize={8} wrapperStyle={{ paddingTop: 8 }} />
+                    <Tooltip {...TT} content={({ active, payload }) => active && payload?.[0] ? (
+                      <div style={TT.contentStyle}><strong>{payload[0].name}</strong>: {fmt(payload[0].value)}</div>
                     ) : null} />
                   </PieChart>
                 </ResponsiveContainer>
@@ -569,15 +570,15 @@ export default function Portfolio() {
                 <p className="stat-label mb-3">Value vs Loan by Asset (₹L)</p>
                 <ResponsiveContainer width="100%" height={Math.max(160, assetBarData.length * 40 + 50)}>
                   <BarChart layout="vertical" data={assetBarData} margin={{ top: 4, right: 24, bottom: 4, left: 0 }}>
-                    <XAxis type="number" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `${v}L`} />
-                    <YAxis type="category" dataKey="name" width={90} tick={{ fill: '#9ca3af', fontSize: 11 }} tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={TT} content={({ active, payload }) => active && payload?.length ? (
-                      <div style={{ padding: '6px 10px', ...TT }}>
+                    <XAxis type="number" {...AX} tick={{ ...AX.tick, fontSize: 10 }} tickFormatter={v => `${v}L`} />
+                    <YAxis type="category" dataKey="name" width={90} {...AX} />
+                    <Tooltip {...TT} content={({ active, payload }) => active && payload?.length ? (
+                      <div style={TT.contentStyle}>
                         <div className="font-bold mb-1">{payload[0]?.payload?.fullName}</div>
                         {payload.map(p => <div key={p.name}><span style={{ color: p.color }}>{p.name}</span>: ₹{(p.value * 100000).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>)}
                       </div>
                     ) : null} />
-                    <Legend wrapperStyle={{ fontSize: 11, color: '#888' }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
                     <Bar dataKey="Value" radius={[0, 4, 4, 0]}>
                       {assetBarData.map(d => <Cell key={d.name} fill={ILLIQUID_TYPE_COLORS[d.type] || '#9ca3af'} />)}
                     </Bar>

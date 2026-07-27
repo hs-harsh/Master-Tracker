@@ -253,6 +253,12 @@
   --accent-rgb:     240 192 64;
   --accent-dim-rgb: 201 160 48;
   --accent-fg:      #09090e;
+  /* `--accent-ink` is the accent used AS foreground — text, icons, chart
+     strokes sitting ON the page background. Distinct from `--accent-fg`, which
+     is text sitting on top of an accent fill. On dark it is just the accent; on
+     light the 400-level accents land around 1.8:1 on white, so the light theme
+     substitutes a darker cut per accent. Fills and tints keep `--accent`. */
+  --accent-ink:     var(--accent);
 
   /* Semantic. Gains/losses are theme-split: the dark values are too light to
      hold contrast on a light background, so light mode uses darker cuts. */
@@ -272,11 +278,30 @@
      dark-on-dark. This token is deliberately not theme-split. */
   --on-dark: #f1f5f9;
 
-  /* Chart tooltip — consumed via recharts contentStyle objects across pages */
+  /* Chart tooltip — the single consumer is client/src/lib/chartTheme.js, which
+     resolves these into the recharts contentStyle/labelStyle/itemStyle bundle
+     (`TT`) that every chart in the app spreads. Do not re-declare tooltip
+     styling in JSX. */
   --tooltip-bg:     #0f1117;
   --tooltip-border: rgba(255,255,255,0.08);
   --tooltip-radius: 12px;
   --tooltip-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  --tooltip-fg:     #e2e8f0;   /* value text  */
+  --tooltip-muted:  #8b95a5;   /* label/date  */
+
+  /* Categorical chart series. Chrome-level palette for charts with no
+     meaningful per-entity colours (see chartTheme.js `SERIES`). Charts whose
+     colours carry identity — asset class, person, broker, gold-the-metal —
+     keep their own maps and deliberately do NOT read these. Dark cuts are the
+     400-level; light mode drops to 600 so they hold contrast on white. */
+  --series-1: #60a5fa;
+  --series-2: #34d399;
+  --series-3: #fbbf24;
+  --series-4: #a78bfa;
+  --series-5: #fb7185;
+  --series-6: #22d3ee;
+  --series-7: #fb923c;
+  --series-8: #94a3b8;
 }
 
 /* ── Light theme ──────────────────────────────────────────────────────────── */
@@ -293,6 +318,20 @@
   --tooltip-bg:     #ffffff;
   --tooltip-border: rgba(0,0,0,0.08);
   --tooltip-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  --tooltip-fg:     #0f172a;
+  --tooltip-muted:  #64748b;
+
+  /* Gold default; the per-accent cuts live with the accent block below. */
+  --accent-ink: #a68826;
+
+  --series-1: #2563eb;
+  --series-2: #059669;
+  --series-3: #b45309;
+  --series-4: #7c3aed;
+  --series-5: #e11d48;
+  --series-6: #0891b2;
+  --series-7: #ea580c;
+  --series-8: #475569;
 }
 [data-theme="light"] body {
   background: #f0f2f7;
@@ -364,11 +403,26 @@
    Do not reintroduce per-utility overrides here; if an accent-tinted style is
    missing, fix it at the token.
    ─────────────────────────────────────────────────────────────────────────── */
-[data-accent="gold"]   { --accent-rgb: 240 192 64;  --accent-dim-rgb: 201 160 48; --accent-fg: #09090e; }
-[data-accent="teal"]   { --accent-rgb: 45 212 191;  --accent-dim-rgb: 20 184 166; --accent-fg: #09090e; }
-[data-accent="blue"]   { --accent-rgb: 96 165 250;  --accent-dim-rgb: 59 130 246; --accent-fg: #09090e; }
-[data-accent="purple"] { --accent-rgb: 167 139 250; --accent-dim-rgb: 139 92 246; --accent-fg: #09090e; }
-[data-accent="rose"]   { --accent-rgb: 251 113 133; --accent-dim-rgb: 244 63 94;  --accent-fg: #ffffff; }
+[data-accent="gold"]   { --accent: #f0c040; --accent-rgb: 240 192 64;  --accent-dim-rgb: 201 160 48; --accent-fg: #09090e; }
+
+/* Accent-as-foreground, light theme only. Each is the darkest cut that still
+   reads as the same hue, chosen to clear 4.5:1 on the light page background.
+   Dark theme needs no entry — `--accent-ink` already falls back to `--accent`. */
+[data-theme="light"][data-accent="gold"]   { --accent-ink: #a68826; }
+[data-theme="light"][data-accent="teal"]   { --accent-ink: #0f766e; }
+[data-theme="light"][data-accent="blue"]   { --accent-ink: #1d4ed8; }
+[data-theme="light"][data-accent="purple"] { --accent-ink: #6d28d9; }
+[data-theme="light"][data-accent="rose"]   { --accent-ink: #be123c; }
+
+/* The one justified per-utility override. Tailwind maps `accent` to a single
+   token shared by bg-/text-/border-, so there is no token-level way to give
+   text a different value from fills — and text is the only one that needs it.
+   Keep this at exactly one rule: do NOT grow it back into a per-accent list. */
+[data-theme="light"] .text-accent { color: var(--accent-ink); }
+[data-accent="teal"]   { --accent: #2dd4bf; --accent-rgb: 45 212 191;  --accent-dim-rgb: 20 184 166; --accent-fg: #09090e; }
+[data-accent="blue"]   { --accent: #60a5fa; --accent-rgb: 96 165 250;  --accent-dim-rgb: 59 130 246; --accent-fg: #09090e; }
+[data-accent="purple"] { --accent: #a78bfa; --accent-rgb: 167 139 250; --accent-dim-rgb: 139 92 246; --accent-fg: #09090e; }
+[data-accent="rose"]   { --accent: #fb7185; --accent-rgb: 251 113 133; --accent-dim-rgb: 244 63 94;  --accent-fg: #ffffff; }
 
 /* ── Scrollbar ────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 4px; height: 4px; }

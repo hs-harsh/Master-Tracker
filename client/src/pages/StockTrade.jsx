@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, AreaChart, Area } from 'recharts';
+import { TT } from '../lib/chartTheme';
 import api from '../lib/api';
 import { Loader2, Search, X, TrendingUp, FileText, Trash2, BarChart3 } from 'lucide-react';
 import ReportModal from '../components/ReportModal';
@@ -335,9 +336,7 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport, 
                       <XAxis dataKey="session" hide />
                       <YAxis domain={['auto', 'auto']} hide />
                       <Tooltip
-                        contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12, color: '#0f172a', padding: '10px 14px', boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}
-                        labelStyle={{ color: '#0f172a', fontWeight: 600, marginBottom: 4 }}
-                        itemStyle={{ color: '#0f172a' }}
+                        {...TT}
                         formatter={(v) => [Number(v).toLocaleString('en-IN'), 'Close']}
                         labelFormatter={(l) => `Session ${l}`}
                       />

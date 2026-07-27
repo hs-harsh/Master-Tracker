@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { TT, AX } from '../lib/chartTheme';
 import api from '../lib/api';
 import { fmt, fmtFull } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
@@ -1232,9 +1233,9 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
               <p className="stat-label mb-3">Spending by category</p>
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={catChartData} layout="vertical" margin={{ left: 80, right: 20 }}>
-                  <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={(v) => `${Number(v) / 1000}K`} />
-                  <YAxis type="category" dataKey="name" width={80} tick={{ fill: '#9ca3af', fontSize: 10 }} />
-                  <Tooltip formatter={(v, name) => [fmtFull(v), name || 'Amount']} contentStyle={{ background: '#0f1117', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, fontSize: 12, color: '#e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }} labelStyle={{ color: '#8b95a5', fontWeight: 600 }} />
+                  <XAxis type="number" {...AX} tick={{ ...AX.tick, fontSize: 10 }} tickFormatter={(v) => `${Number(v) / 1000}K`} />
+                  <YAxis type="category" dataKey="name" width={80} {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
+                  <Tooltip formatter={(v, name) => [fmtFull(v), name || 'Amount']} {...TT} />
                   <Bar dataKey="value" fill="var(--accent)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -1260,7 +1261,7 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
                       <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v, name) => [fmtFull(v), name]} contentStyle={{ background: '#0f1117', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, fontSize: 12, color: '#e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }} labelStyle={{ color: '#8b95a5', fontWeight: 600 }} />
+                  <Tooltip formatter={(v, name) => [fmtFull(v), name]} {...TT} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -1281,18 +1282,9 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
               <p className="stat-label mb-3">Spending by cashflow bucket (Major, Regular, EMI, …)</p>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={cfChartData} layout="vertical" margin={{ left: 100, right: 20 }}>
-                  <XAxis type="number" tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={(v) => `${Number(v) / 1000}K`} />
-                  <YAxis type="category" dataKey="name" width={96} tick={{ fill: '#9ca3af', fontSize: 10 }} />
-                  <Tooltip
-                    formatter={(v) => [fmtFull(v), 'Amount']}
-                    contentStyle={{
-                      background: '#0f1117',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: 12,
-                      fontSize: 12,
-                      color: '#e2e8f0',
-                    }}
-                  />
+                  <XAxis type="number" {...AX} tick={{ ...AX.tick, fontSize: 10 }} tickFormatter={(v) => `${Number(v) / 1000}K`} />
+                  <YAxis type="category" dataKey="name" width={96} {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
+                  <Tooltip {...TT} formatter={(v) => [fmtFull(v), 'Amount']} />
                   <Bar dataKey="value" fill="#60a5fa" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>

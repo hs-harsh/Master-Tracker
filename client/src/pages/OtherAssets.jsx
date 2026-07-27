@@ -11,6 +11,7 @@ import {
   ComposedChart, Line, Area, XAxis, YAxis, Tooltip, CartesianGrid,
   ResponsiveContainer, Legend,
 } from 'recharts';
+import { TT, AX, GRID } from '../lib/chartTheme';
 
 const DEFAULT_TYPES = ['Property', 'Vehicle', 'Gold', 'PPF', 'NPS'];
 const HAS_LOAN_DEFAULT = ['Property', 'Vehicle'];
@@ -455,16 +456,12 @@ function DetailModal({ asset, typeColor, onClose, onEdit }) {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="label" tick={{ fill: '#888', fontSize: 10 }} tickLine={false}
+                <CartesianGrid {...GRID} />
+                <XAxis dataKey="label" {...AX} tick={{ ...AX.tick, fontSize: 10 }}
                   interval={chartData.length <= 6 ? 0 : Math.floor(chartData.length / 6)} />
-                <YAxis tick={{ fill: '#888', fontSize: 10 }} tickLine={false} unit="L" width={38} />
-                <Tooltip
-                  contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 8 }}
-                  labelStyle={{ color: '#aaa', fontSize: 11 }}
-                  formatter={(v, n) => [`₹${v}L`, n]}
-                />
-                <Legend wrapperStyle={{ fontSize: 11, color: '#888' }} />
+                <YAxis {...AX} tick={{ ...AX.tick, fontSize: 10 }} unit="L" width={38} />
+                <Tooltip {...TT} formatter={(v, n) => [`₹${v}L`, n]} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Area type="monotone" dataKey="Asset Value" stroke={color} fill={color + '22'}
                   strokeWidth={2} dot={chartData.length <= 3 ? { r: 4, fill: color } : false}
                   activeDot={{ r: 4 }} />
@@ -1073,12 +1070,11 @@ export default function OtherAssets() {
           <h3 className="font-display font-bold text-white text-sm">Net Worth Trend</h3>
           <ResponsiveContainer width="100%" height={200}>
             <ComposedChart data={snapshotChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="date" tick={{ fill: '#888', fontSize: 11 }} tickLine={false} />
-              <YAxis tick={{ fill: '#888', fontSize: 11 }} tickLine={false} unit="L" width={40} />
-              <Tooltip contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: 8 }}
-                labelStyle={{ color: '#aaa' }} formatter={(v, n) => [`₹${v}L`, n]} />
-              <Legend wrapperStyle={{ fontSize: 11, color: '#888' }} />
+              <CartesianGrid {...GRID} />
+              <XAxis dataKey="date" {...AX} />
+              <YAxis {...AX} unit="L" width={40} />
+              <Tooltip {...TT} formatter={(v, n) => [`₹${v}L`, n]} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
               <Line type="monotone" dataKey="Net Worth" stroke="#f0c040" strokeWidth={2} dot={{ r: 3 }} />
               <Line type="monotone" dataKey="Illiquid Investments" stroke="#a78bfa" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
               <Line type="monotone" dataKey="Loans" stroke="#fb7185" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />

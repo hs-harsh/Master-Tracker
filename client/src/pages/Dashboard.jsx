@@ -14,6 +14,7 @@ import { TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle2, Info, Arr
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
 import RangeChips from '../components/RangeChips';
+import { TT, AX, GRID, CHROME } from '../lib/chartTheme';
 import { useNavigate } from 'react-router-dom';
 
 const RISK_COLORS = ['#60a5fa', '#fbbf24', '#f97316'];
@@ -24,12 +25,8 @@ function toINR(inv, fxRates) {
   return Number(inv.amount) * fx;
 }
 
-const TT = {
-  contentStyle: { background: '#0f1117', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, fontSize: 12, color: '#e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' },
-  labelStyle:   { color: '#8b95a5', marginBottom: 4, fontWeight: 600 },
-  formatter:    (v, name) => [fmt(v), name],
-};
-const AX = { tick: { fill: '#4b5563', fontSize: 10 }, tickLine: false, axisLine: false };
+// Tooltip / axis / grid chrome comes from lib/chartTheme.js — see AC-4.1.
+const money = (v, name) => [fmt(v), name];
 
 // ── Stat cards ────────────────────────────────────────────────────────────────
 function HeroCard({ label, value, sub, trend }) {
@@ -240,10 +237,10 @@ function CorpusVsInvestedChart({ cashflowData, investments, allCashflowData, fxR
               <stop offset="95%" stopColor="#2dd4bf" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
+          <CartesianGrid {...GRID} />
           <XAxis dataKey="month" {...AX} />
           <YAxis {...AX} tickFormatter={v => fmt(v)} width={60} />
-          <Tooltip {...TT} />
+          <Tooltip {...TT} formatter={money} />
           <Area type="monotone" dataKey="Corpus"   stroke="#2dd4bf" strokeWidth={2}   fill="url(#gCorpus)" dot={false} />
           <Line type="monotone" dataKey="Invested" stroke="#f0c040" strokeWidth={2}   dot={false} strokeDasharray="5 3" />
         </ComposedChart>
@@ -283,11 +280,11 @@ function SavingsRateChart({ cashflowData }) {
               <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
+          <CartesianGrid {...GRID} />
           <XAxis dataKey="month" {...AX} />
           <YAxis {...AX} tickFormatter={v => `${v}%`} width={40} domain={[0, 'auto']} />
           <Tooltip {...TT} formatter={(v, name) => [v != null ? `${Number(v).toFixed(1)}%` : '—', name]} />
-          <ReferenceLine y={avg} stroke="rgba(255,255,255,0.12)" strokeDasharray="4 2" />
+          <ReferenceLine y={avg} stroke={CHROME.hairline(0.12)} strokeDasharray="4 2" />
           <Area  type="monotone" dataKey="Savings %" stroke="#6366f1" strokeWidth={2} fill="url(#gRate)" dot={{ r: 3, fill: '#6366f1' }} />
           <Line  type="monotone" dataKey="Target %"  stroke="#f0c040" strokeWidth={1.5} dot={false} strokeDasharray="5 3" />
         </ComposedChart>
@@ -424,11 +421,11 @@ function PersonPanel({ person, cashflowData, investments, fxRates }) {
         <p className="stat-label mb-4">Cashflow — {range === 'All' ? 'all time' : `last ${range}`}</p>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={cashflowChartData} barGap={4} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" vertical={false} />
+            <CartesianGrid {...GRID} />
             <XAxis dataKey="month" {...AX} />
             <YAxis {...AX} tickFormatter={v => fmt(v)} width={55} />
-            <Tooltip {...TT} />
-            <ReferenceLine y={0} stroke="rgba(255,255,255,0.06)" />
+            <Tooltip {...TT} formatter={money} />
+            <ReferenceLine y={0} stroke={CHROME.hairline(0.14)} />
             <Bar dataKey="Income"  fill="#f0c040" radius={[3,3,0,0]} />
             <Bar dataKey="Expense" fill="#fb7185" radius={[3,3,0,0]} />
             <Bar dataKey="Saving"  fill="#2dd4bf" radius={[3,3,0,0]} />
@@ -448,7 +445,7 @@ function PersonPanel({ person, cashflowData, investments, fxRates }) {
                   <Pie data={assetBreakdown} cx="50%" cy="50%" innerRadius={32} outerRadius={52} dataKey="value" strokeWidth={0}>
                     {assetBreakdown.map((_, i) => <Cell key={i} fill={Object.values(ASSET_COLORS)[i % 10]} />)}
                   </Pie>
-                  <Tooltip {...TT} />
+                  <Tooltip {...TT} formatter={money} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">

@@ -9,6 +9,7 @@ import {
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
+import { TT, AX, GRID, SERIES } from '../../lib/chartTheme';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
 import { parseD, todayStr, getMonday, getWeekDays, fmtWeekRange } from '../../lib/utils';
@@ -27,7 +28,6 @@ const VIEWS = [
   { key: 'muscles',   label: 'Muscles' },
   { key: 'analytics', label: 'Analytics' },
 ];
-const CHART_PALETTE = ['#f59e0b', '#60a5fa', '#34d399', '#f472b6', '#a78bfa', '#fb923c', '#22d3ee', '#facc15', '#f87171', '#94a3b8'];
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function dateRangeFor(period) {
@@ -980,12 +980,12 @@ export default function WellnessWorkouts() {
   function CustomTooltip({ active, payload, label }) {
     if (!active || !payload?.length) return null;
     return (
-      <div className="card p-3 text-xs space-y-1">
-        <p className="text-muted font-mono mb-1">{label}</p>
+      <div style={TT.contentStyle} className="text-xs space-y-1">
+        <p style={TT.labelStyle} className="font-mono">{label}</p>
         {payload.map(p => (
           <div key={p.name} className="flex justify-between gap-4">
-            <span style={{ color: p.fill || p.color || p.stroke }}>{p.name}</span>
-            <span className="text-white font-mono">{p.value}</span>
+            <span style={{ color: p.color || p.stroke || p.fill }}>{p.name}</span>
+            <span className="font-mono" style={{ color: TT.valueColor }}>{p.value}</span>
           </div>
         ))}
       </div>
@@ -1055,10 +1055,10 @@ export default function WellnessWorkouts() {
           {hasLoad ? (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} />
-                <YAxis yAxisId="w" tick={{ fontSize: 10, fill: '#6b7280' }} />
-                <YAxis yAxisId="v" orientation="right" tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <CartesianGrid {...GRID} vertical />
+                <XAxis dataKey="date" {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
+                <YAxis yAxisId="w" {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
+                <YAxis yAxisId="v" orientation="right" {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line yAxisId="w" type="monotone" dataKey="Top set (kg)" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} connectNulls />
@@ -1078,13 +1078,13 @@ export default function WellnessWorkouts() {
             <p className="text-[10px] text-muted/60 font-mono mb-3">primary set = 1 · secondary set = 0.25</p>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={muscleBars} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                <XAxis dataKey="week" tick={{ fontSize: 10, fill: '#6b7280' }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <CartesianGrid {...GRID} vertical />
+                <XAxis dataKey="week" {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
+                <YAxis allowDecimals={false} {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 {topMuscles.map((m, i) => (
-                  <Bar key={m} dataKey={muscleLabel(m)} stackId="m" fill={CHART_PALETTE[i % CHART_PALETTE.length]} />
+                  <Bar key={m} dataKey={muscleLabel(m)} stackId="m" fill={SERIES[i % SERIES.length]} />
                 ))}
               </BarChart>
             </ResponsiveContainer>
@@ -1161,11 +1161,11 @@ export default function WellnessWorkouts() {
             <p className="text-xs text-muted uppercase tracking-widest font-mono mb-4">Sessions per week</p>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={weekData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                <XAxis dataKey="week" tick={{ fontSize: 10, fill: '#6b7280' }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <CartesianGrid {...GRID} vertical />
+                <XAxis dataKey="week" {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
+                <YAxis allowDecimals={false} {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="Sessions" fill="#f59e0b" radius={[3,3,0,0]} />
+                <Bar dataKey="Sessions" fill="var(--accent)" radius={[3,3,0,0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -1173,11 +1173,11 @@ export default function WellnessWorkouts() {
             <p className="text-xs text-muted uppercase tracking-widest font-mono mb-4">Sets per week</p>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={weekData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                <XAxis dataKey="week" tick={{ fontSize: 10, fill: '#6b7280' }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
+                <CartesianGrid {...GRID} vertical />
+                <XAxis dataKey="week" {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
+                <YAxis allowDecimals={false} {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="Sets" fill="#60a5fa" radius={[3,3,0,0]} />
+                <Bar dataKey="Sets" fill="var(--accent)" radius={[3,3,0,0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -3,6 +3,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, PieChart, Pie, Cell, ScatterChart, Scatter,
 } from 'recharts';
+import { TT, AX, GRID } from '../lib/chartTheme';
 import api from '../lib/api';
 import { MessageSquare, Loader2, BarChart3, TrendingUp, Plus, X, Wallet } from 'lucide-react';
 
@@ -164,14 +165,14 @@ function RiskReturnScatterChart({ byRiskLevel }) {
       <div className="h-52">
         <ResponsiveContainer width="100%" height="100%">
           <ScatterChart margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-            <XAxis type="number" dataKey="riskPct" name="Risk" tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(v) => `${v}%`} />
-            <YAxis type="number" dataKey="expectedReturnPct" name="Return" tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={(v) => `${v}%`} />
+            <CartesianGrid {...GRID} vertical />
+            <XAxis type="number" dataKey="riskPct" name="Risk" {...AX} tick={{ ...AX.tick, fontSize: 10 }} tickFormatter={(v) => `${v}%`} />
+            <YAxis type="number" dataKey="expectedReturnPct" name="Return" {...AX} tick={{ ...AX.tick, fontSize: 10 }} tickFormatter={(v) => `${v}%`} />
             <Tooltip
               content={({ active, payload }) =>
                 active && payload?.[0] ? (
-                  <div className="px-3 py-2 rounded-lg bg-[#1e2330] border border-[#2a3040] text-xs">
-                    <p className="font-semibold text-white mb-1">{payload[0].payload?.name}</p>
+                  <div style={TT.contentStyle} className="text-xs">
+                    <p className="font-semibold mb-1">{payload[0].payload?.name}</p>
                     <p className="text-soft">Risk: {payload[0].payload?.riskPct}%</p>
                     <p className="text-accent">Return: {payload[0].payload?.expectedReturnPct}%</p>
                   </div>
@@ -216,15 +217,15 @@ function CorpusIncrementChart({ byRiskLevel, initialCorpus }) {
       <div className="h-52">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-            <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} width={48} tickFormatter={(v) => `${(v / 1e5).toFixed(1)}L`} />
+            <CartesianGrid {...GRID} />
+            <XAxis dataKey="label" {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
+            <YAxis {...AX} tick={{ ...AX.tick, fontSize: 10 }} width={48} tickFormatter={(v) => `${(v / 1e5).toFixed(1)}L`} />
             <Tooltip
-              contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}
+              {...TT}
               formatter={(v) => [Number(v).toLocaleString('en-IN'), '']}
               labelFormatter={(l) => `Horizon: ${l}`}
             />
-            <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => <span style={{ color: '#94a3b8' }}>{v}</span>} />
+            <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => <span className="text-soft">{v}</span>} />
             <Line type="monotone" dataKey="high" name="High risk" stroke={RISK_LEVEL_COLORS.high} strokeWidth={2} dot={{ fill: RISK_LEVEL_COLORS.high, r: 4 }} connectNulls />
             <Line type="monotone" dataKey="medium" name="Medium risk" stroke={RISK_LEVEL_COLORS.medium} strokeWidth={2} dot={{ fill: RISK_LEVEL_COLORS.medium, r: 4 }} connectNulls />
             <Line type="monotone" dataKey="low" name="Low risk" stroke={RISK_LEVEL_COLORS.low} strokeWidth={2} dot={{ fill: RISK_LEVEL_COLORS.low, r: 4 }} connectNulls />
@@ -264,7 +265,7 @@ function MiniAllocationPie({ alloc, title }) {
             ))}
           </Pie>
           <Tooltip
-            contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 6, fontSize: 11 }}
+            {...TT}
             formatter={(v) => [`${v}%`, '']}
           />
         </PieChart>
@@ -292,14 +293,14 @@ function AllocationChart({ data }) {
       <div className="h-52">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }} barCategoryGap="15%">
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-            <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} width={36} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+            <CartesianGrid {...GRID} />
+            <XAxis dataKey="label" {...AX} tick={{ ...AX.tick, fontSize: 10 }} />
+            <YAxis {...AX} tick={{ ...AX.tick, fontSize: 10 }} width={36} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
             <Tooltip
-              contentStyle={{ background: '#1e2330', border: '1px solid #2a3040', borderRadius: 8, fontSize: 12, color: '#e5e7eb' }}
+              {...TT}
               formatter={(v) => [`${v}%`, '']}
             />
-            <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => <span style={{ color: '#94a3b8' }}>{v}</span>} />
+            <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v) => <span className="text-soft">{v}</span>} />
             <Bar dataKey="equityPct" name="Equity" stackId="a" fill={ALLOC_COLORS.equityPct} radius={[0, 0, 0, 0]} />
             <Bar dataKey="debtPct" name="Debt" stackId="a" fill={ALLOC_COLORS.debtPct} radius={[0, 0, 0, 0]} />
             <Bar dataKey="metalPct" name="Metal" stackId="a" fill={ALLOC_COLORS.metalPct} radius={[0, 0, 0, 0]} />
