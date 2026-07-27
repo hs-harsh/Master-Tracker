@@ -8,6 +8,7 @@ import api from '../lib/api';
 import { fmt } from '../lib/utils';
 import TradeFeedbackCard from '../components/TradeFeedbackCard';
 import { useAuth } from '../hooks/useAuth';
+import PageHeader from '../components/PageHeader';
 
 const RISK_COLORS  = { Low: '#60a5fa', Medium: '#fbbf24', High: '#f97316' };
 const ASSET_COLORS = { Equity: '#f97316', Debt: '#60a5fa', Gold: '#fbbf24', Cash: '#6b7280', 'Real Estate': '#a78bfa', Crypto: '#ec4899' };
@@ -219,17 +220,13 @@ export default function Portfolio() {
     : enriched;
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="stack">
       {/* Header */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="type-display-lg">
-              {currentPerson ? `${currentPerson}'s Portfolio` : 'Goal Portfolio'}
-            </h1>
-            <p className="text-muted text-sm mt-0.5">View by account and filter by goal</p>
-          </div>
-        </div>
+      <div className="stack">
+        <PageHeader
+          title={currentPerson ? `${currentPerson}'s Portfolio` : 'Goal Portfolio'}
+          eyebrow="View by account and filter by goal"
+        />
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <label className="text-muted text-xs uppercase tracking-wider">Goal</label>

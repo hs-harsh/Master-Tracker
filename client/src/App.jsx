@@ -4,6 +4,8 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import api from './lib/api';
 import Layout from './components/Layout';
 import FinanceLayout from './components/FinanceLayout';
+import WellnessLayout from './components/WellnessLayout';
+import LiveTradingLayout from './components/LiveTradingLayout';
 import Dashboard from './pages/Dashboard';
 import Cashflow from './pages/Cashflow';
 import Transactions from './pages/Transactions';
@@ -457,14 +459,18 @@ export default function App() {
                 <Route path="other-assets" element={<OtherAssets />} />
               </Route>
               <Route path="expense-analyser" element={<ExpenseAnalyser />} />
-              <Route path="wellness" element={<Navigate to="/wellness/habits" replace />} />
-              <Route path="wellness/habits" element={<WellnessHabits />} />
-              <Route path="wellness/meals" element={<WellnessMeals />} />
-              <Route path="wellness/workouts" element={<WellnessWorkouts />} />
+              <Route path="wellness" element={<WellnessLayout />}>
+                <Route index element={<Navigate to="/wellness/habits" replace />} />
+                <Route path="habits" element={<WellnessHabits />} />
+                <Route path="meals" element={<WellnessMeals />} />
+                <Route path="workouts" element={<WellnessWorkouts />} />
+              </Route>
               <Route element={<LiveTradingGuard />}>
-                <Route path="live-trading" element={<Navigate to="/live-trading/backtest" replace />} />
-                <Route path="live-trading/backtest" element={<BacktestPage />} />
-                <Route path="live-trading/post-trade" element={<PostTradePage />} />
+                <Route path="live-trading" element={<LiveTradingLayout />}>
+                  <Route index element={<Navigate to="/live-trading/backtest" replace />} />
+                  <Route path="backtest" element={<BacktestPage />} />
+                  <Route path="post-trade" element={<PostTradePage />} />
+                </Route>
               </Route>
               <Route path="settings" element={<Settings />} />
             </Route>

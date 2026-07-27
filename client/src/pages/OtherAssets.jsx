@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
+import PageHeader from '../components/PageHeader';
 import {
   Plus, Trash2, Edit2, X, Save, ArrowUp, ArrowDown,
   LayoutList, LayoutGrid, Camera, Mail, Tag, ChevronRight, RefreshCw,
@@ -903,7 +904,9 @@ export default function OtherAssets() {
   if (loading) return <div className="text-muted text-sm p-4">Loading…</div>;
 
   return (
-    <div className="space-y-5">
+    <div className="stack">
+      <PageHeader title="Illiquid Investments" eyebrow="Property, gold & other non-market assets" />
+
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="card">
@@ -951,10 +954,14 @@ export default function OtherAssets() {
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex gap-1 p-1 rounded-lg bg-white/5 flex-wrap">
+        <div className="flex gap-1 p-1 rounded-lg bg-hairline/[0.04] border border-hairline/10 flex-wrap">
           {['All', ...allTypes].map(t => (
             <button key={t} onClick={() => setTypeFilter(t)}
-              className={`px-3 py-1 rounded text-xs font-semibold transition-all ${typeFilter === t ? 'bg-accent text-ink' : 'text-soft hover:text-white'}`}>
+              className={`px-3 py-1 rounded text-xs transition-all ${
+                typeFilter === t
+                  ? 'bg-card text-text font-semibold ring-1 ring-inset ring-hairline/15'
+                  : 'text-soft hover:text-text font-medium'
+              }`}>
               {t}
             </button>
           ))}

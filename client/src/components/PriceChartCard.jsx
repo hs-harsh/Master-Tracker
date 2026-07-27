@@ -94,10 +94,10 @@ export default function PriceChartCard({
               key={r.key}
               type="button"
               onClick={() => handleRange(r.key)}
-              className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors min-h-[28px] ${
+              className={`px-2.5 py-1 rounded text-xs font-mono transition-colors min-h-[28px] border ${
                 range === r.key
-                  ? 'bg-accent text-ink'
-                  : 'text-soft hover:text-white hover:bg-card border border-border'
+                  ? 'bg-card text-text font-semibold border-hairline/15'
+                  : 'text-soft hover:text-text font-medium border-hairline/10'
               }`}
             >
               {r.label}

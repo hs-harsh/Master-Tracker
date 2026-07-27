@@ -111,6 +111,22 @@
     box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.08);
   }
 
+  /* ── Vertical rhythm ──────────────────────────────────────────────────────────
+     Page-level stacking used to be freeform: space-y-0/1/2/3/4/5/6/8 with no
+     rule about which meant what, and several roots carried a responsive pair
+     (`space-y-4 sm:space-y-6`) that nothing else matched. Three steps only:
+
+       .stack-tight    a label and its control, items inside one block
+       .stack          the default — sibling blocks within a page
+       .stack-section  between major sections of a page
+
+     Page roots and section wrappers use these; spacing *inside* a card is
+     still free to use raw utilities.
+     ─────────────────────────────────────────────────────────────────────────── */
+  .stack-tight   { @apply space-y-2; }
+  .stack         { @apply space-y-5; }
+  .stack-section { @apply space-y-8; }
+
   /* ── Type ramp ────────────────────────────────────────────────────────────────
      Semantic names; pages should reach for these rather than restating
      size/weight/tracking. Three tiers:
@@ -249,6 +265,12 @@
 
   /* Neutral hairline — the token `border-white/*` migrates to in Phase 5. */
   --hairline-rgb: 255 255 255;
+
+  /* Foreground for chrome that stays dark in BOTH themes — currently the
+     sidebar. `[data-theme="light"] .text-white` recolours to slate-900, which
+     is correct on a light page but rendered the sidebar wordmark at 1.09:1
+     dark-on-dark. This token is deliberately not theme-split. */
+  --on-dark: #f1f5f9;
 
   /* Chart tooltip — consumed via recharts contentStyle objects across pages */
   --tooltip-bg:     #0f1117;

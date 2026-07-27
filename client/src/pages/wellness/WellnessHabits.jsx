@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { NavLink } from 'react-router-dom';
 import {
-  CheckSquare, Utensils, Dumbbell,
+  Dumbbell,
   ChevronLeft, ChevronRight,
   Star, Leaf, Activity, Trophy, AlertTriangle, TrendingUp,
   Settings, Plus, X, Heart, Zap, Moon, Coffee, Book, Music, Apple, Droplets, Sun, Flame,
@@ -12,13 +11,14 @@ import {
 } from 'recharts';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
+import PageHeader from '../../components/PageHeader';
+import SegmentedToggle from '../../components/SegmentedToggle';
+import RangeChips from '../../components/RangeChips';
 import { parseD, todayStr, getMonday, getWeekDays, fmtWeekRange } from '../../lib/utils';
 
-// ─── nav ──────────────────────────────────────────────────────────────────────
-const SUB_TABS = [
-  { to: '/wellness/habits',   label: 'Habits',   icon: CheckSquare },
-  { to: '/wellness/meals',    label: 'Meals',    icon: Utensils    },
-  { to: '/wellness/workouts', label: 'Workouts', icon: Dumbbell    },
+const HABIT_VIEWS = [
+  { key: 'planner',   label: 'Plan Week' },
+  { key: 'analytics', label: 'Analytics' },
 ];
 
 // ─── icon map ─────────────────────────────────────────────────────────────────
@@ -673,16 +673,7 @@ export default function WellnessHabits() {
               <TrendingUp size={14} className="text-accent" />
               <p className="text-xs text-muted uppercase tracking-widest font-mono">Daily total score vs target ({dailyTarget}/{statMaxScore})</p>
             </div>
-            <div className="flex gap-1 rounded-lg overflow-hidden border border-white/8">
-              {PERIODS.map(p => (
-                <button key={p} onClick={() => setPeriod(p)}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                    period === p ? 'bg-accent text-ink' : 'text-soft hover:text-white bg-surface/50'
-                  }`}>
-                  {p}
-                </button>
-              ))}
-            </div>
+            <RangeChips options={PERIODS} value={period} onChange={setPeriod} />
           </div>
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
@@ -702,46 +693,15 @@ export default function WellnessHabits() {
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="p-4 sm:p-6 space-y-5">
+    <div className="stack">
       {ManageModal()}
 
-      {/* sub-tab bar */}
-      <div className="flex gap-1 p-1 rounded-xl flex-wrap"
-        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-        {SUB_TABS.map(({ to, label, icon: Icon }) => (
-          <NavLink key={to} to={to}
-            className={({ isActive }) =>
-              `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-body transition-all ${
-                isActive ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'
-              }`}>
-            {Icon && <Icon size={16} />}
-            {label}
-          </NavLink>
-        ))}
-      </div>
-
-      {/* page header + view toggle */}
-      <div className="flex flex-wrap items-start justify-between gap-3 fade-up">
-        <div>
-          <h1 className="type-display-lg">
-            {currentPerson ? `${currentPerson}'s Habits` : 'Habits'}
-          </h1>
-          <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Weekly habit tracker & analytics</p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex gap-1 p-1 rounded-xl"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            {[{ key: 'planner', label: 'Plan Week' }, { key: 'analytics', label: 'Analytics' }].map(({ key, label }) => (
-              <button key={key} onClick={() => setView(key)}
-                className={`px-4 py-2 rounded-lg text-sm font-body transition-all ${
-                  view === key ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'
-                }`}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        className="fade-up"
+        title={currentPerson ? `${currentPerson}'s Habits` : 'Habits'}
+        eyebrow="Weekly habit tracker & analytics"
+        actions={<SegmentedToggle options={HABIT_VIEWS} value={view} onChange={setView} />}
+      />
 
       {loading && view === 'planner' && (
         <div className="card fade-up-1 overflow-hidden animate-pulse">

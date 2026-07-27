@@ -4,6 +4,7 @@ import { fmt, fmtDate } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown } from 'lucide-react';
 import AiEntryPanel, { AiEditPanel } from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
+import PageHeader from '../components/PageHeader';
 
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const SIDES = ['BUY', 'SELL'];
@@ -283,13 +284,11 @@ export default function Investments() {
     0
   );
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="type-display-lg">{currentPerson ? `${currentPerson}'s Investments` : 'Investments'}</h1>
-          <p className="text-muted text-sm mt-0.5">Raw investment entries powering your goal-based portfolio</p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
+    <div className="stack">
+      <PageHeader
+        title={currentPerson ? `${currentPerson}'s Investments` : 'Investments'}
+        eyebrow="Raw investment entries powering your goal-based portfolio"
+        actions={<>
           {selectedIds.size > 0 && (
             <button onClick={handleDeleteSelected} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-rose/10 text-rose border border-rose/20 hover:bg-rose/20 transition-colors">
               <Trash2 size={14} /> Delete {selectedIds.size} selected
@@ -304,8 +303,8 @@ export default function Investments() {
           >
             <Plus size={14} /> Add Investment
           </button>
-        </div>
-      </div>
+        </>}
+      />
 
       <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
       <AiEditPanel type="investments" persons={persons.length ? persons : [personName]} onEdit={handleAiEdit} />

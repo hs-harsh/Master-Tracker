@@ -7,6 +7,9 @@ import { Plus, Pencil, Trash2, X, Save, Target, Check, ArrowLeft } from 'lucide-
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
+import PageHeader from '../components/PageHeader';
+import SegmentedToggle from '../components/SegmentedToggle';
+import RangeChips from '../components/RangeChips';
 
 // ── Shared chart helpers ───────────────────────────────────────────────────────
 const TT = {
@@ -137,16 +140,7 @@ const RANGES = ['3M', '6M', '1Y', '2Y', '3Y', '5Y', 'ALL'];
 const FINANCE_RANGE_KEY = 'finance_chart_range';
 
 function RangeBar({ range, setRange }) {
-  return (
-    <div className="flex rounded-lg border border-border overflow-hidden text-xs self-start">
-      {RANGES.map(r => (
-        <button key={r} onClick={() => setRange(r)}
-          className={`px-3 py-1.5 transition-colors ${range === r ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'}`}>
-          {r}
-        </button>
-      ))}
-    </div>
-  );
+  return <RangeChips options={RANGES} value={range} onChange={setRange} />;
 }
 
 function sliceByRange(data, range) {
@@ -682,34 +676,29 @@ export default function Cashflow() {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="stack">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="type-display-lg">{currentPerson ? `${currentPerson}'s Cashflow` : 'Cashflow'}</h1>
-          <p className="text-muted text-sm mt-0.5">Monthly income, expenses &amp; savings</p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
+      <PageHeader
+        title={currentPerson ? `${currentPerson}'s Cashflow` : 'Cashflow'}
+        eyebrow="Monthly income, expenses & savings"
+        actions={<>
           <button onClick={openAdd} className="btn-primary flex items-center gap-1.5 text-sm">
             <Plus size={14} /> Add Month
           </button>
-          <div className="flex rounded-lg border border-border overflow-hidden text-sm">
-            {[['charts', 'Charts'], ['table', 'Table']].map(([id, label]) => (
-              <button key={id} onClick={() => setActiveTab(id)}
-                className={`px-4 py-2 transition-colors ${activeTab === id ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+          <SegmentedToggle
+            options={[{ key: 'charts', label: 'Charts' }, { key: 'table', label: 'Table' }]}
+            value={activeTab}
+            onChange={setActiveTab}
+          />
+        </>}
+      />
 
       {persons.length > 0 && <DefaultTargetWidget persons={persons.length ? persons : [currentPerson]} />}
 
       {loading &&<div className="py-16 text-center text-muted text-sm">Loading…</div>}
 
       {!loading && data.length === 0 && (
-        <div className="card py-12 text-center space-y-2">
+        <div className="card py-12 text-center stack-tight">
           <p className="text-muted">No cashflow data yet.</p>
           <p className="text-xs text-muted">
             Click <strong>Add Month</strong> to enter a month, or use <strong>Settings → Apply to year</strong> to seed all 12 months at once.

@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  Shield, Users, Trash2, Crown, BarChart3, RefreshCw, AlertTriangle,
+  Users, Trash2, Crown, BarChart3, RefreshCw, AlertTriangle,
   UserCheck, UserX, KeyRound, Lock, LockOpen, Mail, Database
 } from 'lucide-react';
 import api from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
+import PageHeader from '../components/PageHeader';
 
 function StatCard({ label, value, icon: Icon, color, sub }) {
   return (
@@ -133,22 +134,17 @@ export default function Admin() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <div className="stack">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-amber-500/20 rounded-lg">
-            <Shield size={22} className="text-amber-400" />
-          </div>
-          <div>
-            <h1 className="type-display-lg">Admin Dashboard</h1>
-            <p className="text-sm text-muted">Signed in as {personName}</p>
-          </div>
-        </div>
-        <button onClick={load} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface border border-border text-sm text-muted hover:text-text transition-colors">
-          <RefreshCw size={14} /> Refresh
-        </button>
-      </div>
+      <PageHeader
+        title="Admin Dashboard"
+        eyebrow={`Signed in as ${personName}`}
+        actions={
+          <button onClick={load} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface border border-border text-sm text-muted hover:text-text transition-colors">
+            <RefreshCw size={14} /> Refresh
+          </button>
+        }
+      />
 
       {msg && (
         <div className={`text-sm px-4 py-2 rounded-lg border ${msg.err ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-accent/10 border-accent/30 text-accent'}`}>

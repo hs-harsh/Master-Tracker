@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { NavLink } from 'react-router-dom';
 import {
-  CheckSquare, Utensils, Dumbbell,
+  Dumbbell,
   ChevronLeft, ChevronRight, X,
   Check, Sparkles, AlertTriangle,
   Flame, Target, TrendingUp, Award,
@@ -15,13 +14,9 @@ import { useAuth } from '../../hooks/useAuth';
 import { parseD, todayStr, getMonday, getWeekDays, fmtWeekRange } from '../../lib/utils';
 import { MUSCLE_GROUPS, muscleLabel } from '../../lib/muscles';
 import MuscleBodyMap from '../../components/MuscleBodyMap';
-
-// ─── nav ──────────────────────────────────────────────────────────────────────
-const SUB_TABS = [
-  { to: '/wellness/habits',   label: 'Habits',   icon: CheckSquare },
-  { to: '/wellness/meals',    label: 'Meals',    icon: Utensils    },
-  { to: '/wellness/workouts', label: 'Workouts', icon: Dumbbell    },
-];
+import PageHeader from '../../components/PageHeader';
+import SegmentedToggle from '../../components/SegmentedToggle';
+import RangeChips from '../../components/RangeChips';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const PERIODS = ['1M', '3M', '1Y'];
@@ -1195,56 +1190,21 @@ export default function WellnessWorkouts() {
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="p-4 sm:p-6 space-y-5">
-      <div className="flex gap-1 p-1 rounded-xl flex-wrap"
-        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-        {SUB_TABS.map(({ to, label, icon: Icon }) => (
-          <NavLink key={to} to={to}
-            className={({ isActive }) =>
-              `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-body transition-all ${
-                isActive ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'
-              }`}>
-            {Icon && <Icon size={16} />}{label}
-          </NavLink>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-start justify-between gap-3 fade-up">
-        <div>
-          <h1 className="type-display-lg">
-            {currentPerson ? `${currentPerson}'s Workouts` : 'Workouts'}
-          </h1>
-          <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Training log, muscle map & analytics</p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
+    <div className="stack">
+      <PageHeader
+        className="fade-up"
+        title={currentPerson ? `${currentPerson}'s Workouts` : 'Workouts'}
+        eyebrow="Training log, muscle map & analytics"
+        actions={<>
           {view === 'analytics' && (
-            <div className="flex gap-1 rounded-lg overflow-hidden border border-white/8">
-              {PERIODS.map(p => (
-                <button key={p} onClick={() => setPeriod(p)}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                    period === p ? 'bg-accent text-ink' : 'text-soft hover:text-white bg-surface/50'
-                  }`}>
-                  {p}
-                </button>
-              ))}
-            </div>
+            <RangeChips options={PERIODS} value={period} onChange={setPeriod} />
           )}
-          <div className="flex gap-1 p-1 rounded-xl"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            {VIEWS.map(({ key, label }) => (
-              <button key={key} onClick={() => setView(key)}
-                className={`px-4 py-2 rounded-lg text-sm font-body transition-all ${
-                  view === key ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'
-                }`}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+          <SegmentedToggle options={VIEWS} value={view} onChange={setView} />
+        </>}
+      />
 
       {loading && view === 'log' && (
-        <div className="space-y-3 fade-up-1">
+        <div className="stack-tight fade-up-1">
           <div className="card h-24 animate-pulse bg-white/[0.03]" />
           <div className="card h-48 animate-pulse bg-white/[0.03]" />
         </div>

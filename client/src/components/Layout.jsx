@@ -8,6 +8,7 @@ import {
   CheckSquare, Utensils, Dumbbell, Wallet, BarChart2, Landmark, Archive,
 } from 'lucide-react';
 import InstallPrompt from './InstallPrompt';
+import PageContainer from './PageContainer';
 import api from '../lib/api';
 import { applyTheme } from '../lib/theme';
 import { setCurrencySymbol } from '../lib/utils';
@@ -151,7 +152,7 @@ export default function Layout() {
               </span>
             </div>
             <div>
-              <span className="font-display font-bold text-white text-sm tracking-tight block leading-tight">
+              <span className="font-display font-bold text-[var(--on-dark)] text-sm tracking-tight block leading-tight">
                 InvestTrack
               </span>
             </div>
@@ -549,7 +550,7 @@ export default function Layout() {
             >
               <span className="text-ink font-display font-bold text-[9px]">H·K</span>
             </div>
-            <span className="font-display font-bold text-white text-sm tracking-tight">
+            <span className="font-display font-bold text-[var(--on-dark)] text-sm tracking-tight">
               InvestTrack
             </span>
           </div>
@@ -576,7 +577,9 @@ export default function Layout() {
         </header>
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden bg-ink flex flex-col">
-          <Outlet />
+          <PageContainer>
+            <Outlet />
+          </PageContainer>
         </main>
       </div>
     </div>

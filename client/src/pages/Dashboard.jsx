@@ -12,6 +12,8 @@ import api from '../lib/api';
 import { fmt, fmtDate, colorFor, ASSET_COLORS } from '../lib/utils';
 import { TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle2, Info, ArrowRight } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import PageHeader from '../components/PageHeader';
+import RangeChips from '../components/RangeChips';
 import { useNavigate } from 'react-router-dom';
 
 const RISK_COLORS = ['#60a5fa', '#fbbf24', '#f97316'];
@@ -297,18 +299,7 @@ function SavingsRateChart({ cashflowData }) {
 
 // ── Range pill selector ───────────────────────────────────────────────────────
 function RangePills({ range, setRange }) {
-  return (
-    <div className="flex gap-1 p-0.5 rounded-lg"
-      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-      {RANGES.map(r => (
-        <button key={r} onClick={() => setRange(r)}
-          className={`px-3 py-1 rounded-md text-xs font-mono font-semibold transition-all
-            ${range === r ? 'bg-accent text-ink shadow-glow-accent' : 'text-muted hover:text-white'}`}>
-          {r}
-        </button>
-      ))}
-    </div>
-  );
+  return <RangeChips options={RANGES} value={range} onChange={setRange} />;
 }
 
 // ── Full person panel ─────────────────────────────────────────────────────────
@@ -544,12 +535,8 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-5 sm:space-y-6">
-      {/* Header */}
-      <div className="fade-up">
-        <h1 className="type-display-lg">Dashboard</h1>
-        <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Financial health overview</p>
-      </div>
+    <div className="stack">
+      <PageHeader className="fade-up" title="Dashboard" eyebrow="Financial health overview" />
 
       <PersonPanel
         person={currentPerson}

@@ -3,6 +3,7 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveCo
 import api from '../lib/api';
 import { fmt, fmtFull } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
+import PageHeader from '../components/PageHeader';
 import { Plus, Trash2, ChevronDown, ChevronRight, FileText, Loader2, KeyRound } from 'lucide-react';
 
 /** Cashflow-style buckets (same family as monthly cashflow expense columns). */
@@ -570,8 +571,8 @@ export default function ExpenseAnalyser() {
 
   if (!persons.length) {
     return (
-      <div className="space-y-4 sm:space-y-6">
-        <h1 className="type-display-lg">Expense Analyser</h1>
+      <div className="stack">
+        <PageHeader title="Expense Analyser" eyebrow="Statement upload & AI categorisation" />
         <div className="card max-w-lg">
           <p className="text-soft text-sm mb-4">Add people under Settings → People first. Upload slots per profile are set there too.</p>
           <button type="button" className="btn-primary text-sm" onClick={() => fetchPersons?.()}>
@@ -583,14 +584,12 @@ export default function ExpenseAnalyser() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div>
-        <h1 className="type-display-lg">Expense Analyser</h1>
-        <p className="text-muted text-sm mt-0.5">
-          Upload bank or credit card PDFs (password-supported). AI categorises spend into cashflow-style buckets, then compile a household summary.
-          Saved report persists after refresh — change upload slots per profile in Settings.
-        </p>
-      </div>
+    <div className="stack">
+      <PageHeader title="Expense Analyser" eyebrow="Statement upload & AI categorisation" />
+      <p className="type-body-sm text-muted max-w-3xl">
+        Upload bank or credit card PDFs (password-supported). AI categorises spend into cashflow-style buckets, then compile a household summary.
+        Saved report persists after refresh — change upload slots per profile in Settings.
+      </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {persons.map((person, pi) => (
@@ -1158,24 +1157,19 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
   ];
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="type-display-lg">Household report</h1>
-          <p className="text-muted text-sm mt-0.5">
-            {s.month ? `${s.month} · ` : ''}
-            {s.statementsAnalyzed || results.length} statements · {transactions.length} transactions
-          </p>
-        </div>
-        <div className="flex gap-2">
+    <div className="stack">
+      <PageHeader
+        title="Household report"
+        eyebrow={`${s.month ? `${s.month} · ` : ''}${s.statementsAnalyzed || results.length} statements · ${transactions.length} transactions`}
+        actions={<>
           <button type="button" onClick={() => window.print()} className="btn-ghost text-sm">
             Print / PDF
           </button>
           <button type="button" onClick={onBack} className="btn-ghost text-sm">
             ← Back to upload
           </button>
-        </div>
-      </div>
+        </>}
+      />
 
       {/* KPI ribbon — same style as Portfolio net invested */}
       <div className="rounded-xl bg-accent/10 border border-accent/20 px-6 py-4 flex flex-wrap items-center gap-6">
@@ -1220,8 +1214,10 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              tab === t.id ? 'bg-accent text-ink' : 'text-muted hover:text-white hover:bg-card'
+            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+              tab === t.id
+                ? 'bg-card text-text font-semibold ring-1 ring-inset ring-hairline/15'
+                : 'text-soft hover:text-text font-medium'
             }`}
           >
             {t.label}

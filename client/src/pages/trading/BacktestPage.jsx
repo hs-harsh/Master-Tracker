@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { NavLink } from 'react-router-dom';
 import {
-  TrendingUp, BarChart2, Plus, X, Trash2, Play, Sparkles,
+  TrendingUp, Plus, X, Trash2, Play, Sparkles,
   Loader2, AlertCircle, RefreshCw, ArrowRight, ArrowLeft, Check,
   Download, Search, ChevronDown, ChevronRight, Wand2, MessageSquare,
   Lightbulb, Save, RotateCcw, Copy, Pencil,
@@ -12,11 +11,6 @@ import {
 } from 'recharts';
 import api from '../../lib/api';
 import { SECTORS, NIFTY_INDICES } from '../../lib/indianStocks';
-
-const SUB_TABS = [
-  { to: '/live-trading/backtest',   label: 'Backtest',   icon: TrendingUp },
-  { to: '/live-trading/post-trade', label: 'Post-Trade', icon: BarChart2  },
-];
 
 const AI_STEPS = [
   'Analyzing prompts…',
@@ -691,20 +685,6 @@ export default function BacktestPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Sub-tabs */}
-      <div className="flex items-center gap-1 px-4 pt-4 pb-0 shrink-0">
-        {SUB_TABS.map(({ to, label, icon: Icon }) => (
-          <NavLink key={to} to={to}
-            className={({ isActive }) =>
-              `flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-body transition-all border-b-2 ${
-                isActive ? 'text-accent border-accent bg-accent/5' : 'text-muted border-transparent hover:text-soft'
-              }`}>
-            <Icon size={15} />{label}
-          </NavLink>
-        ))}
-      </div>
-      <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} className="shrink-0" />
-
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar */}
         <div className="w-56 shrink-0 flex flex-col border-r border-white/5 overflow-hidden">
@@ -1406,11 +1386,11 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
       )}
 
       <div className="card overflow-hidden">
-        <div className="flex border-b border-white/8">
+        <div className="flex border-b border-hairline/10">
           {[['trades','Trade Log'], ['stats','Full Stats']].map(([key, label]) => (
             <button key={key} type="button" onClick={() => setTradeTab(key)}
               className={`px-4 py-3 text-xs font-mono transition-colors border-b-2 -mb-px ${
-                tradeTab === key ? 'text-accent border-accent' : 'text-muted border-transparent hover:text-soft'
+                tradeTab === key ? 'text-text font-semibold border-text' : 'text-muted border-transparent hover:text-soft'
               }`}>{label}{activeSym ? ` (${instTab})` : ''}</button>
           ))}
         </div>

@@ -3,6 +3,7 @@ import { XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, AreaChart, A
 import api from '../lib/api';
 import { TrendingUp, Loader2, RefreshCw, BarChart3, FileText } from 'lucide-react';
 import ReportModal from '../components/ReportModal';
+import PageHeader from '../components/PageHeader';
 
 const INSTRUMENT_GROUPS = [
   {
@@ -444,14 +445,11 @@ export default function Trade() {
   }, []);
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
-        <div className="min-w-0">
-          <h1 className="type-display-lg truncate">Trade Ideas</h1>
-          <p className="text-muted text-xs sm:text-sm mt-0.5">
-            Technical analysis and buy-the-dip ideas for indices and metals. Uses AI (Claude). Set API key in Settings.
-          </p>
-        </div>
+    <div className="stack">
+      <PageHeader
+        title="Trade Ideas"
+        eyebrow="AI technical analysis for indices and metals"
+        actions={
         <button
           type="button"
           onClick={analyzeAll}
@@ -461,7 +459,12 @@ export default function Trade() {
           {loading === 'all' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
           {loading === 'all' ? 'Analyzing all…' : 'Analyze all'}
         </button>
-      </div>
+        }
+      />
+
+      <p className="type-body-sm text-muted max-w-2xl">
+        Technical analysis and buy-the-dip ideas for indices and metals. Uses AI (Claude). Set API key in Settings.
+      </p>
 
       {error && (
         <div className="card border-rose/40 bg-rose/5 text-rose text-sm">

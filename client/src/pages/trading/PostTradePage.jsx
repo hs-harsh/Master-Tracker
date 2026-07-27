@@ -1,15 +1,9 @@
 import { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
-import { TrendingUp, BarChart2, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import {
   ComposedChart, Area, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import api from '../../lib/api';
-
-const SUB_TABS = [
-  { to: '/live-trading/backtest',   label: 'Backtest',   icon: TrendingUp },
-  { to: '/live-trading/post-trade', label: 'Post-Trade', icon: BarChart2  },
-];
 
 function fmtPct(v) {
   if (v == null) return '—';
@@ -67,20 +61,6 @@ export default function PostTradePage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Sub-tabs */}
-      <div className="flex items-center gap-1 px-4 pt-4 pb-0 shrink-0">
-        {SUB_TABS.map(({ to, label, icon: Icon }) => (
-          <NavLink key={to} to={to}
-            className={({ isActive }) =>
-              `flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-body transition-all border-b-2 ${
-                isActive ? 'text-accent border-accent bg-accent/5' : 'text-muted border-transparent hover:text-soft'
-              }`}>
-            <Icon size={15} />{label}
-          </NavLink>
-        ))}
-      </div>
-      <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} className="shrink-0" />
-
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar */}
         <div className="w-56 shrink-0 border-r border-white/5 overflow-y-auto p-3 space-y-4">
@@ -209,11 +189,11 @@ export default function PostTradePage() {
 
               {/* Tabs */}
               <div className="card overflow-hidden">
-                <div className="flex border-b border-white/8">
+                <div className="flex border-b border-hairline/10">
                   {[['trades','All Trades'], ['positions','Positions'], ['stats','Stats']].map(([key, label]) => (
                     <button key={key} onClick={() => setActiveTab(key)}
                       className={`px-4 py-3 text-xs font-mono transition-colors border-b-2 -mb-px ${
-                        activeTab === key ? 'text-accent border-accent' : 'text-muted border-transparent hover:text-soft'
+                        activeTab === key ? 'text-text font-semibold border-text' : 'text-muted border-transparent hover:text-soft'
                       }`}>{label}</button>
                   ))}
                 </div>

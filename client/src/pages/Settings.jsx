@@ -3,6 +3,7 @@ import api from '../lib/api';
 import { Save, Trash2, UserPlus, X, Mail } from 'lucide-react';
 import { applyTheme } from '../lib/theme';
 import { useAuth } from '../hooks/useAuth';
+import PageHeader from '../components/PageHeader';
 
 const THEME_MODES = ['dark', 'light'];
 const ACCENT_OPTIONS = [
@@ -164,11 +165,8 @@ export default function Settings() {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-      <div>
-        <h1 className="type-display-lg">Settings</h1>
-        <p className="text-muted text-sm mt-0.5">Manage profiles, sheet links and appearance.</p>
-      </div>
+    <div className="stack-section">
+      <PageHeader title="Settings" eyebrow="Manage profiles, sheet links and appearance" />
 
       {/* ── 1. People ── */}
       <div className="card max-w-2xl">

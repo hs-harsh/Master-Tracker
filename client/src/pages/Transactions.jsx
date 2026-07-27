@@ -4,6 +4,7 @@ import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown } from 'lucide-react';
 import AiEntryPanel, { AiEditPanel } from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
+import PageHeader from '../components/PageHeader';
 
 const TYPES = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
 
@@ -195,13 +196,11 @@ export default function Transactions() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="type-display-lg">{currentPerson ? `${currentPerson}'s Transactions` : 'Transactions'}</h1>
-          <p className="text-muted text-sm mt-0.5">All income, major, non-recurring & trip expenses</p>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
+    <div className="stack">
+      <PageHeader
+        title={currentPerson ? `${currentPerson}'s Transactions` : 'Transactions'}
+        eyebrow="All income, major, non-recurring & trip expenses"
+        actions={<>
           {selectedIds.size > 0 && (
             <button onClick={handleDeleteSelected} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-rose/10 text-rose border border-rose/20 hover:bg-rose/20 transition-colors">
               <Trash2 size={14} /> Delete {selectedIds.size} selected
@@ -213,8 +212,8 @@ export default function Transactions() {
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary flex items-center gap-2">
             <Plus size={14} /> Add Transaction
           </button>
-        </div>
-      </div>
+        </>}
+      />
 
       <AiEntryPanel type="transactions" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
       <AiEditPanel type="transactions" persons={persons.length ? persons : [personName]} onEdit={handleAiEdit} />

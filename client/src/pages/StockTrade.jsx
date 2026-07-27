@@ -3,6 +3,7 @@ import { XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, AreaChart, A
 import api from '../lib/api';
 import { Loader2, Search, X, TrendingUp, FileText, Trash2, BarChart3 } from 'lucide-react';
 import ReportModal from '../components/ReportModal';
+import PageHeader from '../components/PageHeader';
 
 const WATCHLIST_KEY = 'stockTradeWatchlist';
 
@@ -449,15 +450,12 @@ export default function StockTrade() {
   }, [mergePriceData]);
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+    <div className="stack">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
-        <div className="min-w-0">
-          <h1 className="type-display-lg truncate">Stock Trade</h1>
-          <p className="text-muted text-xs sm:text-sm mt-0.5">
-            Search Indian & US stocks, build your watchlist, and get AI analysis.
-          </p>
-        </div>
+      <PageHeader
+        title="Stock Trade"
+        eyebrow="Watchlist & AI stock analysis"
+        actions={<>
         {watchlist.length > 0 && (
           <button
             type="button"
@@ -467,7 +465,12 @@ export default function StockTrade() {
             <Trash2 size={14} /> Clear watchlist
           </button>
         )}
-      </div>
+        </>}
+      />
+
+      <p className="type-body-sm text-muted max-w-2xl">
+        Search Indian &amp; US stocks, build your watchlist, and get AI analysis.
+      </p>
 
       {/* Search */}
       <div className="card">
