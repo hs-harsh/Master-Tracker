@@ -571,7 +571,7 @@ export default function ExpenseAnalyser() {
   if (!persons.length) {
     return (
       <div className="space-y-4 sm:space-y-6">
-        <h1 className="font-display text-2xl font-bold text-white">Expense Analyser</h1>
+        <h1 className="type-display-lg">Expense Analyser</h1>
         <div className="card max-w-lg">
           <p className="text-soft text-sm mb-4">Add people under Settings → People first. Upload slots per profile are set there too.</p>
           <button type="button" className="btn-primary text-sm" onClick={() => fetchPersons?.()}>
@@ -585,7 +585,7 @@ export default function ExpenseAnalyser() {
   return (
     <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="font-display text-2xl font-bold text-white">Expense Analyser</h1>
+        <h1 className="type-display-lg">Expense Analyser</h1>
         <p className="text-muted text-sm mt-0.5">
           Upload bank or credit card PDFs (password-supported). AI categorises spend into cashflow-style buckets, then compile a household summary.
           Saved report persists after refresh — change upload slots per profile in Settings.
@@ -1161,7 +1161,7 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-white">Household report</h1>
+          <h1 className="type-display-lg">Household report</h1>
           <p className="text-muted text-sm mt-0.5">
             {s.month ? `${s.month} · ` : ''}
             {s.statementsAnalyzed || results.length} statements · {transactions.length} transactions

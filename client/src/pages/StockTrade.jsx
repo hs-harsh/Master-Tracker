@@ -453,7 +453,7 @@ export default function StockTrade() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0">
-          <h1 className="font-display text-xl sm:text-2xl font-bold text-white truncate">Stock Trade</h1>
+          <h1 className="type-display-lg truncate">Stock Trade</h1>
           <p className="text-muted text-xs sm:text-sm mt-0.5">
             Search Indian & US stocks, build your watchlist, and get AI analysis.
           </p>

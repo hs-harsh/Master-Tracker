@@ -723,7 +723,7 @@ export default function WellnessHabits() {
       {/* page header + view toggle */}
       <div className="flex flex-wrap items-start justify-between gap-3 fade-up">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight">
+          <h1 className="type-display-lg">
             {currentPerson ? `${currentPerson}'s Habits` : 'Habits'}
           </h1>
           <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Weekly habit tracker & analytics</p>

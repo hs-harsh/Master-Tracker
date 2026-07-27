@@ -1009,7 +1009,7 @@ export default function WellnessMeals() {
 
       <div className="flex flex-wrap items-start justify-between gap-3 fade-up">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight">
+          <h1 className="type-display-lg">
             {currentPerson ? `${currentPerson}'s Meals` : 'Meals'}
           </h1>
           <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Weekly meal planner</p>

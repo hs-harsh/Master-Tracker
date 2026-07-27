@@ -36,7 +36,7 @@ function HeroCard({ label, value, sub, trend }) {
   return (
     <div className="card-hero fade-up">
       <p className="stat-label mb-3">{label}</p>
-      <p className="stat-hero glow-gold">{value}</p>
+      <p className="stat-hero glow-accent">{value}</p>
       {sub != null && sub !== '' && (
         <div className={`flex items-center gap-1 mt-2 text-xs font-mono ${tc}`}>
           <Icon size={12} /><span>{sub}</span>
@@ -303,7 +303,7 @@ function RangePills({ range, setRange }) {
       {RANGES.map(r => (
         <button key={r} onClick={() => setRange(r)}
           className={`px-3 py-1 rounded-md text-xs font-mono font-semibold transition-all
-            ${range === r ? 'bg-accent text-ink shadow-glow-gold' : 'text-muted hover:text-white'}`}>
+            ${range === r ? 'bg-accent text-ink shadow-glow-accent' : 'text-muted hover:text-white'}`}>
           {r}
         </button>
       ))}
@@ -547,7 +547,7 @@ export default function Dashboard() {
     <div className="space-y-5 sm:space-y-6">
       {/* Header */}
       <div className="fade-up">
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight">Dashboard</h1>
+        <h1 className="type-display-lg">Dashboard</h1>
         <p className="text-muted text-xs mt-1 uppercase tracking-widest font-mono">Financial health overview</p>
       </div>
 

@@ -142,11 +142,11 @@ export default function Layout() {
             <div
               className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
               style={{
-                background: 'linear-gradient(135deg, #f0c040, #c9a030)',
-                boxShadow: '0 0 16px rgba(240,192,64,0.30)',
+                background: 'linear-gradient(135deg, rgb(var(--accent-rgb)), rgb(var(--accent-dim-rgb)))',
+                boxShadow: '0 0 16px rgb(var(--accent-rgb) / 0.30)',
               }}
             >
-              <span className="text-ink font-display font-black text-[10px] tracking-tight">
+              <span className="text-ink font-display font-bold text-[10px] tracking-tight">
                 H·K
               </span>
             </div>
@@ -180,7 +180,7 @@ export default function Layout() {
                   key={p}
                   onClick={() => setActivePerson(p)}
                   className={`flex-1 px-2 py-1.5 rounded-full text-xs font-display font-bold transition-all
-                    ${activePerson === p ? 'bg-accent text-ink shadow-glow-gold' : 'text-soft hover:text-white'}`}
+                    ${activePerson === p ? 'bg-accent text-ink shadow-glow-accent' : 'text-soft hover:text-white'}`}
                 >
                   {p}
                 </button>
@@ -543,11 +543,11 @@ export default function Layout() {
             <div
               className="w-7 h-7 rounded-lg flex items-center justify-center"
               style={{
-                background: 'linear-gradient(135deg, #f0c040, #c9a030)',
-                boxShadow: '0 0 12px rgba(240,192,64,0.25)',
+                background: 'linear-gradient(135deg, rgb(var(--accent-rgb)), rgb(var(--accent-dim-rgb)))',
+                boxShadow: '0 0 12px rgb(var(--accent-rgb) / 0.25)',
               }}
             >
-              <span className="text-ink font-display font-black text-[9px]">H·K</span>
+              <span className="text-ink font-display font-bold text-[9px]">H·K</span>
             </div>
             <span className="font-display font-bold text-white text-sm tracking-tight">
               InvestTrack
@@ -559,7 +559,7 @@ export default function Layout() {
               {persons.map(p => (
                 <button key={p} onClick={() => setActivePerson(p)}
                   className={`px-3 py-1 rounded-full text-[11px] font-display font-bold transition-all
-                    ${activePerson === p ? 'bg-accent text-ink shadow-glow-gold' : 'text-muted hover:text-white'}`}>
+                    ${activePerson === p ? 'bg-accent text-ink shadow-glow-accent' : 'text-muted hover:text-white'}`}>
                   {p}
                 </button>
               ))}

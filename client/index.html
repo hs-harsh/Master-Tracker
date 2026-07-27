@@ -10,9 +10,12 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <title>InvestTrack</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- Self-hosted fonts (see client/src/fonts.css). All four faces are above
+         the fold on every route, so all four are preloaded. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/outfit-latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/inter-latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/jetbrains-mono-latin.woff2" />
+    <link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/rupee.woff2" />
   </head>
   <body>
     <div id="root"></div>

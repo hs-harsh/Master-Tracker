@@ -224,7 +224,7 @@ export default function Portfolio() {
       <div className="space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="font-display text-2xl font-bold text-white">
+            <h1 className="type-display-lg">
               {currentPerson ? `${currentPerson}'s Portfolio` : 'Goal Portfolio'}
             </h1>
             <p className="text-muted text-sm mt-0.5">View by account and filter by goal</p>

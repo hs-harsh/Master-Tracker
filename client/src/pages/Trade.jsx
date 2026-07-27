@@ -447,7 +447,7 @@ export default function Trade() {
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0">
-          <h1 className="font-display text-xl sm:text-2xl font-bold text-white truncate">Trade Ideas</h1>
+          <h1 className="type-display-lg truncate">Trade Ideas</h1>
           <p className="text-muted text-xs sm:text-sm mt-0.5">
             Technical analysis and buy-the-dip ideas for indices and metals. Uses AI (Claude). Set API key in Settings.
           </p>

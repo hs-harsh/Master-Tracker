@@ -141,7 +141,7 @@ export default function Admin() {
             <Shield size={22} className="text-amber-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-text">Admin Dashboard</h1>
+            <h1 className="type-display-lg">Admin Dashboard</h1>
             <p className="text-sm text-muted">Signed in as {personName}</p>
           </div>
         </div>

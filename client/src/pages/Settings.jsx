@@ -166,7 +166,7 @@ export default function Settings() {
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div>
-        <h1 className="font-display text-2xl font-bold text-white">Settings</h1>
+        <h1 className="type-display-lg">Settings</h1>
         <p className="text-muted text-sm mt-0.5">Manage profiles, sheet links and appearance.</p>
       </div>
 

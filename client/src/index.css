@@ -13,6 +13,11 @@
     letter-spacing: 0.01em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* No faux bold/italic. The shipped variable ranges cover every weight the
+       app asks for, so a synthesized weight would mean a real bug — this makes
+       it visible instead of papering over it. */
+    font-synthesis-weight: none;
+    font-synthesis-style: none;
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }
@@ -37,35 +42,48 @@
     box-shadow: 0 4px 32px rgba(0, 0, 0, 0.45);
     transition: box-shadow 0.25s ease, border-color 0.25s ease;
   }
-  .card:hover {
-    border-color: rgba(255, 255, 255, 0.10);
-    box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
+  /* Component hover states are gated the same way Tailwind's `hover:` utilities
+     are (see `hoverOnlyWhenSupported` in tailwind.config.js) — on a touch
+     screen these otherwise latch on after a tap and stay until you tap
+     elsewhere. .btn-primary's translateY is the most obvious offender. */
+  @media (hover: hover) and (pointer: fine) {
+    .card:hover {
+      border-color: rgba(255, 255, 255, 0.10);
+      box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
+    }
   }
 
   /* Hero card — used for primary financial figures */
   .card-hero {
     @apply rounded-2xl p-6;
-    background: linear-gradient(135deg, rgba(240,192,64,0.07) 0%, rgba(240,192,64,0.01) 50%, rgba(13,15,20,0.98) 100%);
-    border: 1px solid rgba(240, 192, 64, 0.15);
-    box-shadow: 0 0 0 1px rgba(240, 192, 64, 0.06), 0 8px 40px rgba(0, 0, 0, 0.5);
+    background: linear-gradient(135deg, rgb(var(--accent-rgb) / 0.07) 0%, rgb(var(--accent-rgb) / 0.01) 50%, rgba(13,15,20,0.98) 100%);
+    border: 1px solid rgb(var(--accent-rgb) / 0.15);
+    box-shadow: 0 0 0 1px rgb(var(--accent-rgb) / 0.06), 0 8px 40px rgba(0, 0, 0, 0.5);
     transition: box-shadow 0.25s ease, border-color 0.25s ease;
   }
-  .card-hero:hover {
-    border-color: rgba(240, 192, 64, 0.22);
-    box-shadow: 0 0 0 1px rgba(240, 192, 64, 0.10), 0 12px 56px rgba(0, 0, 0, 0.65), 0 0 40px rgba(240, 192, 64, 0.06);
+  @media (hover: hover) and (pointer: fine) {
+    .card-hero:hover {
+      border-color: rgb(var(--accent-rgb) / 0.22);
+      box-shadow: 0 0 0 1px rgb(var(--accent-rgb) / 0.10), 0 12px 56px rgba(0, 0, 0, 0.65), 0 0 40px rgb(var(--accent-rgb) / 0.06);
+    }
   }
 
   /* ── Buttons ──────────────────────────────────────────────────────────────── */
   .btn-primary {
-    @apply bg-accent text-ink font-display font-bold px-5 py-2.5 rounded-full text-sm transition-all;
+    @apply bg-accent font-display font-bold px-5 py-2.5 rounded-full text-sm transition-all;
+    /* Foreground is per-accent: every accent takes ink except rose, which is
+       dark enough to need white. */
+    color: var(--accent-fg);
     min-height: 44px;
-    box-shadow: 0 0 20px rgba(240, 192, 64, 0.20), 0 2px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 0 20px rgb(var(--accent-rgb) / 0.20), 0 2px 8px rgba(0,0,0,0.3);
     letter-spacing: 0.01em;
   }
-  .btn-primary:hover {
-    @apply bg-accent-dim;
-    box-shadow: 0 0 32px rgba(240, 192, 64, 0.30), 0 4px 16px rgba(0,0,0,0.4);
-    transform: translateY(-1px);
+  @media (hover: hover) and (pointer: fine) {
+    .btn-primary:hover {
+      @apply bg-accent-dim;
+      box-shadow: 0 0 32px rgb(var(--accent-rgb) / 0.30), 0 4px 16px rgba(0,0,0,0.4);
+      transform: translateY(-1px);
+    }
   }
   .btn-primary:active { transform: translateY(0); }
 
@@ -74,11 +92,12 @@
     min-height: 44px;
     border: 1px solid rgba(255, 255, 255, 0.10);
   }
-  .btn-ghost:hover {
-    @apply text-text;
-    border-color: rgba(240, 192, 64, 0.35);
-    color: #f0c040;
-    background: rgba(240, 192, 64, 0.05);
+  @media (hover: hover) and (pointer: fine) {
+    .btn-ghost:hover {
+      border-color: rgb(var(--accent-rgb) / 0.35);
+      color: rgb(var(--accent-rgb));
+      background: rgb(var(--accent-rgb) / 0.05);
+    }
   }
 
   /* ── Form elements ────────────────────────────────────────────────────────── */
@@ -88,28 +107,98 @@
     font-size: 16px; /* prevents iOS zoom on focus */
   }
   .input:focus {
-    border-color: rgba(240, 192, 64, 0.45);
-    box-shadow: 0 0 0 3px rgba(240, 192, 64, 0.08);
+    border-color: rgb(var(--accent-rgb) / 0.45);
+    box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.08);
   }
 
-  /* ── Typography ───────────────────────────────────────────────────────────── */
-  .label {
-    @apply text-muted text-[10px] font-display uppercase tracking-[0.12em] mb-1.5 block;
+  /* ── Type ramp ────────────────────────────────────────────────────────────────
+     Semantic names; pages should reach for these rather than restating
+     size/weight/tracking. Three tiers:
+
+       .type-display-*  Outfit          — titles
+       .type-body-*     Inter           — prose
+       .stat-* / .mono-data / .label    JetBrains Mono — figures and micro-labels
+
+     Weight 300 on display is used at >=20px ONLY. This app is dark-first, and
+     light-on-dark optically thins strokes; below 20px a 300 Outfit loses its
+     apertures, so .type-display-sm steps up to 500.
+     ─────────────────────────────────────────────────────────────────────────── */
+
+  /* Display — Outfit */
+  .type-display-lg {
+    @apply font-display text-2xl sm:text-3xl text-white;
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .type-display-md {
+    @apply font-display text-xl text-white;
+    font-weight: 300;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+  }
+  .type-display-sm {
+    @apply font-display text-base text-white;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+
+  /* Body — Inter */
+  .type-body    { @apply font-body text-sm;      font-weight: 400; line-height: 1.6; }
+  .type-body-sm { @apply font-body text-[13px];  font-weight: 400; line-height: 1.5; }
+  .type-body-xs { @apply font-body text-xs;      font-weight: 400; line-height: 1.4; }
+
+  /* Mono — JetBrains Mono.
+     Every mono token carries tabular-nums so figures align column-to-column
+     and don't jitter as digits change. */
+
+  /* Hero stat — primary financial figure (net worth, net asset) */
+  .stat-hero {
+    @apply font-mono text-4xl sm:text-5xl text-white;
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 40px rgb(var(--accent-rgb) / 0.20);
   }
 
   /* Standard stat — used in regular cards */
   .stat-value {
-    @apply font-mono text-2xl sm:text-3xl font-light text-white tracking-tight;
+    @apply font-mono text-2xl sm:text-3xl text-white;
+    font-weight: 300;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
   }
 
-  /* Hero stat — for primary financial figure (net worth, net asset) */
-  .stat-hero {
-    @apply font-mono text-4xl sm:text-5xl font-extralight text-white tracking-tight;
-    text-shadow: 0 0 40px rgba(240, 192, 64, 0.20);
+  /* Small stat — secondary figures sitting beside a .stat-value */
+  .stat-sm {
+    @apply font-mono text-base text-white;
+    font-weight: 500;
+    letter-spacing: normal;
+    font-variant-numeric: tabular-nums;
   }
 
+  /* Dense tabular data — table cells, chart axis labels */
+  .mono-data {
+    @apply font-mono text-xs;
+    font-weight: 500;
+    letter-spacing: normal;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Micro-label tier is mono, not display — matches the hand-rolled
+     `font-mono uppercase` eyebrows already in the app. */
+  .label {
+    @apply text-muted text-[10px] font-mono uppercase mb-1.5 block;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    font-variant-numeric: tabular-nums;
+  }
   .stat-label {
-    @apply text-muted text-[10px] font-display uppercase tracking-[0.12em];
+    @apply text-muted text-[10px] font-mono uppercase;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    font-variant-numeric: tabular-nums;
   }
 
   /* ── Tags ─────────────────────────────────────────────────────────────────── */
@@ -126,15 +215,42 @@
   .tag-harsh         { @apply bg-accent/10       text-accent; }
   .tag-kirti         { @apply bg-purple-400/10  text-purple-300; }
 
-  /* ── Number glow — wrap a span in this for ambient glow ──────────────────── */
+  /* ── Number glow — wrap a span in this for ambient glow ────────────────────
+     Use .glow-accent on anything that sits on/next to an accent-coloured
+     element. The three named-colour glows below are for cases that genuinely
+     mean that specific hue regardless of the active accent. */
+  .glow-accent { text-shadow: 0 0 24px rgb(var(--accent-rgb) / 0.35); }
   .glow-gold { text-shadow: 0 0 24px rgba(240, 192, 64, 0.35); }
   .glow-teal { text-shadow: 0 0 20px rgba(45,  212, 191, 0.35); }
   .glow-rose { text-shadow: 0 0 20px rgba(251, 113, 133, 0.35); }
 }
 
-/* ── Chart tooltip global style ───────────────────────────────────────────────
-   Used via recharts contentStyle objects across pages */
+/* ── Design tokens ────────────────────────────────────────────────────────────
+   Dark is the default; [data-theme="light"] below overrides the theme-split
+   ones. Accent values live in the [data-accent] block further down — the
+   defaults here are the gold values, so the app still paints correctly on the
+   first frame, before applyTheme() has run and before data-accent is set.
+   ─────────────────────────────────────────────────────────────────────────── */
 :root {
+  /* Accent (gold defaults; overridden per [data-accent] and by applyTheme) */
+  --accent:         #f0c040;
+  --accent-rgb:     240 192 64;
+  --accent-dim-rgb: 201 160 48;
+  --accent-fg:      #09090e;
+
+  /* Semantic. Gains/losses are theme-split: the dark values are too light to
+     hold contrast on a light background, so light mode uses darker cuts. */
+  --pos-rgb:  52 211 153;   /* emerald-400 */
+  --neg-rgb:  251 113 133;  /* rose-400    */
+
+  /* Chart chrome */
+  --grid-rgb: 30 41 59;     /* slate-800 — gridlines on dark   */
+  --axis-rgb: 71 85 105;    /* slate-600 — axis text/ticks     */
+
+  /* Neutral hairline — the token `border-white/*` migrates to in Phase 5. */
+  --hairline-rgb: 255 255 255;
+
+  /* Chart tooltip — consumed via recharts contentStyle objects across pages */
   --tooltip-bg:     #0f1117;
   --tooltip-border: rgba(255,255,255,0.08);
   --tooltip-radius: 12px;
@@ -142,6 +258,20 @@
 }
 
 /* ── Light theme ──────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  /* Darker cuts — emerald-400/rose-400 wash out on a light background. */
+  --pos-rgb:  4 120 87;     /* emerald-700 */
+  --neg-rgb:  190 18 60;    /* rose-700    */
+
+  --grid-rgb: 226 232 240;  /* slate-200 */
+  --axis-rgb: 100 116 139;  /* slate-500 */
+
+  --hairline-rgb: 15 23 42; /* slate-900, used at low alpha */
+
+  --tooltip-bg:     #ffffff;
+  --tooltip-border: rgba(0,0,0,0.08);
+  --tooltip-shadow: 0 8px 32px rgba(0,0,0,0.12);
+}
 [data-theme="light"] body {
   background: #f0f2f7;
   color: #0f172a;
@@ -155,8 +285,16 @@
   box-shadow: 0 2px 16px rgba(0,0,0,0.07);
 }
 [data-theme="light"] .card-hero {
-  background: linear-gradient(135deg, rgba(240,192,64,0.08) 0%, rgba(255,255,255,1) 100%);
-  border: 1px solid rgba(240,192,64,0.2);
+  background: linear-gradient(135deg, rgb(var(--accent-rgb) / 0.08) 0%, rgba(255,255,255,1) 100%);
+  border: 1px solid rgb(var(--accent-rgb) / 0.2);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.07);
+}
+@media (hover: hover) and (pointer: fine) {
+  [data-theme="light"] .card-hero:hover {
+    border-color: rgb(var(--accent-rgb) / 0.35);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+  }
+  [data-theme="light"] .btn-ghost:hover { color: #0f172a; }
 }
 [data-theme="light"] .border-border { border-color: rgba(0,0,0,0.08); }
 [data-theme="light"] .text-white    { color: #0f172a; }
@@ -168,67 +306,47 @@
   border-color: rgba(0,0,0,0.10);
   color: #0f172a;
 }
+/* Gain/loss contrast in light mode.
+   `text-rose` and friends already follow --neg-rgb via the Tailwind token, but
+   these Tailwind-palette shades are used for the same financial meaning and are
+   far too light on a white card (emerald-400 on #fff is ~1.9:1). Mapping them
+   onto the same semantic tokens keeps gains/losses readable in both themes.
+   This list is bounded and theme-scoped — unlike the per-accent override list
+   this phase deleted, it does not multiply per accent. The full migration to
+   semantic .text-pos / .text-neg classes happens in Phase 5. */
+[data-theme="light"] .text-emerald-400,
+[data-theme="light"] .text-emerald-300,
+[data-theme="light"] .text-emerald-200\/90,
+[data-theme="light"] .text-green-400  { color: rgb(var(--pos-rgb)); }
+[data-theme="light"] .text-red-400,
+[data-theme="light"] .text-red-300,
+[data-theme="light"] .text-rose-400,
+[data-theme="light"] .text-rose-200   { color: rgb(var(--neg-rgb)); }
+
 [data-theme="light"] .btn-ghost { color: #475569; border-color: rgba(0,0,0,0.12); }
-[data-theme="light"] .btn-ghost:hover { color: #0f172a; }
 [data-theme="light"] ::-webkit-scrollbar-track { background: #e4e8f0; }
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: #94a3b8; }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 
-/* ── Accent color overrides ───────────────────────────────────────────────── */
-[data-accent="gold"] .btn-primary { background: #f0c040; color: #09090e; box-shadow: 0 0 20px rgba(240,192,64,0.22); }
-[data-accent="gold"] .btn-primary:hover { background: #c9a030; box-shadow: 0 0 32px rgba(240,192,64,0.32); }
-[data-accent="gold"] .text-accent,  [data-accent="gold"] .hover\:text-accent:hover  { color: #f0c040; }
-[data-accent="gold"] .bg-accent     { background: #f0c040; }
-[data-accent="gold"] .border-accent, [data-accent="gold"] .focus\:border-accent:focus { border-color: #f0c040; }
-[data-accent="gold"] .bg-accent\/10 { background: rgba(240,192,64,0.10); }
-[data-accent="gold"] .bg-accent\/5  { background: rgba(240,192,64,0.05); }
-[data-accent="gold"] .border-accent\/20 { border-color: rgba(240,192,64,0.20); }
-[data-accent="gold"] .border-accent\/30 { border-color: rgba(240,192,64,0.30); }
-[data-accent="gold"] .card-hero { background: linear-gradient(135deg, rgba(240,192,64,0.07) 0%, rgba(13,15,20,0.98) 100%); border-color: rgba(240,192,64,0.15); }
+/* ── Accent tokens ────────────────────────────────────────────────────────────
+   One line per accent. Everything else — every `*-accent` utility at every
+   opacity, in every variant (hover:, focus:, group-hover:, arbitrary values
+   like bg-accent/[0.07]) — falls out of the Tailwind token in
+   tailwind.config.js, which compiles to rgb(var(--accent-rgb) / <alpha>).
 
-[data-accent="teal"] .btn-primary { background: #2dd4bf; color: #09090e; box-shadow: 0 0 20px rgba(45,212,191,0.22); }
-[data-accent="teal"] .btn-primary:hover { background: #14b8a6; box-shadow: 0 0 32px rgba(45,212,191,0.32); }
-[data-accent="teal"] .text-accent,  [data-accent="teal"] .hover\:text-accent:hover  { color: #2dd4bf; }
-[data-accent="teal"] .bg-accent     { background: #2dd4bf; }
-[data-accent="teal"] .border-accent, [data-accent="teal"] .focus\:border-accent:focus { border-color: #2dd4bf; }
-[data-accent="teal"] .bg-accent\/10 { background: rgba(45,212,191,0.10); }
-[data-accent="teal"] .bg-accent\/5  { background: rgba(45,212,191,0.05); }
-[data-accent="teal"] .border-accent\/20 { border-color: rgba(45,212,191,0.20); }
-[data-accent="teal"] .border-accent\/30 { border-color: rgba(45,212,191,0.30); }
-[data-accent="teal"] .card-hero { background: linear-gradient(135deg, rgba(45,212,191,0.07) 0%, rgba(13,15,20,0.98) 100%); border-color: rgba(45,212,191,0.15); }
-
-[data-accent="blue"] .btn-primary { background: #60a5fa; color: #09090e; box-shadow: 0 0 20px rgba(96,165,250,0.22); }
-[data-accent="blue"] .btn-primary:hover { background: #3b82f6; box-shadow: 0 0 32px rgba(96,165,250,0.32); }
-[data-accent="blue"] .text-accent,  [data-accent="blue"] .hover\:text-accent:hover  { color: #60a5fa; }
-[data-accent="blue"] .bg-accent     { background: #60a5fa; }
-[data-accent="blue"] .border-accent, [data-accent="blue"] .focus\:border-accent:focus { border-color: #60a5fa; }
-[data-accent="blue"] .bg-accent\/10 { background: rgba(96,165,250,0.10); }
-[data-accent="blue"] .bg-accent\/5  { background: rgba(96,165,250,0.05); }
-[data-accent="blue"] .border-accent\/20 { border-color: rgba(96,165,250,0.20); }
-[data-accent="blue"] .border-accent\/30 { border-color: rgba(96,165,250,0.30); }
-[data-accent="blue"] .card-hero { background: linear-gradient(135deg, rgba(96,165,250,0.07) 0%, rgba(13,15,20,0.98) 100%); border-color: rgba(96,165,250,0.15); }
-
-[data-accent="purple"] .btn-primary { background: #a78bfa; color: #09090e; box-shadow: 0 0 20px rgba(167,139,250,0.22); }
-[data-accent="purple"] .btn-primary:hover { background: #8b5cf6; box-shadow: 0 0 32px rgba(167,139,250,0.32); }
-[data-accent="purple"] .text-accent,  [data-accent="purple"] .hover\:text-accent:hover  { color: #a78bfa; }
-[data-accent="purple"] .bg-accent     { background: #a78bfa; }
-[data-accent="purple"] .border-accent, [data-accent="purple"] .focus\:border-accent:focus { border-color: #a78bfa; }
-[data-accent="purple"] .bg-accent\/10 { background: rgba(167,139,250,0.10); }
-[data-accent="purple"] .bg-accent\/5  { background: rgba(167,139,250,0.05); }
-[data-accent="purple"] .border-accent\/20 { border-color: rgba(167,139,250,0.20); }
-[data-accent="purple"] .border-accent\/30 { border-color: rgba(167,139,250,0.30); }
-[data-accent="purple"] .card-hero { background: linear-gradient(135deg, rgba(167,139,250,0.07) 0%, rgba(13,15,20,0.98) 100%); border-color: rgba(167,139,250,0.15); }
-
-[data-accent="rose"] .btn-primary { background: #fb7185; color: #fff; box-shadow: 0 0 20px rgba(251,113,133,0.22); }
-[data-accent="rose"] .btn-primary:hover { background: #f43f5e; box-shadow: 0 0 32px rgba(251,113,133,0.32); }
-[data-accent="rose"] .text-accent,  [data-accent="rose"] .hover\:text-accent:hover  { color: #fb7185; }
-[data-accent="rose"] .bg-accent     { background: #fb7185; }
-[data-accent="rose"] .border-accent, [data-accent="rose"] .focus\:border-accent:focus { border-color: #fb7185; }
-[data-accent="rose"] .bg-accent\/10 { background: rgba(251,113,133,0.10); }
-[data-accent="rose"] .bg-accent\/5  { background: rgba(251,113,133,0.05); }
-[data-accent="rose"] .border-accent\/20 { border-color: rgba(251,113,133,0.20); }
-[data-accent="rose"] .border-accent\/30 { border-color: rgba(251,113,133,0.30); }
-[data-accent="rose"] .card-hero { background: linear-gradient(135deg, rgba(251,113,133,0.07) 0%, rgba(13,15,20,0.98) 100%); border-color: rgba(251,113,133,0.15); }
+   This replaces a hand-maintained list of 9 utility class names per accent.
+   That list could only ever cover the exact class strings someone remembered
+   to add: the plain 5%-opacity background was on it, but the same utility
+   behind a hover variant is a different class name and was not, so it stayed
+   gold under every other accent. Roughly 59 call sites were wrong that way.
+   Do not reintroduce per-utility overrides here; if an accent-tinted style is
+   missing, fix it at the token.
+   ─────────────────────────────────────────────────────────────────────────── */
+[data-accent="gold"]   { --accent-rgb: 240 192 64;  --accent-dim-rgb: 201 160 48; --accent-fg: #09090e; }
+[data-accent="teal"]   { --accent-rgb: 45 212 191;  --accent-dim-rgb: 20 184 166; --accent-fg: #09090e; }
+[data-accent="blue"]   { --accent-rgb: 96 165 250;  --accent-dim-rgb: 59 130 246; --accent-fg: #09090e; }
+[data-accent="purple"] { --accent-rgb: 167 139 250; --accent-dim-rgb: 139 92 246; --accent-fg: #09090e; }
+[data-accent="rose"]   { --accent-rgb: 251 113 133; --accent-dim-rgb: 244 63 94;  --accent-fg: #ffffff; }
 
 /* ── Scrollbar ────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 4px; height: 4px; }
@@ -253,12 +371,12 @@
   100% { background-position:  200% center; }
 }
 .shimmer {
-  background: linear-gradient(90deg, transparent 0%, rgba(240,192,64,0.12) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgb(var(--accent-rgb) / 0.12) 50%, transparent 100%);
   background-size: 200% auto;
   animation: shimmer 2.5s linear infinite;
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0   rgba(240, 192, 64, 0); }
-  50%       { box-shadow: 0 0 0 8px rgba(240, 192, 64, 0.06); }
+  0%, 100% { box-shadow: 0 0 0 0   rgb(var(--accent-rgb) / 0); }
+  50%       { box-shadow: 0 0 0 8px rgb(var(--accent-rgb) / 0.06); }
 }
