@@ -179,14 +179,15 @@ export default function Layout() {
             style={{ borderBottom: '1px solid rgb(var(--hairline-rgb) / 0.08)' }}
           >
             <p className="text-[10px] text-muted/50 uppercase tracking-widest font-mono mb-2 px-1">Profile</p>
-            <div className="flex gap-1.5 p-1 rounded-full"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            {/* Inline rgba here was white-on-white in light theme, so the track
+                the pills sit in vanished and only the active pill was visible. */}
+            <div className="flex gap-1.5 p-1 rounded-full bg-hairline/[0.06] border border-hairline/10">
               {persons.map(p => (
                 <button
                   key={p}
                   onClick={() => setActivePerson(p)}
                   className={`flex-1 px-2 py-1.5 rounded-full text-xs font-display font-bold transition-all min-h-[44px]
-                    ${activePerson === p ? 'bg-accent text-accent-fg shadow-glow-accent' : 'text-soft hover:text-white'}`}
+                    ${activePerson === p ? 'bg-accent text-accent-fg shadow-glow-accent' : 'text-soft bg-hairline/[0.06] hover:bg-hairline/15 hover:text-text'}`}
                 >
                   {p}
                 </button>
@@ -568,7 +569,7 @@ export default function Layout() {
               {persons.map(p => (
                 <button key={p} onClick={() => setActivePerson(p)}
                   className={`px-3 py-1 rounded-full text-[11px] font-display font-bold transition-all min-h-[44px]
-                    ${activePerson === p ? 'bg-accent text-accent-fg shadow-glow-accent' : 'text-muted hover:text-white'}`}>
+                    ${activePerson === p ? 'bg-accent text-accent-fg shadow-glow-accent' : 'text-muted bg-hairline/[0.06] hover:bg-hairline/15 hover:text-text'}`}>
                   {p}
                 </button>
               ))}

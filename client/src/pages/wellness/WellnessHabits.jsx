@@ -537,7 +537,7 @@ export default function WellnessHabits() {
                                 className="p-1 transition-transform hover:scale-110 active:scale-95">
                                 <Star size={12} className={n <= val
                                   ? `fill-current ${ht.color} ${isSav ? 'opacity-60' : ''}`
-                                  : 'text-white/15 hover:text-white/30 transition-colors'} />
+                                  : 'text-hairline/25 hover:text-hairline/40 transition-colors'} />
                               </button>
                             ))}
                           </div>
