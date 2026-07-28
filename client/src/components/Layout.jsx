@@ -616,7 +616,7 @@ export default function Layout() {
       </div>
 
       {/* ── Bottom Section Tab Bar — floating pill (mobile only) ─────── */}
-      {/* overflow-hidden must NOT be set — it kills backdrop-filter in WebKit */}
+      {/* overflow-hidden kills backdrop-filter in WebKit — must not be set */}
       <nav
         className="md:hidden fixed z-30 flex"
         style={{
@@ -624,11 +624,13 @@ export default function Layout() {
           left: '5%',
           right: '5%',
           borderRadius: '20px',
-          background: 'rgba(12, 14, 20, 0.22)',
-          backdropFilter: 'blur(24px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-          border: '1px solid rgba(255,255,255,0.09)',
-          boxShadow: '0 6px 24px rgba(0,0,0,0.22), 0 1px 6px rgba(0,0,0,0.14)',
+          /* surface-rgb adapts to theme: near-white in light, near-black in dark.
+             At 15% opacity the blur does all the visual work in both themes. */
+          background: 'rgb(var(--surface-rgb) / 0.15)',
+          backdropFilter: 'blur(40px) saturate(200%)',
+          WebkitBackdropFilter: 'blur(40px) saturate(200%)',
+          border: '1px solid rgba(255,255,255,0.18)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.15)',
         }}
       >
         {[

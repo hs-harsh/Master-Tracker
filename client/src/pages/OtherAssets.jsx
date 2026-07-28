@@ -925,7 +925,7 @@ export default function OtherAssets() {
 
   return (
     <div className="stack">
-      <PageHeader title="Illiquid Investments" eyebrow="Property, gold & other non-market assets" />
+      <PageHeader title={activePerson ? `${activePerson}'s Illiquid Investments` : 'Illiquid Investments'} eyebrow="Property, gold & other non-market assets" />
 
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

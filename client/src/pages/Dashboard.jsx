@@ -547,7 +547,7 @@ export default function Dashboard() {
 
   return (
     <div className="stack">
-      <PageHeader className="fade-up" title="Dashboard" eyebrow="Financial health overview" />
+      <PageHeader className="fade-up" title={currentPerson ? `${currentPerson}'s Dashboard` : 'Dashboard'} eyebrow="Financial health overview" />
 
       <PersonPanel
         person={currentPerson}
