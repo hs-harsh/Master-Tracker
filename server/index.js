@@ -26,7 +26,14 @@ app.use('/api/cashflow', require('./routes/cashflow'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/investments', require('./routes/investments'));
 app.use('/api/expense-analyser', require('./routes/expenseAnalyser'));
-app.use('/api/portfolio', require('./routes/portfolio'));
+// UNMOUNTED — routes/portfolio.js reads, updates and deletes portfolio_holdings
+// with no user scoping, because the table has no user_id column at all. Any
+// signed-in user could read, edit or delete any other user's rows; this was
+// reproduced end to end. Nothing calls it — the Portfolio page builds from
+// /api/investments — and the table is empty, so unmounting closes the hole
+// outright. Re-mounting requires adding user_id to the table and an ownership
+// check on every handler.
+// app.use('/api/portfolio', require('./routes/portfolio'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/chat', require('./routes/finsight'));
 app.use('/api/ai',   require('./routes/aiparse'));
