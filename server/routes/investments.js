@@ -28,23 +28,43 @@ function escapeCsvField(v) {
 }
 
 // ── GET /api/investments/fx-rates — USD/GBP to INR, for converting invested amounts ──
+// Primary: open.er-api.com (free, no auth). Fallback: Yahoo Finance.
 router.get('/fx-rates', auth, async (req, res) => {
   const fxRates = { INR: 1 };
-  const yf = getYf();
-  await Promise.allSettled([
-    (async () => {
-      try {
-        const q = await yf.quote('USDINR=X');
-        if (q?.regularMarketPrice) fxRates.USD = +q.regularMarketPrice.toFixed(4);
-      } catch (_) {}
-    })(),
-    (async () => {
-      try {
-        const q = await yf.quote('GBPINR=X');
-        if (q?.regularMarketPrice) fxRates.GBP = +q.regularMarketPrice.toFixed(4);
-      } catch (_) {}
-    })(),
-  ]);
+
+  // Try open.er-api.com first — free, auth-free, reliable
+  try {
+    const resp = await fetch('https://open.er-api.com/v6/latest/USD', { signal: AbortSignal.timeout(5000) });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.rates?.INR) {
+        fxRates.USD = +data.rates.INR.toFixed(4);
+        if (data.rates?.GBP) fxRates.GBP = +(data.rates.INR / data.rates.GBP).toFixed(4);
+      }
+    }
+  } catch (e) {
+    console.warn('[fx-rates] open.er-api failed:', e.message, '— trying Yahoo Finance');
+  }
+
+  // If primary failed, fall back to Yahoo Finance
+  if (!fxRates.USD) {
+    const yf = getYf();
+    await Promise.allSettled([
+      (async () => {
+        try {
+          const q = await yf.quote('USDINR=X');
+          if (q?.regularMarketPrice) fxRates.USD = +q.regularMarketPrice.toFixed(4);
+        } catch (e) { console.warn('[fx-rates] yf USDINR=X:', e.message); }
+      })(),
+      (async () => {
+        try {
+          const q = await yf.quote('GBPINR=X');
+          if (q?.regularMarketPrice) fxRates.GBP = +q.regularMarketPrice.toFixed(4);
+        } catch (e) { console.warn('[fx-rates] yf GBPINR=X:', e.message); }
+      })(),
+    ]);
+  }
+
   res.json(fxRates);
 });
 
