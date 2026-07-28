@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { CheckSquare, Utensils, Dumbbell } from 'lucide-react';
 import SubTabBar from './SubTabBar';
+import MobileSectionSwitcher from './MobileSectionSwitcher';
 
 /**
  * The one declaration of the wellness sub-nav. It used to be copy-pasted as a
@@ -16,6 +17,7 @@ const WELLNESS_TABS = [
 export default function WellnessLayout() {
   return (
     <div className="stack">
+      <MobileSectionSwitcher />
       <SubTabBar tabs={WELLNESS_TABS} />
       <Outlet />
     </div>
