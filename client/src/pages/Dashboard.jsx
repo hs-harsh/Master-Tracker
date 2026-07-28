@@ -301,24 +301,23 @@ function RangePills({ range, setRange }) {
 }
 
 // ── Full person panel ─────────────────────────────────────────────────────────
-function PersonPanel({ person, cashflowData, investments, fxRates }) {
+function PersonPanel({ person, cashflowData, investments, otherAssets, fxRates }) {
   const [range, setRangeRaw] = useState(() => localStorage.getItem(FINANCE_RANGE_KEY) || '1Y');
   const setRange = (r) => { setRangeRaw(r); localStorage.setItem(FINANCE_RANGE_KEY, r); };
   const color   = colorFor(person);
   const latest  = cashflowData[cashflowData.length - 1];
-  const prev    = cashflowData[cashflowData.length - 2];
 
-  // Core numbers
-  const netAsset     = Number(latest?.net_asset || 0);
-  const corpus       = Number(latest?.corpus    || 0);
+  // Core numbers — net asset computed from real data, not a stored field
   const totalInvested = (investments || []).reduce(
     (s, inv) => s + (inv.side === 'SELL' ? -toINR(inv, fxRates) : toINR(inv, fxRates)), 0
   );
-  const corpusGap = corpus - totalInvested; // positive = undeployed, negative = investments > corpus (returns!)
+  const oa = otherAssets || [];
+  const illiquidValue = oa.reduce((s, a) => s + Number(a.current_value  || 0), 0);
+  const illiquidLoans = oa.reduce((s, a) => s + Number(a.loan_outstanding || 0), 0);
+  const netAsset      = totalInvested + illiquidValue - illiquidLoans;
 
-  const netAssetTrend = latest && prev
-    ? ((netAsset - Number(prev.net_asset || 0)) / Math.abs(Number(prev.net_asset) || 1)) * 100
-    : 0;
+  const corpus    = Number(latest?.corpus || 0);
+  const corpusGap = corpus - totalInvested;
 
   const latestIncome  = Number(latest?.income || 0) + Number(latest?.other_income || 0);
   const savingsRate   = latestIncome > 0
@@ -391,9 +390,9 @@ function PersonPanel({ person, cashflowData, investments, fxRates }) {
         <div className="col-span-2 lg:col-span-4">
           <HeroCard
             label="Net Asset"
-            value={latest ? fmt(netAsset) : '—'}
-            sub={`${netAssetTrend >= 0 ? '+' : ''}${netAssetTrend.toFixed(1)}% MoM`}
-            trend={netAssetTrend}
+            value={fmt(netAsset)}
+            sub={`${fmt(totalInvested)} liquid + ${fmt(illiquidValue - illiquidLoans)} illiquid`}
+            trend={netAsset > 0 ? 1 : 0}
           />
         </div>
         <StatCard
@@ -507,10 +506,11 @@ function PersonPanel({ person, cashflowData, investments, fxRates }) {
 /* ── Dashboard page ──────────────────────────────────────────────────────── */
 export default function Dashboard() {
   const { personName, persons, activePerson, setActivePerson, token } = useAuth();
-  const [cashflowMap, setCashflowMap]   = useState({});
+  const [cashflowMap, setCashflowMap]       = useState({});
   const [investmentsMap, setInvestmentsMap] = useState({});
-  const [loading, setLoading]           = useState(true);
-  const [fxRates, setFxRates]           = useState({ INR: 1 });
+  const [otherAssetsMap, setOtherAssetsMap] = useState({});
+  const [loading, setLoading]               = useState(true);
+  const [fxRates, setFxRates]               = useState({ INR: 1 });
 
   const currentPerson = activePerson || personName;
 
@@ -522,14 +522,20 @@ export default function Dashboard() {
         Promise.all([
           api.get(`/cashflow?person=${p}`),
           api.get(`/investments?account=${p}`),
-        ]).then(([cf, inv]) => ({ person: p, cashflow: cf.data, investments: inv.data }))
+          api.get(`/other-assets?account=${encodeURIComponent(p)}`).catch(() => ({ data: [] })),
+        ]).then(([cf, inv, oa]) => ({ person: p, cashflow: cf.data, investments: inv.data, otherAssets: oa.data }))
       )
     )
       .then(results => {
-        const cfMap = {}, invMap = {};
-        results.forEach(r => { cfMap[r.person] = r.cashflow; invMap[r.person] = r.investments; });
+        const cfMap = {}, invMap = {}, oaMap = {};
+        results.forEach(r => {
+          cfMap[r.person]  = r.cashflow;
+          invMap[r.person] = r.investments;
+          oaMap[r.person]  = r.otherAssets;
+        });
         setCashflowMap(cfMap);
         setInvestmentsMap(invMap);
+        setOtherAssetsMap(oaMap);
       })
       .finally(() => setLoading(false));
   }, [persons]);
@@ -558,6 +564,7 @@ export default function Dashboard() {
         person={currentPerson}
         cashflowData={cashflowMap[currentPerson] || []}
         investments={investmentsMap[currentPerson] || []}
+        otherAssets={otherAssetsMap[currentPerson] || []}
         fxRates={fxRates}
       />
     </div>
