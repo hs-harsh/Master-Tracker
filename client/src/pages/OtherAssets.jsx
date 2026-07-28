@@ -382,7 +382,6 @@ function DetailModal({ asset, typeColor, onClose, onEdit }) {
           <div className="flex items-center gap-2 flex-wrap">
             <TypeBadge type={asset.asset_type} color={color} />
             <span className="font-bold text-white">{asset.name}</span>
-            <span className="text-xs text-muted px-2 py-0.5 rounded-full bg-white/5">{asset.account}</span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button onClick={() => { onClose(); onEdit(asset); }}
@@ -689,7 +688,6 @@ function AssetCard({ asset, typeColor, onEdit, onDelete, onDetail, onUpdate, con
           <span className="font-semibold text-white text-sm">{asset.name}</span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <span className="text-xs text-muted px-2 py-0.5 rounded-full bg-white/5">{asset.account}</span>
           <ChevronRight size={14} className="text-muted/50" />
         </div>
       </div>
@@ -758,8 +756,6 @@ export default function OtherAssets() {
   const [detailAsset, setDetailAsset] = useState(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
-  const [typeFilter, setTypeFilter]   = useState('All');
-  const [accountFilter, setAccountFilter] = useState('All');
   const [viewMode, setViewMode]       = useState('card');
   const [sortConfig, setSortConfig]   = useState({ key: 'asset_type', dir: 'asc' });
   const [snapshotSaving, setSnapshotSaving]   = useState(false);
@@ -801,16 +797,9 @@ export default function OtherAssets() {
 
   const getColor = t => typeMap[t]?.color || '#6b7280';
 
-  const filtered = useMemo(() => {
-    let rows = assets;
-    if (typeFilter !== 'All') rows = rows.filter(r => r.asset_type === typeFilter);
-    if (accountFilter !== 'All') rows = rows.filter(r => r.account === accountFilter);
-    return rows;
-  }, [assets, typeFilter, accountFilter]);
-
   const sorted = useMemo(() => {
     const { key, dir } = sortConfig;
-    return [...filtered].sort((a, b) => {
+    return [...assets].sort((a, b) => {
       let av = a[key], bv = b[key];
       if (key === 'net_equity') {
         av = (Number(a.current_value)||0) - (Number(a.loan_outstanding)||0);
@@ -820,7 +809,7 @@ export default function OtherAssets() {
       if (typeof bv === 'string') bv = bv.toLowerCase();
       return av < bv ? (dir === 'asc' ? -1 : 1) : av > bv ? (dir === 'asc' ? 1 : -1) : 0;
     });
-  }, [filtered, sortConfig]);
+  }, [assets, sortConfig]);
 
   const handleSort = key =>
     setSortConfig(p => ({ key, dir: p.key === key && p.dir === 'asc' ? 'desc' : 'asc' }));
@@ -898,7 +887,6 @@ export default function OtherAssets() {
     'Loans': +(Number(s.other_loans) / 100000).toFixed(2),
   }));
 
-  const accounts = useMemo(() => ['All', ...new Set(assets.map(a => a.account))], [assets]);
   const thCls = 'th th-sort px-3 py-2.5';
 
   if (loading) return <div className="text-muted text-sm p-4">Loading…</div>;
@@ -958,21 +946,6 @@ export default function OtherAssets() {
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex gap-1 p-1 rounded-lg bg-hairline/[0.04] border border-hairline/10 flex-wrap">
-          {['All', ...allTypes].map(t => (
-            <button key={t} onClick={() => setTypeFilter(t)}
-              className={`px-3 py-1 rounded text-xs transition-all min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 ${
-                typeFilter === t
-                  ? 'bg-card text-text font-semibold ring-1 ring-inset ring-hairline/15'
-                  : 'text-soft hover:text-text font-medium'
-              }`}>
-              {t}
-            </button>
-          ))}
-        </div>
-        <select value={accountFilter} onChange={e => setAccountFilter(e.target.value)} className="input text-sm py-1.5 w-auto">
-          {accounts.map(a => <option key={a}>{a}</option>)}
-        </select>
         <div className="ml-auto flex gap-1 items-center">
           <button onClick={() => setViewMode('card')} className={`icon-btn p-1.5 rounded ${viewMode === 'card' ? 'text-accent-ink' : 'text-muted hover:text-white'}`}><LayoutGrid size={16} /></button>
           <button onClick={() => setViewMode('table')} className={`icon-btn p-1.5 rounded ${viewMode === 'table' ? 'text-accent-ink' : 'text-muted hover:text-white'}`}><LayoutList size={16} /></button>
