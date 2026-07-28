@@ -490,11 +490,27 @@ function AssetModal({ initial, persons, assetTypes, typeMap, onSave, onCancel })
   const firstType = assetTypes[0] || 'Property';
   const EMPTY = {
     asset_type: firstType, name: '', account: persons[0] || '',
-    current_value: '', loan_outstanding: '', loan_emi: '', loan_interest_rate: '',
+    current_value: '', loan_disbursed: '', loan_outstanding: '',
+    loan_emi: '', loan_interest_rate: '',
     loan_start_date: '', loan_tenure_months: '',
     quantity: '', current_rate: '', notes: '', as_of_date: today(),
     purchase_value: '', // kept for round-trip on edit, not shown
   };
+
+  // Amortisation formula: balance after n months of an EMI loan
+  function calcOutstanding(disbursed, rateAnnual, emi, startDateStr) {
+    const P = Number(disbursed);
+    const r = Number(rateAnnual) / 12 / 100;
+    const e = Number(emi);
+    if (!P || !startDateStr) return '';
+    const start = new Date(startDateStr);
+    const now   = new Date();
+    const n = Math.max(0, (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()));
+    if (n === 0) return P.toFixed(2);
+    if (r === 0) return Math.max(0, P - e * n).toFixed(2);
+    const bal = P * Math.pow(1 + r, n) - (e > 0 ? e * (Math.pow(1 + r, n) - 1) / r : 0);
+    return Math.max(0, bal).toFixed(2);
+  }
 
   const [form, setForm] = useState(() => {
     if (!initial) return EMPTY;
@@ -519,6 +535,11 @@ function AssetModal({ initial, persons, assetTypes, typeMap, onSave, onCancel })
         const qty  = Number(name === 'quantity'     ? value : next.quantity)     || 0;
         const rate = Number(name === 'current_rate' ? value : next.current_rate) || 0;
         if (qty > 0 && rate > 0) next.current_value = (qty * rate).toFixed(2);
+      }
+      // Auto-compute outstanding from disbursed + rate + EMI + start date
+      if (['loan_disbursed', 'loan_interest_rate', 'loan_emi', 'loan_start_date'].includes(name)) {
+        const computed = calcOutstanding(next.loan_disbursed, next.loan_interest_rate, next.loan_emi, next.loan_start_date);
+        if (computed !== '') next.loan_outstanding = computed;
       }
       return next;
     });
@@ -612,9 +633,19 @@ function AssetModal({ initial, persons, assetTypes, typeMap, onSave, onCancel })
                 <span className="text-xs text-muted uppercase tracking-wide">Loan Details</span>
               </div>
               <div>
-                <label className="label">Loan Outstanding</label>
-                <input type="number" name="loan_outstanding" value={form.loan_outstanding} onChange={onChange}
-                  className="input" step="0.01" min="0" />
+                <label className="label">Disbursed Amount</label>
+                <input type="number" name="loan_disbursed" value={form.loan_disbursed} onChange={onChange}
+                  className="input" step="0.01" min="0" placeholder="Original loan amount" />
+              </div>
+              <div>
+                <label className="label">EMI Start Date</label>
+                <input type="date" name="loan_start_date" value={form.loan_start_date} onChange={onChange}
+                  className="input" />
+              </div>
+              <div>
+                <label className="label">Interest Rate % p.a.</label>
+                <input type="number" name="loan_interest_rate" value={form.loan_interest_rate} onChange={onChange}
+                  className="input" step="0.01" min="0" max="100" />
               </div>
               <div>
                 <label className="label">Monthly EMI</label>
@@ -622,19 +653,20 @@ function AssetModal({ initial, persons, assetTypes, typeMap, onSave, onCancel })
                   className="input" step="0.01" min="0" />
               </div>
               <div>
-                <label className="label">Interest Rate %</label>
-                <input type="number" name="loan_interest_rate" value={form.loan_interest_rate} onChange={onChange}
-                  className="input" step="0.01" min="0" max="100" />
-              </div>
-              <div>
                 <label className="label">Tenure (months)</label>
                 <input type="number" name="loan_tenure_months" value={form.loan_tenure_months} onChange={onChange}
                   className="input" step="1" min="1" placeholder="e.g. 240" />
               </div>
               <div className="col-span-2">
-                <label className="label">EMI Start Date</label>
-                <input type="date" name="loan_start_date" value={form.loan_start_date} onChange={onChange}
-                  className="input" />
+                <label className="label">Current Outstanding (auto-computed)</label>
+                <div className="input flex items-center justify-between" style={{ opacity: form.loan_disbursed ? 1 : 0.5 }}>
+                  <span className="font-mono text-white">
+                    {form.loan_outstanding ? fmt2(form.loan_outstanding) : '—'}
+                  </span>
+                  {form.loan_disbursed && form.loan_start_date && (
+                    <span className="text-xs text-muted">computed from disbursed + rate + EMI</span>
+                  )}
+                </div>
               </div>
             </>
           )}
