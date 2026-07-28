@@ -608,7 +608,7 @@ export default function Layout() {
           )}
         </header>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-ink flex flex-col pb-[72px] md:pb-0">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-ink flex flex-col pb-28 md:pb-0">
           <PageContainer>
             <Outlet />
           </PageContainer>
