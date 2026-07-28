@@ -18,7 +18,7 @@ import { NavLink } from 'react-router-dom';
  */
 export default function SubTabBar({ tabs }) {
   return (
-    <div className="flex gap-1 p-1 rounded-xl bg-hairline/[0.04] border border-hairline/10 overflow-x-auto scrollbar-none sm:flex-wrap">
+    <div className="flex gap-1 p-1 rounded-xl bg-hairline/[0.04] border border-hairline/10 sm:flex-wrap">
       {tabs.map(({ to, label, icon: Icon, end }) => (
         <NavLink
           key={to}
@@ -26,7 +26,7 @@ export default function SubTabBar({ tabs }) {
           end={end}
           title={label}
           className={({ isActive }) =>
-            `flex items-center gap-2 px-2.5 sm:px-4 py-2 rounded-lg text-sm font-body transition-all min-h-[44px] shrink-0 ${
+            `flex flex-1 sm:flex-none items-center justify-center sm:justify-start gap-2 sm:px-4 py-2 rounded-lg text-sm font-body transition-all min-h-[44px] ${
               isActive
                 ? 'bg-card text-text font-semibold ring-1 ring-inset ring-hairline/15'
                 : 'text-soft hover:text-text'
