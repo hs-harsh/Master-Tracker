@@ -527,6 +527,15 @@ function MonthModal({ persons, editRow, onClose, onSaved }) {
               </p>
             </div>
           </div>
+
+          {/* Net Asset snapshot */}
+          <div>
+            <p className="text-xs text-muted uppercase tracking-wider mb-1 font-display">Net Asset Snapshot</p>
+            <p className="text-xs text-muted mb-2">
+              Total assets minus all liabilities — shown as the hero metric on Dashboard.
+            </p>
+            <Field label="Net Asset (total assets − loans)" name="net_asset" form={form} setForm={setForm} />
+          </div>
         </div>
 
         <div className="flex gap-2 p-5 border-t border-border">
