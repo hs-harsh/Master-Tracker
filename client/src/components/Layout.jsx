@@ -612,13 +612,6 @@ export default function Layout() {
           <PageContainer>
             <Outlet />
           </PageContainer>
-          {/* Spacer so content scrolls fully above the floating ribbon on mobile.
-              shrink-0 ensures flex-1 siblings can't collapse it.
-              env(safe-area-inset-bottom) accounts for iPhone home-indicator. */}
-          <div
-            className="md:hidden shrink-0"
-            style={{ height: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}
-          />
         </main>
       </div>
 

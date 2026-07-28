@@ -14,7 +14,7 @@
 export default function PageContainer({ children, className = '' }) {
   return (
     <div
-      className={`w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex flex-col flex-1 min-h-0 ${className}`}
+      className={`w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 pb-28 sm:pb-6 flex flex-col flex-1 min-h-0 ${className}`}
     >
       {children}
     </div>
