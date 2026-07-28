@@ -47,7 +47,7 @@ function TxConfirmTable({ entries, setEntries, persons }) {
         </thead>
         <tbody>
           {entries.map((e, i) => (
-            <tr key={i} className="border-b border-border/50 hover:bg-surface/40">
+            <tr key={i} className="border-b border-hairline/15 hover:bg-surface/40">
               <td className="py-2 px-3"><EditCell value={e.date} onChange={v => update(i, 'date', v)} type="date" /></td>
               <td className="py-2 px-3"><EditCell value={e.type} onChange={v => update(i, 'type', v)} options={TX_TYPES} /></td>
               <td className="py-2 px-3"><EditCell value={e.account} onChange={v => update(i, 'account', v)} options={persons} /></td>
@@ -85,7 +85,7 @@ function InvConfirmTable({ entries, setEntries, persons }) {
           {entries.map((e, i) => {
             const ccy = e.currency || 'INR';
             return (
-            <tr key={i} className="border-b border-border/50 hover:bg-surface/40">
+            <tr key={i} className="border-b border-hairline/15 hover:bg-surface/40">
               <td className="py-2 px-3"><EditCell value={e.date} onChange={v => update(i, 'date', v)} type="date" /></td>
               <td className="py-2 px-3"><EditCell value={e.account} onChange={v => update(i, 'account', v)} options={persons} /></td>
               <td className="py-2 px-3"><EditCell value={e.instrument || ''} onChange={v => update(i, 'instrument', v)} /></td>
@@ -134,7 +134,7 @@ function CfConfirmTable({ entries, setEntries, persons }) {
         </thead>
         <tbody>
           {entries.map((e, i) => (
-            <tr key={i} className="border-b border-border/50 hover:bg-surface/40">
+            <tr key={i} className="border-b border-hairline/15 hover:bg-surface/40">
               {COLS.map(([field, , colType]) => (
                 <td key={field} className="py-1.5 px-2">
                   {field === 'person'
@@ -182,12 +182,12 @@ function OperationsTable({ operations, setOperations, type }) {
           {operations.map((op, i) => {
             const orig = op.original;
             return (
-              <tr key={i} className="border-b border-border/50 hover:bg-surface/40 align-top">
+              <tr key={i} className="border-b border-hairline/15 hover:bg-surface/40 align-top">
                 {/* Action badge — compact dot + label */}
                 <td className="py-2.5 px-3 whitespace-nowrap">
                   {op.action === 'delete'
                     ? <span className="inline-flex items-center gap-1 text-rose/80 text-xs font-medium"><span className="w-1.5 h-1.5 rounded-full bg-rose/70 shrink-0" />del</span>
-                    : <span className="inline-flex items-center gap-1 text-accent/80 text-xs font-medium"><span className="w-1.5 h-1.5 rounded-full bg-accent/70 shrink-0" />upd</span>
+                    : <span className="inline-flex items-center gap-1 text-accent-ink/80 text-xs font-medium"><span className="w-1.5 h-1.5 rounded-full bg-accent/70 shrink-0" />upd</span>
                   }
                 </td>
 
@@ -274,7 +274,7 @@ function StageLabel({ stage, stages, bright = false }) {
   const s = stages.find(x => x.key === stage);
   if (!s) return null;
   return (
-    <span className={`text-xs animate-pulse ${bright ? 'text-accent font-medium' : 'text-muted'}`}>{s.label}</span>
+    <span className={`text-xs animate-pulse ${bright ? 'text-accent-ink font-medium' : 'text-muted'}`}>{s.label}</span>
   );
 }
 
@@ -350,10 +350,10 @@ export function AiEditPanel({ type, persons, onEdit }) {
     <div className="card border-violet-500/30 bg-gradient-to-br from-violet-500/5 to-transparent">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between gap-2 text-left"
+        className="w-full flex items-center justify-between gap-2 text-left min-h-[44px]"
       >
         <div className="flex items-center gap-2">
-          <Edit2 size={16} className="text-violet-400" />
+          <Edit2 size={16} className="text-hue-violet" />
           <span className="font-display font-semibold text-white text-sm">Edit with AI</span>
           <span className="text-xs text-muted">— describe changes or deletions, AI previews before applying</span>
         </div>
@@ -403,7 +403,7 @@ export function AiEditPanel({ type, persons, onEdit }) {
               <div className="flex items-center justify-between">
                 <p className="text-sm text-white font-semibold">
                   {delCount > 0 && <><span className="text-rose">{delCount} delete{delCount !== 1 ? 's' : ''}</span>{updCount > 0 ? ' · ' : ''}</>}
-                  {updCount > 0 && <span className="text-accent">{updCount} update{updCount !== 1 ? 's' : ''}</span>}
+                  {updCount > 0 && <span className="text-accent-ink">{updCount} update{updCount !== 1 ? 's' : ''}</span>}
                   <span className="text-muted font-normal"> — review &amp; adjust below, then apply</span>
                 </p>
                 <button onClick={handleReset} className="text-xs text-muted hover:text-white underline">← Change prompt</button>
@@ -579,10 +579,10 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
     <div className="card border-accent/30 bg-gradient-to-br from-accent/5 to-transparent">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between gap-2 text-left"
+        className="w-full flex items-center justify-between gap-2 text-left min-h-[44px]"
       >
         <div className="flex items-center gap-2">
-          <Sparkles size={16} className="text-accent" />
+          <Sparkles size={16} className="text-accent-ink" />
           <span className="font-display font-semibold text-white text-sm">Add with AI</span>
           <span className="text-xs text-muted">
             {canImage ? '— type a description or upload a broker screenshot' : '— describe in plain text, AI creates the entries'}
@@ -600,7 +600,7 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
                 type="button"
                 onClick={() => switchMode('text')}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  mode === 'text' ? 'bg-accent/20 text-accent' : 'text-muted hover:text-white'
+                  mode === 'text' ? 'bg-accent/20 text-accent-ink' : 'text-muted hover:text-white'
                 }`}
               >
                 Type description
@@ -609,7 +609,7 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
                 type="button"
                 onClick={() => switchMode('image')}
                 className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  mode === 'image' ? 'bg-accent/20 text-accent' : 'text-muted hover:text-white'
+                  mode === 'image' ? 'bg-accent/20 text-accent-ink' : 'text-muted hover:text-white'
                 }`}
               >
                 <ImagePlus size={12} />
@@ -659,7 +659,7 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
                       <img src={img.dataUrl} alt={`img-${i+1}`} className="h-20 w-20 object-cover rounded-lg border border-border" />
                       <button
                         onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}
-                        className="absolute -top-1.5 -right-1.5 bg-rose text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="icon-btn absolute -top-1.5 -right-1.5 bg-rose text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                         title="Remove"
                       >
                         <X size={10} />
@@ -714,7 +714,7 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
                   </div>
                   {parsing && (
                     <div className="flex items-center gap-2 rounded-lg bg-accent/10 border border-accent/20 px-3 py-2">
-                      <Loader2 size={13} className="animate-spin text-accent shrink-0" />
+                      <Loader2 size={13} className="animate-spin text-accent-ink shrink-0" />
                       <StageLabel stage={stage} stages={IMAGE_STAGES} bright />
                       <span className="ml-auto text-xs text-muted">This may take ~30s for multiple images</span>
                     </div>

@@ -3,8 +3,9 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, PieChart, Pie, Cell, ScatterChart, Scatter,
 } from 'recharts';
-import { TT, AX, GRID } from '../lib/chartTheme';
+import { TT, AX, GRID, HUE, identityPalette } from '../lib/chartTheme';
 import api from '../lib/api';
+import EmptyState from './EmptyState';
 import { MessageSquare, Loader2, BarChart3, TrendingUp, Plus, X, Wallet } from 'lucide-react';
 
 const TRADE_INSTRUMENTS = [
@@ -133,17 +134,18 @@ function tryParseJson(raw) {
 }
 
 const RECOMMENDATION_COLOR = {
-  GO_AHEAD: 'text-green-400',
-  MODIFY_AMOUNT: 'text-amber-400',
+  GO_AHEAD: 'text-pos',
+  MODIFY_AMOUNT: 'text-hue-amber',
   AVOID: 'text-rose',
-  DEFER: 'text-amber-400',
-  STRONG: 'text-green-400',
-  GOOD: 'text-teal-400',
-  NEEDS_ATTENTION: 'text-amber-400',
+  DEFER: 'text-hue-amber',
+  STRONG: 'text-pos',
+  GOOD: 'text-hue-teal',
+  NEEDS_ATTENTION: 'text-hue-amber',
   REBALANCE: 'text-rose',
 };
 
-const RISK_LEVEL_COLORS = { high: '#f97316', medium: '#fbbf24', low: '#60a5fa' };
+// Same hues as the RISK_COLORS maps in Dashboard and Portfolio.
+const RISK_LEVEL_COLORS = identityPalette({ high: 'orange', medium: 'amber', low: 'blue' });
 
 function RiskReturnScatterChart({ byRiskLevel }) {
   if (!byRiskLevel) return null;
@@ -174,7 +176,7 @@ function RiskReturnScatterChart({ byRiskLevel }) {
                   <div style={TT.contentStyle} className="text-xs">
                     <p className="font-semibold mb-1">{payload[0].payload?.name}</p>
                     <p className="text-soft">Risk: {payload[0].payload?.riskPct}%</p>
-                    <p className="text-accent">Return: {payload[0].payload?.expectedReturnPct}%</p>
+                    <p className="text-accent-ink">Return: {payload[0].payload?.expectedReturnPct}%</p>
                   </div>
                 ) : null
               }
@@ -236,7 +238,9 @@ function CorpusIncrementChart({ byRiskLevel, initialCorpus }) {
   );
 }
 
-const ALLOC_COLORS = { equityPct: '#2dd4bf', debtPct: '#a78bfa', metalPct: '#f0c040', cashPct: '#6b7280' };
+const ALLOC_COLORS = identityPalette({
+  equityPct: 'teal', debtPct: 'violet', metalPct: 'gold', cashPct: 'slate',
+});
 const ALLOC_KEYS = ['equityPct', 'debtPct', 'metalPct', 'cashPct'];
 const ALLOC_LABELS = { equityPct: 'Equity', debtPct: 'Debt', metalPct: 'Metal', cashPct: 'Cash' };
 
@@ -261,7 +265,7 @@ function MiniAllocationPie({ alloc, title }) {
             dataKey="value"
           >
             {data.map((d) => (
-              <Cell key={d.name} fill={ALLOC_COLORS[d.key] || '#6b7280'} />
+              <Cell key={d.name} fill={ALLOC_COLORS[d.key] || HUE.slate} />
             ))}
           </Pie>
           <Tooltip
@@ -374,7 +378,7 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
   return (
     <div className="card">
       <div className="flex items-center gap-2 mb-4">
-        <MessageSquare size={18} className="text-accent" />
+        <MessageSquare size={18} className="text-soft" />
         <h2 className="font-display font-semibold text-white text-lg">Portfolio feedback</h2>
       </div>
 
@@ -386,29 +390,35 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
             <button
               type="button"
               onClick={addRow}
-              className="btn-ghost text-sm flex items-center gap-1.5 text-accent hover:text-accent/80"
+              className="btn-ghost text-sm flex items-center gap-1.5"
             >
               <Plus size={14} /> Add row
             </button>
           </div>
           {tradeRows.length === 0 ? (
-            <p className="text-muted text-sm py-3 px-4 rounded-lg bg-surface/50 border border-border">
-              No trades. Add rows or get insight for general analysis.
-            </p>
+            /* No tinted slab behind this one. It sits inside a card that already
+               provides the surface, so the fill only added a mid-grey panel —
+               and `bg-surface/50` was one of the opacity modifiers that escaped
+               the old light-theme override, so on a light page it computed to a
+               grey block with the title at 2.14:1 on it. The wrapper is gone
+               rather than recoloured: an empty state does not need a second
+               surface inside a card to read as empty. */
+            <EmptyState compact icon={Wallet} title="No trades staged yet"
+              hint="Add a row to test a trade, or ask for insight on your portfolio as it stands." />
           ) : (
             <div className="rounded-xl border border-border overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-surface/60 border-b border-border">
-                    <th className="text-left py-2.5 px-3 text-muted font-display text-xs uppercase tracking-wider w-24">Type</th>
-                    <th className="text-left py-2.5 px-3 text-muted font-display text-xs uppercase tracking-wider">Instrument</th>
-                    <th className="text-left py-2.5 px-3 text-muted font-display text-xs uppercase tracking-wider w-28">Amount (₹)</th>
+                    <th className="th py-2.5 px-3 w-24">Type</th>
+                    <th className="th py-2.5 px-3">Instrument</th>
+                    <th className="th py-2.5 px-3 w-28">Amount (₹)</th>
                     <th className="w-10" />
                   </tr>
                 </thead>
                 <tbody>
                   {tradeRows.map((row, i) => (
-                    <tr key={i} className="border-b border-border/40 last:border-0 hover:bg-surface/30">
+                    <tr key={i} className="border-b border-hairline/15 last:border-0 hover:bg-surface/30">
                       <td className="py-2 px-3">
                         <div className="flex gap-1">
                           {['buy', 'sell'].map((m) => (
@@ -417,7 +427,7 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
                               type="button"
                               onClick={() => updateRow(i, 'mode', m)}
                               className={`px-2 py-1 rounded text-xs font-medium capitalize ${
-                                row.mode === m ? 'bg-accent text-ink' : 'bg-card text-soft hover:text-white'
+                                row.mode === m ? 'bg-accent text-accent-fg' : 'bg-card text-soft hover:text-white'
                               }`}
                             >
                               {m}
@@ -513,20 +523,20 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
                               </div>
                               {(r.expectedReturnPct != null || r.riskPct != null) && (
                                 <div className="flex gap-3 text-xs">
-                                  {r.expectedReturnPct != null && <span className="text-accent">Return: {Number(r.expectedReturnPct).toFixed(1)}%</span>}
-                                  {r.riskPct != null && <span className="text-amber-400">Risk: {Number(r.riskPct).toFixed(1)}%</span>}
+                                  {r.expectedReturnPct != null && <span className="text-accent-ink">Return: {Number(r.expectedReturnPct).toFixed(1)}%</span>}
+                                  {r.riskPct != null && <span className="text-hue-amber">Risk: {Number(r.riskPct).toFixed(1)}%</span>}
                                 </div>
                               )}
                               {r.riskReturnProfile && <p className="text-sm text-soft">{r.riskReturnProfile}</p>}
-                              {r.optimalAmount && <p className="text-sm text-accent font-medium">{r.optimalAmount}</p>}
+                              {r.optimalAmount && <p className="text-sm text-accent-ink font-medium">{r.optimalAmount}</p>}
                             </>
                           ) : (
                             <>
                               <MiniAllocationPie alloc={r.targetAllocation} title="Target allocation" />
                               {(r.expectedReturnPct != null || r.riskPct != null) && (
                                 <div className="flex gap-3 text-xs">
-                                  {r.expectedReturnPct != null && <span className="text-accent">Return: {Number(r.expectedReturnPct).toFixed(1)}%</span>}
-                                  {r.riskPct != null && <span className="text-amber-400">Risk: {Number(r.riskPct).toFixed(1)}%</span>}
+                                  {r.expectedReturnPct != null && <span className="text-accent-ink">Return: {Number(r.expectedReturnPct).toFixed(1)}%</span>}
+                                  {r.riskPct != null && <span className="text-hue-amber">Risk: {Number(r.riskPct).toFixed(1)}%</span>}
                                 </div>
                               )}
                               {r.targetRiskSplit && <p className="text-sm text-soft"><span className="text-muted">Target:</span> {r.targetRiskSplit}</p>}
@@ -554,17 +564,17 @@ export default function TradeFeedbackCard({ defaultPortfolioContext = '', holdin
                   <p className="stat-label mb-2">Key insights</p>
                   <ul className="space-y-1.5 text-sm text-soft">
                     {feedback.keyInsights.map((k, i) => (
-                      <li key={i} className="flex gap-2"><span className="text-accent shrink-0">•</span>{k}</li>
+                      <li key={i} className="flex gap-2"><span className="text-accent-ink shrink-0">•</span>{k}</li>
                     ))}
                   </ul>
                 </div>
               )}
               {feedback.caveats?.length > 0 && (
                 <div className="card border-amber-400/30">
-                  <p className="text-amber-400 text-xs font-semibold uppercase tracking-wider mb-2">Caveats</p>
+                  <p className="text-hue-amber text-xs font-semibold uppercase tracking-wider mb-2">Caveats</p>
                   <ul className="space-y-1 text-sm text-soft">
                     {feedback.caveats.map((c, i) => (
-                      <li key={i} className="flex gap-2"><span className="text-amber-400 shrink-0">⚠</span>{c}</li>
+                      <li key={i} className="flex gap-2"><span className="text-hue-amber shrink-0">⚠</span>{c}</li>
                     ))}
                   </ul>
                 </div>

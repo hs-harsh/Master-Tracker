@@ -24,9 +24,18 @@
   * { box-sizing: border-box; }
 }
 
-/* Mobile: safe area for fixed/sticky headers and bottom nav */
-.safe-area-top    { padding-top:    env(safe-area-inset-top); }
-.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+/* Mobile: safe area for fixed/sticky headers and bottom nav.
+   ADDITIVE on purpose. These used to be a bare `padding-top: env(...)`, and
+   both call sites pair them with a Tailwind `py-*`. Because these rules sit
+   after @tailwind utilities they won, so `px-4 py-3 safe-area-top` compiled to
+   padding-top: env(safe-area-inset-top) — which is exactly 0px on every device
+   without a notch. The sticky mobile header therefore lost its top padding on
+   most phones and desktop, and gained no visual padding on notched ones either,
+   since the inset only clears the cutout.
+   Set --safe-pad-top / --safe-pad-bottom to the padding you want kept; the
+   inset is added on top of it. */
+.safe-area-top    { padding-top:    calc(var(--safe-pad-top,    0px) + env(safe-area-inset-top)); }
+.safe-area-bottom { padding-bottom: calc(var(--safe-pad-bottom, 0px) + env(safe-area-inset-bottom)); }
 
 /* Touch-friendly table scroll (iOS) */
 .overflow-x-auto { -webkit-overflow-scrolling: touch; }
@@ -36,8 +45,11 @@
   /* ── Cards ────────────────────────────────────────────────────────────────── */
   .card {
     @apply rounded-2xl p-5 sm:p-6;
+    /* The literal used to be #13161f. It reads --card-bg now so a sticky table
+       column can occlude scrolling rows with the exact card colour from one
+       source of truth. Same computed value; no visual change. */
     background: linear-gradient(135deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.01) 100%),
-                #13161f;
+                var(--card-bg);
     border: 1px solid rgba(255, 255, 255, 0.07);
     box-shadow: 0 4px 32px rgba(0, 0, 0, 0.45);
     transition: box-shadow 0.25s ease, border-color 0.25s ease;
@@ -109,6 +121,62 @@
   .input:focus {
     border-color: rgb(var(--accent-rgb) / 0.45);
     box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.08);
+  }
+
+  /* ── Touch targets ────────────────────────────────────────────────────────────
+     `.btn-primary` and `.btn-ghost` have carried min-height: 44px since the
+     start, but `.input` never did — text inputs measured 38px and selects 40px
+     at 375px, so the two controls people actually tap most were the two that
+     missed the app's own standard.
+
+     Scoped to touch/mobile rather than applied globally: several dense screens
+     use `.input` with an explicit `h-7` for inline table editing, and a blanket
+     min-height would win over that and inflate those rows on desktop, where a
+     precise mouse makes 44px unnecessary.
+
+     `.tap` is for controls too small to grow — a 13px checkbox, an icon-only
+     button — expanding the *hit area* to 44×44 via a pseudo-element while the
+     visible control keeps its size and the layout around it does not move.
+     Only use it where neighbouring targets are more than ~44px apart, or the
+     invisible areas overlap and the later sibling steals the tap. */
+  @media (pointer: coarse), (max-width: 640px) {
+    .input { min-height: 44px; }
+
+    /* Row-action icon buttons. `.tap` is wrong for these — an edit and a delete
+       sit ~8px apart in a table row, so two overlapping 44px hit areas would
+       let the later sibling swallow taps meant for the first, and "delete" is
+       not a button to make ambiguous. These get real size and real separation
+       instead. The table already scrolls horizontally at 375px, so the wider
+       actions column costs nothing. */
+    .icon-btn {
+      min-width: 44px;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Hover-reveal controls, on a device with no hover.
+       `hoverOnlyWhenSupported` compiles every `group-hover:` variant inside
+       @media (hover: hover), so on a touch screen `opacity-0
+       group-hover:opacity-100` never resolves the second half — the control
+       stays at opacity 0 permanently. It is not merely small on touch, it is
+       invisible and unreachable. Matching on both classes together keeps this
+       to one rule that finds every such control, present and future. */
+    .opacity-0.group-hover\:opacity-100 { opacity: 1; }
+
+    .tap { position: relative; }
+    .tap::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100%;
+      height: 100%;
+      min-width: 44px;
+      min-height: 44px;
+    }
   }
 
   /* ── Vertical rhythm ──────────────────────────────────────────────────────────
@@ -217,19 +285,54 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* ── Tables ───────────────────────────────────────────────────────────────────
+     One header treatment for every table in the app. Before this, each page
+     restated its own combination of size, weight, case and tracking — Portfolio
+     used text-xs normal-case, Transactions text-[11px] uppercase, Investments
+     text-xs uppercase with different tracking, so four tables that sit one nav
+     click apart never matched.
+
+     `.th` is the micro-label tier (same 10px mono uppercase as `.label`),
+     left-aligned by default. Reach for the modifiers rather than restating:
+       .th-right   right-align — use on every numeric column, so the header
+                   sits over the figures it labels
+       .th-sort    adds the affordance for a sortable header
+     Cell padding stays with the page: table density differs legitimately. */
+  .th {
+    @apply text-muted text-[10px] font-mono uppercase text-left font-semibold whitespace-nowrap;
+    letter-spacing: 0.15em;
+    font-variant-numeric: tabular-nums;
+  }
+  .th-right { @apply text-right; }
+  .th-sort  { @apply cursor-pointer select-none transition-colors; }
+  @media (hover: hover) and (pointer: fine) {
+    .th-sort:hover { color: rgb(var(--accent-ink-rgb)); }
+  }
+
   /* ── Tags ─────────────────────────────────────────────────────────────────── */
   .tag {
     @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono;
   }
-  .tag-income        { @apply bg-emerald-500/10 text-emerald-400; }
-  .tag-other-income  { @apply bg-green-500/10   text-green-400; }
-  .tag-major         { @apply bg-rose/10         text-rose; }
-  .tag-non-recurring { @apply bg-amber-500/10   text-amber-400; }
-  .tag-regular       { @apply bg-slate-500/10   text-slate-400; }
-  .tag-emi           { @apply bg-violet-500/10  text-violet-400; }
-  .tag-trips         { @apply bg-teal/10         text-teal; }
-  .tag-harsh         { @apply bg-accent/10       text-accent; }
-  .tag-kirti         { @apply bg-purple-400/10  text-purple-300; }
+  /* Each tag is one identity hue at two strengths — 10% as the chip fill, full
+     as the label. Routing them through --hue-*-rgb (rather than @apply-ing raw
+     Tailwind shades) is what makes them legible in light theme: `@apply
+     text-emerald-400` inlines the colour into `.tag-income`, so the old
+     `[data-theme="light"] .text-emerald-400` list never matched these at all
+     and every tag label sat at ~2:1 on its own tint on white. */
+  .tag-income        { background: rgb(var(--hue-emerald-rgb) / 0.10); color: rgb(var(--hue-emerald-rgb)); }
+  .tag-other-income  { background: rgb(var(--hue-green-rgb)   / 0.10); color: rgb(var(--hue-green-rgb)); }
+  .tag-major         { background: rgb(var(--neg-rgb)         / 0.10); color: rgb(var(--neg-rgb)); }
+  .tag-non-recurring { background: rgb(var(--hue-amber-rgb)   / 0.10); color: rgb(var(--hue-amber-rgb)); }
+  .tag-regular       { background: rgb(var(--hue-slate-rgb)   / 0.10); color: rgb(var(--hue-slate-rgb)); }
+  .tag-emi           { background: rgb(var(--hue-violet-rgb)  / 0.10); color: rgb(var(--hue-violet-rgb)); }
+  .tag-trips         { background: rgb(var(--hue-teal-rgb)    / 0.10); color: rgb(var(--hue-teal-rgb)); }
+  /* Person tags are a set and should read as one. `tag-harsh` was the accent,
+     which meant it changed hue with the accent picker while `tag-kirti` stayed
+     purple — the pair only looked related under the default gold, and under the
+     purple accent they were indistinguishable. Blue is its own hue now: fixed,
+     distinct from every category tag above, and stable across accents. */
+  .tag-harsh         { background: rgb(var(--hue-blue-rgb)    / 0.10); color: rgb(var(--hue-blue-rgb)); }
+  .tag-kirti         { background: rgb(var(--hue-purple-rgb)  / 0.10); color: rgb(var(--hue-purple-rgb)); }
 
   /* ── Number glow — wrap a span in this for ambient glow ────────────────────
      Use .glow-accent on anything that sits on/next to an accent-coloured
@@ -258,7 +361,39 @@
      is text sitting on top of an accent fill. On dark it is just the accent; on
      light the 400-level accents land around 1.8:1 on white, so the light theme
      substitutes a darker cut per accent. Fills and tints keep `--accent`. */
-  --accent-ink:     var(--accent);
+  --accent-ink-rgb: var(--accent-rgb);
+  --accent-ink:     rgb(var(--accent-ink-rgb));
+
+  /* Neutral foreground ramp. Paired with the Tailwind `text`/`soft`/`muted`
+     tokens, so `.text-soft` and friends follow the theme without a per-class
+     override list, and so `.on-dark` can re-pin the whole ramp (see below). */
+  --fg-body-rgb:   226 232 240;  /* slate-200 */
+  --fg-soft-rgb:   139 149 165;
+  /* Was gray-600 (75 85 99), which sat at ~2.4-2.6:1 on the dark page and
+     sidebar — it drives sub-nav labels, .th headers and EmptyState hints, so
+     one lift settles all three. */
+  --fg-muted-rgb:  127 136 153;
+  --fg-strong:     #ffffff;      /* what .text-white resolves to */
+
+  /* Surface ramp. Paired with the Tailwind `ink`/`surface`/`card`/`border`
+     tokens so every opacity modifier (`bg-surface/40`, `border-border/40`, …)
+     carries the theme split, instead of only the four bare class names an
+     override list happened to enumerate. */
+  --ink-rgb:       9   9  14;
+  --surface-rgb:  15  17  23;
+  --card-rgb:     19  22  31;
+  --border-rgb:   28  32  51;
+  /* The sidebar. One step off the page background in whichever direction the
+     theme runs — darker than `ink` on dark, lighter-but-distinct on light. */
+  --sidebar-rgb:  11  13  20;
+
+  /* Opaque card background, derived from the same token so there is one source
+     of truth. Consumed by `.card` and by any sticky table column that has to
+     occlude the rows scrolling under it — WellnessHabits' sticky habit-name
+     column used `var(--surface, #1a1a1a)`, a token never defined anywhere in
+     the project, so it fell through to that hardcoded near-black in BOTH
+     themes. */
+  --card-bg: rgb(var(--card-rgb));
 
   /* Semantic. Gains/losses are theme-split: the dark values are too light to
      hold contrast on a light background, so light mode uses darker cuts. */
@@ -272,11 +407,12 @@
   /* Neutral hairline — the token `border-white/*` migrates to in Phase 5. */
   --hairline-rgb: 255 255 255;
 
-  /* Foreground for chrome that stays dark in BOTH themes — currently the
-     sidebar. `[data-theme="light"] .text-white` recolours to slate-900, which
-     is correct on a light page but rendered the sidebar wordmark at 1.09:1
-     dark-on-dark. This token is deliberately not theme-split. */
-  --on-dark: #f1f5f9;
+  /* `--on-dark` lived here: a single value Phase 3 used to rescue the sidebar
+     wordmark from `[data-theme="light"] .text-white`. It was a per-node patch
+     for a subtree-wide problem, so it fixed the wordmark and left every nav
+     label beside it at ~2:1. The `.on-dark` class further down supersedes it —
+     it re-pins the whole ramp on the container, so the wordmark is plain
+     `text-white` again and the rest of the subtree is correct too. */
 
   /* Chart tooltip — the single consumer is client/src/lib/chartTheme.js, which
      resolves these into the recharts contentStyle/labelStyle/itemStyle bundle
@@ -302,6 +438,51 @@
   --series-6: #22d3ee;
   --series-7: #fb923c;
   --series-8: #94a3b8;
+
+  /* ── Identity hues ──────────────────────────────────────────────────────────
+     `SERIES` above is chrome — the palette for charts whose colours mean
+     nothing in particular. These are the opposite: the hues that carry
+     *identity* (a person, a broker, an asset class, a spend category, a tag).
+     They were previously ~9 hardcoded hex literals copy-pasted across seven
+     per-page maps and the tag classes, all of them 400-level, all of them
+     measured below 3:1 on the light theme's white tooltip (gold 1.71, teal
+     1.86, rose 2.69).
+
+     One triplet per hue per theme: dark keeps the 400-level values the maps
+     already used, light drops to the 600/700-level. Hue identity is stable
+     across themes on purpose — a person's colour has to stay recognisably
+     theirs when you flip the theme, so these are darker cuts of the same hue,
+     never a different hue.
+
+     Consumers: chartTheme.js `HUE` / `identityPalette()` (charts and legends)
+     and the `.tag-*` classes below. Do not reintroduce hex literals for these
+     in JSX.
+
+     Separation is checked, not eyeballed: every pair in this set is at least
+     ΔE(CIE76) 15 apart in BOTH themes, because below roughly 12 two adjacent
+     marks in a pie or a legend stop being tellable apart. Three pairs failed
+     that on the first pass and are why these are not simply Tailwind's stock
+     400/700 rows: light amber/orange were 13.8 (Portfolio's RISK MIX rendered
+     High and Medium as one rust colour), light violet/purple 7.4 (`.tag-emi`
+     and `.tag-kirti` co-occur in Transactions), and dark gold/amber 10.8.
+
+     `--hue-gold-rgb` is also deliberately NOT the accent's value. It was byte
+     identical to the default gold accent, so gold-the-metal and every other
+     gold-hue identity mark was indistinguishable from accent chrome — on
+     /wellness/habits the CLEAN FOOD cards read as UI rather than as data. It is
+     a deeper brass now, ≥13 from every accent cut in both themes. */
+  --hue-gold-rgb:    202 138   4;
+  --hue-amber-rgb:   251 191  36;
+  --hue-orange-rgb:  249 115  22;
+  --hue-emerald-rgb:  52 211 153;
+  --hue-green-rgb:    74 222 128;
+  --hue-teal-rgb:     45 212 191;
+  --hue-blue-rgb:     96 165 250;
+  --hue-violet-rgb:  167 139 250;
+  --hue-purple-rgb:  232 121 249;
+  --hue-rose-rgb:    251 113 133;
+  --hue-pink-rgb:    236  72 153;
+  --hue-slate-rgb:   148 163 184;
 }
 
 /* ── Light theme ──────────────────────────────────────────────────────────── */
@@ -322,7 +503,7 @@
   --tooltip-muted:  #64748b;
 
   /* Gold default; the per-accent cuts live with the accent block below. */
-  --accent-ink: #a68826;
+  --accent-ink-rgb: 138 109 31;
 
   --series-1: #2563eb;
   --series-2: #059669;
@@ -332,16 +513,47 @@
   --series-6: #0891b2;
   --series-7: #ea580c;
   --series-8: #475569;
+
+  /* Neutral ramp — replaces the old `.text-soft` / `.text-muted` / `.text-text`
+     style overrides. */
+  --fg-body-rgb:   15  23  42;   /* slate-900 */
+  --fg-soft-rgb:   71  85 105;   /* slate-600 */
+  --fg-muted-rgb: 100 116 139;   /* slate-500 */
+  --fg-strong:    #0f172a;
+
+  /* Surface ramp — replaces the `.bg-ink` / `.bg-surface` / `.bg-card` /
+     `.border-border` style overrides. */
+  --ink-rgb:     240 242 247;
+  --surface-rgb: 228 232 240;
+  --card-rgb:    255 255 255;
+  --border-rgb:  203 213 225;  /* slate-300 */
+  --sidebar-rgb: 232 236 243;
+
+  /* Identity hues, light cuts — same hue, 600/700-level so series marks and
+     their tooltip labels clear 4.5:1 on white. */
+  --hue-gold-rgb:   138 109  31;
+  --hue-amber-rgb:  180  83   9;
+  --hue-orange-rgb: 124  45  18;
+  --hue-emerald-rgb:  4 120  87;
+  --hue-green-rgb:   21 128  61;
+  --hue-teal-rgb:    15 118 110;
+  --hue-blue-rgb:    37  99 235;
+  --hue-violet-rgb: 109  40 217;
+  --hue-purple-rgb: 162  28 175;
+  --hue-rose-rgb:   190  18  60;
+  --hue-pink-rgb:   157  23  77;
+  --hue-slate-rgb:   71  85 105;
 }
 [data-theme="light"] body {
   background: #f0f2f7;
   color: #0f172a;
 }
-[data-theme="light"] .bg-ink     { background: #f0f2f7; }
-[data-theme="light"] .bg-surface { background: #e4e8f0; }
-[data-theme="light"] .bg-card    { background: #ffffff; border-color: rgba(0,0,0,0.08); }
+/* `.bg-ink` / `.bg-surface` / `.bg-card` had a rule each here. They compile
+   from --ink-rgb / --surface-rgb / --card-rgb now, so every opacity modifier
+   follows the theme too — `bg-surface/40` used to match no override and stayed
+   dark-grey on a light page, which is what made DataRow's hover a black band. */
 [data-theme="light"] .card {
-  background: #ffffff;
+  background: var(--card-bg);
   border: 1px solid rgba(0,0,0,0.08);
   box-shadow: 0 2px 16px rgba(0,0,0,0.07);
 }
@@ -357,32 +569,30 @@
   }
   [data-theme="light"] .btn-ghost:hover { color: #0f172a; }
 }
-[data-theme="light"] .border-border { border-color: rgba(0,0,0,0.08); }
-[data-theme="light"] .text-white    { color: #0f172a; }
-[data-theme="light"] .text-text     { color: #0f172a; }
-[data-theme="light"] .text-soft     { color: #475569; }
-[data-theme="light"] .text-muted    { color: #64748b; }
+/* `.border-border` was overridden here; it reads --border-rgb now, so
+   `border-border/40` and friends carry the split as well. */
+/* `.text-text` / `.text-soft` / `.text-muted` used to be overridden here, one
+   rule each. They now compile from --fg-*-rgb via the Tailwind tokens, so the
+   theme split happens at the token and every opacity/variant of them follows.
+   `.text-white` is Tailwind's own built-in and has no token to hook, so it
+   keeps a rule — but reads --fg-strong so `.on-dark` can re-pin it. */
+.text-white { color: var(--fg-strong); }
 [data-theme="light"] .input {
   background: #e4e8f0;
   border-color: rgba(0,0,0,0.10);
   color: #0f172a;
 }
-/* Gain/loss contrast in light mode.
-   `text-rose` and friends already follow --neg-rgb via the Tailwind token, but
-   these Tailwind-palette shades are used for the same financial meaning and are
-   far too light on a white card (emerald-400 on #fff is ~1.9:1). Mapping them
-   onto the same semantic tokens keeps gains/losses readable in both themes.
-   This list is bounded and theme-scoped — unlike the per-accent override list
-   this phase deleted, it does not multiply per accent. The full migration to
-   semantic .text-pos / .text-neg classes happens in Phase 5. */
-[data-theme="light"] .text-emerald-400,
-[data-theme="light"] .text-emerald-300,
-[data-theme="light"] .text-emerald-200\/90,
-[data-theme="light"] .text-green-400  { color: rgb(var(--pos-rgb)); }
-[data-theme="light"] .text-red-400,
-[data-theme="light"] .text-red-300,
-[data-theme="light"] .text-rose-400,
-[data-theme="light"] .text-rose-200   { color: rgb(var(--neg-rgb)); }
+/* Gain/loss used to be spelled with raw Tailwind palette shades
+   (`text-emerald-400`, `text-red-400`, …) and patched into the light theme by
+   an enumerated list of the exact class strings someone remembered. It had the
+   rot the comment predicted: `text-emerald-400/60` was uncovered and measured
+   1.92:1 on light, and ~12 `hover:text-red-400` / `hover:text-rose-400` sites
+   were uncovered too — a hover could flip a figure to an unreadable colour.
+
+   The list is gone. Gains and losses are now spelled `text-pos` / `text-neg`,
+   which compile from --pos-rgb / --neg-rgb and so carry the theme split at the
+   token, through every opacity and variant. Use them for anything that means
+   "gain" or "loss"; the raw palette shades are for decoration only. */
 
 [data-theme="light"] .btn-ghost { color: #475569; border-color: rgba(0,0,0,0.12); }
 [data-theme="light"] ::-webkit-scrollbar-track { background: #e4e8f0; }
@@ -408,21 +618,35 @@
 /* Accent-as-foreground, light theme only. Each is the darkest cut that still
    reads as the same hue, chosen to clear 4.5:1 on the light page background.
    Dark theme needs no entry — `--accent-ink` already falls back to `--accent`. */
-[data-theme="light"][data-accent="gold"]   { --accent-ink: #a68826; }
-[data-theme="light"][data-accent="teal"]   { --accent-ink: #0f766e; }
-[data-theme="light"][data-accent="blue"]   { --accent-ink: #1d4ed8; }
-[data-theme="light"][data-accent="purple"] { --accent-ink: #6d28d9; }
-[data-theme="light"][data-accent="rose"]   { --accent-ink: #be123c; }
+[data-theme="light"][data-accent="gold"]   { --accent-ink-rgb: 138 109  31; }
+[data-theme="light"][data-accent="teal"]   { --accent-ink-rgb:  15 118 110; }
+[data-theme="light"][data-accent="blue"]   { --accent-ink-rgb:  29  78 216; }
+[data-theme="light"][data-accent="purple"] { --accent-ink-rgb: 109  40 217; }
+[data-theme="light"][data-accent="rose"]   { --accent-ink-rgb: 190  18  60; }
 
-/* The one justified per-utility override. Tailwind maps `accent` to a single
-   token shared by bg-/text-/border-, so there is no token-level way to give
-   text a different value from fills — and text is the only one that needs it.
-   Keep this at exactly one rule: do NOT grow it back into a per-accent list. */
-[data-theme="light"] .text-accent { color: var(--accent-ink); }
+/* Phase 4 kept one `[data-theme="light"] .text-accent` override here, because
+   Tailwind maps `accent` to a single token shared by bg-/text-/border-. It was
+   capped at one rule on purpose, and that cap was exactly the problem: it
+   matched the literal string `text-accent` and nothing else, so `text-accent/80`
+   and `hover:text-accent` kept the raw 400-level accent and a hover could jump
+   from dark gold to light gold on white.
+
+   The override is gone. Accent-as-foreground is its own Tailwind token now —
+   `text-accent-ink` — so every opacity and every variant of it resolves from
+   --accent-ink-rgb with no per-class rule at all. */
 [data-accent="teal"]   { --accent: #2dd4bf; --accent-rgb: 45 212 191;  --accent-dim-rgb: 20 184 166; --accent-fg: #09090e; }
 [data-accent="blue"]   { --accent: #60a5fa; --accent-rgb: 96 165 250;  --accent-dim-rgb: 59 130 246; --accent-fg: #09090e; }
 [data-accent="purple"] { --accent: #a78bfa; --accent-rgb: 167 139 250; --accent-dim-rgb: 139 92 246; --accent-fg: #09090e; }
 [data-accent="rose"]   { --accent: #fb7185; --accent-rgb: 251 113 133; --accent-dim-rgb: 244 63 94;  --accent-fg: #ffffff; }
+
+/* The sidebar used to be pinned dark in both themes by an `.on-dark` class that
+   re-pinned the whole token ramp on its container. That was reverted: a
+   full-height near-black rail down the side of an otherwise light app reads as
+   a rendering bug, not as a deliberate anchor. The sidebar now follows the
+   theme like everything else, via --sidebar-rgb and the ordinary ramp tokens,
+   so there is nothing left to re-pin and the class is gone. If a genuinely
+   always-dark surface is ever needed, reintroduce it deliberately — do not
+   assume this one still exists. */
 
 /* ── Scrollbar ────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar       { width: 4px; height: 4px; }
@@ -455,4 +679,34 @@
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 0 0   rgb(var(--accent-rgb) / 0); }
   50%       { box-shadow: 0 0 0 8px rgb(var(--accent-rgb) / 0.06); }
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────────
+   The stagger classes above start at `opacity: 0` and hold it until their
+   animation runs, so simply disabling animation would leave the page blank —
+   most of the app's content is inside a fade-up. Each entrance is therefore
+   pinned to its finished state (opacity 1, no translate) rather than turned
+   off, and the two ambient loops are stopped outright.
+
+   The blanket rule is the safety net: it catches any animation or transition
+   added later without anyone remembering this block exists. It deliberately
+   uses a very short duration rather than `none` — some UI (Recharts, native
+   details/summary) relies on transitionend/animationend firing to settle.
+   ─────────────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .fade-up, .fade-up-1, .fade-up-2, .fade-up-3, .fade-up-4, .fade-up-5 {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .shimmer { animation: none; background: none; }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* The lift on .btn-primary:hover is motion too. */
+  .btn-primary:hover { transform: none; }
 }

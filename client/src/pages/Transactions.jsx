@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown, Receipt } from 'lucide-react';
 import AiEntryPanel, { AiEditPanel } from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
+import { EmptyRow } from '../components/EmptyState';
 
 const TYPES = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips'];
 
@@ -154,6 +155,11 @@ export default function Transactions() {
     String(t.amount).includes(filters.search)
   );
 
+  // Drives which empty state the table shows. "No transactions found" used to
+  // cover both cases, so a filter hiding everything looked identical to having
+  // no data at all — and only one of those is something the user can act on.
+  const hasFilters = Boolean(filters.search || filters.type);
+
   const allFilteredSelected = filtered.length > 0 && filtered.every(t => selectedIds.has(t.id));
   const toggleSelectAll = () => {
     if (allFilteredSelected) {
@@ -244,7 +250,7 @@ export default function Transactions() {
           {TYPES.map(t => <option key={t}>{t}</option>)}
         </select>
         {(filters.type || filters.search) && (
-          <button onClick={() => setFilters({ type: '', search: '' })} className="text-muted hover:text-white text-xs flex items-center gap-1">
+          <button onClick={() => setFilters({ type: '', search: '' })} className="tap text-muted hover:text-white text-xs flex items-center gap-1">
             <X size={12} /> Clear
           </button>
         )}
@@ -262,19 +268,19 @@ export default function Transactions() {
               <tr className="border-b border-border">
                 <th className="py-3 px-4 w-10">
                   <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
-                    className="rounded border-border bg-transparent accent-accent cursor-pointer" />
+                    className="tap rounded border-border bg-transparent accent-accent cursor-pointer" />
                 </th>
                 {(() => {
                   const SortIcon = ({ k }) => sortConfig.key === k
                     ? (sortConfig.dir === 'asc' ? <ArrowUp size={10} className="inline ml-0.5" /> : <ArrowDown size={10} className="inline ml-0.5" />)
                     : null;
                   return (<>
-                    <th onClick={() => handleSort('date')} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap">Date<SortIcon k="date" /></th>
-                    <th onClick={() => handleSort('type')} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap">Type<SortIcon k="type" /></th>
-                    <th onClick={() => handleSort('account')} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap">Account<SortIcon k="account" /></th>
-                    <th onClick={() => handleSort('amount')} className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap">Amount<SortIcon k="amount" /></th>
-                    <th className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider">Remark</th>
-                    <th className="text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider"></th>
+                    <th onClick={() => handleSort('date')} className="th th-sort py-3 px-4">Date<SortIcon k="date" /></th>
+                    <th onClick={() => handleSort('type')} className="th th-sort py-3 px-4">Type<SortIcon k="type" /></th>
+                    <th onClick={() => handleSort('account')} className="th th-sort py-3 px-4">Account<SortIcon k="account" /></th>
+                    <th onClick={() => handleSort('amount')} className="th th-sort py-3 px-4">Amount<SortIcon k="amount" /></th>
+                    <th className="th py-3 px-4">Remark</th>
+                    <th className="th py-3 px-4"></th>
                   </>);
                 })()}
               </tr>
@@ -283,14 +289,18 @@ export default function Transactions() {
               {loading ? (
                 <tr><td colSpan={7} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} className="py-8 text-center text-muted">No transactions found</td></tr>
+                <EmptyRow colSpan={7} icon={Receipt}
+                  title={hasFilters ? 'No transactions match these filters' : 'No transactions yet'}
+                  hint={hasFilters
+                    ? 'Widen the date range or clear a filter to see more.'
+                    : 'Add a transaction to start tracking income and spending.'} />
               ) : (
                 sorted.map(row => (
-                  <tr key={row.id} className={`border-b border-border/40 hover:bg-surface/50 transition-colors ${selectedIds.has(row.id) ? 'bg-accent/5' : ''}`}>
+                  <tr key={row.id} className={`border-b border-hairline/15 hover:bg-surface/50 transition-colors ${selectedIds.has(row.id) ? 'bg-accent/5' : ''}`}>
                     <td className="py-3 px-4">
                       <input type="checkbox" checked={selectedIds.has(row.id)}
                         onChange={() => setSelectedIds(prev => { const n = new Set(prev); n.has(row.id) ? n.delete(row.id) : n.add(row.id); return n; })}
-                        className="rounded border-border bg-transparent accent-accent cursor-pointer" />
+                        className="tap rounded border-border bg-transparent accent-accent cursor-pointer" />
                     </td>
                     <td className="py-3 px-4 font-mono text-xs text-soft">{fmtDate(row.date)}</td>
                     <td className="py-3 px-4">
@@ -323,8 +333,8 @@ export default function Transactions() {
                     <td className="py-3 px-4 text-soft max-w-xs truncate">{row.remark || '—'}</td>
                     <td className="py-3 px-4">
                       <div className="flex gap-2">
-                        <button onClick={() => { setEditing(row); setShowForm(false); }} className="text-muted hover:text-accent transition-colors"><Edit2 size={14} /></button>
-                        <button onClick={() => handleDelete(row.id)} className="text-muted hover:text-rose transition-colors"><Trash2 size={14} /></button>
+                        <button onClick={() => { setEditing(row); setShowForm(false); }} className="icon-btn text-muted hover:text-accent-ink transition-colors"><Edit2 size={14} /></button>
+                        <button onClick={() => handleDelete(row.id)} className="icon-btn text-muted hover:text-rose transition-colors"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>

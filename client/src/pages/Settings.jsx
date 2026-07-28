@@ -171,7 +171,7 @@ export default function Settings() {
       {/* ── 1. People ── */}
       <div className="card max-w-2xl">
         <div className="flex items-center gap-2 mb-4">
-          <UserPlus size={18} className="text-accent" />
+          <UserPlus size={18} className="text-soft" />
           <h2 className="font-display font-bold text-white">People</h2>
         </div>
         <p className="text-sm text-soft mb-4">
@@ -186,7 +186,7 @@ export default function Settings() {
                 <span className="text-sm font-mono text-white font-semibold">{p}</span>
                 {p !== personName && (
                   <button onClick={() => handleRemovePerson(p)}
-                    className="text-muted hover:text-rose transition-colors" title={`Remove ${p}`}>
+                    className="icon-btn text-muted hover:text-rose transition-colors" title={`Remove ${p}`}>
                     <X size={13} />
                   </button>
                 )}
@@ -204,8 +204,8 @@ export default function Settings() {
                 <button
                   onClick={() => handleSaveEmail(p)}
                   disabled={savingEmail[p]}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
-                    bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors disabled:opacity-50">
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold min-h-[44px]
+                    bg-hairline/5 text-soft border border-hairline/15 hover:text-text hover:border-hairline/25 transition-colors disabled:opacity-50">
                   <Save size={12} />{savingEmail[p] ? 'Saving…' : 'Save email'}
                 </button>
               </div>
@@ -223,7 +223,7 @@ export default function Settings() {
             {personError && <p className="text-rose text-xs mt-1">{personError}</p>}
           </div>
           <button onClick={handleAddPerson} disabled={addingPerson || !newPersonName.trim()}
-            className="btn-primary flex items-center gap-2 shrink-0">
+            className="btn-ghost flex items-center gap-2 shrink-0">
             <UserPlus size={14} /> Add
           </button>
         </div>
@@ -268,9 +268,9 @@ export default function Settings() {
               role="switch"
               aria-checked={sidebarFinanceEnabled}
               onClick={() => setSidebarFinanceEnabled(v => !v)}
-              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${sidebarFinanceEnabled ? 'bg-accent' : 'bg-muted/40'}`}
+              className={`tap relative w-11 h-6 rounded-full transition-colors shrink-0 ${sidebarFinanceEnabled ? 'bg-accent' : 'bg-muted/40'}`}
             >
-              <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-ink transition-transform ${sidebarFinanceEnabled ? 'translate-x-5' : ''}`} />
+              <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-accent-fg transition-transform ${sidebarFinanceEnabled ? 'translate-x-5' : ''}`} />
             </button>
           </label>
           <label className="flex items-center justify-between gap-4 cursor-pointer">
@@ -280,9 +280,9 @@ export default function Settings() {
               role="switch"
               aria-checked={sidebarWellnessEnabled}
               onClick={() => setSidebarWellnessEnabled(v => !v)}
-              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${sidebarWellnessEnabled ? 'bg-accent' : 'bg-muted/40'}`}
+              className={`tap relative w-11 h-6 rounded-full transition-colors shrink-0 ${sidebarWellnessEnabled ? 'bg-accent' : 'bg-muted/40'}`}
             >
-              <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-ink transition-transform ${sidebarWellnessEnabled ? 'translate-x-5' : ''}`} />
+              <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-accent-fg transition-transform ${sidebarWellnessEnabled ? 'translate-x-5' : ''}`} />
             </button>
           </label>
           <label className="flex items-center justify-between gap-4 cursor-pointer">
@@ -292,9 +292,9 @@ export default function Settings() {
               role="switch"
               aria-checked={sidebarLiveTradingEnabled}
               onClick={() => setSidebarLiveTradingEnabled(v => !v)}
-              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${sidebarLiveTradingEnabled ? 'bg-accent' : 'bg-muted/40'}`}
+              className={`tap relative w-11 h-6 rounded-full transition-colors shrink-0 ${sidebarLiveTradingEnabled ? 'bg-accent' : 'bg-muted/40'}`}
             >
-              <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-ink transition-transform ${sidebarLiveTradingEnabled ? 'translate-x-5' : ''}`} />
+              <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-accent-fg transition-transform ${sidebarLiveTradingEnabled ? 'translate-x-5' : ''}`} />
             </button>
           </label>
         </div>
@@ -306,7 +306,7 @@ export default function Settings() {
         <p className="text-sm text-soft mb-4">
           Used for <strong>Expense Analyser</strong>, <strong>Live Trading</strong> (backtest strategy parsing), <strong>Meals</strong> and <strong>Workouts</strong> AI features.
           Paste your key below and click <strong>Save all</strong>. Get a key at{' '}
-          <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">console.anthropic.com</a>.
+          <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="tap text-soft hover:text-text hover:underline">console.anthropic.com</a>.
         </p>
         <div>
           <label className="label">Anthropic API key</label>
@@ -330,7 +330,7 @@ export default function Settings() {
             <div className="flex flex-wrap gap-2">
               {THEME_MODES.map(t => (
                 <button key={t} onClick={() => setThemeMode(t)}
-                  className={`px-4 py-2 rounded-lg text-sm font-mono capitalize ${themeMode === t ? 'bg-accent text-ink font-bold' : 'btn-ghost'}`}>
+                  className={`px-4 py-2 rounded-lg text-sm font-mono capitalize min-h-[44px] ${themeMode === t ? 'bg-accent text-accent-fg font-bold' : 'btn-ghost'}`}>
                   {t}
                 </button>
               ))}
@@ -341,7 +341,7 @@ export default function Settings() {
             <div className="flex flex-wrap gap-2">
               {ACCENT_OPTIONS.map(o => (
                 <button key={o.id} onClick={() => setAccent(o.id)}
-                  className={`px-4 py-2 rounded-lg text-sm font-mono font-bold ${accent === o.id ? 'ring-2 ring-white ring-offset-2 ring-offset-ink' : 'opacity-80 hover:opacity-100'}`}
+                  className={`px-4 py-2 rounded-lg text-sm font-mono font-bold min-h-[44px] min-w-[44px] ${accent === o.id ? 'ring-2 ring-white ring-offset-2 ring-offset-ink' : 'opacity-80 hover:opacity-100'}`}
                   style={{ background: o.hex, color: '#0d0f14' }}>
                   {o.label}
                 </button>
@@ -364,12 +364,12 @@ export default function Settings() {
         <p className="text-sm text-muted mb-4">Permanently delete all rows. This cannot be undone.</p>
         <div className="flex flex-wrap gap-2">
           <button onClick={handleClearTransactions} disabled={clearing !== null}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm border border-rose/50 text-rose hover:bg-rose/10 transition-colors disabled:opacity-50">
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm border border-rose/50 text-rose hover:bg-rose/10 transition-colors disabled:opacity-50 min-h-[44px]">
             <Trash2 size={14} />
             {clearing === 'transactions' ? 'Clearing…' : 'Clear all transactions'}
           </button>
           <button onClick={handleClearInvestments} disabled={clearing !== null}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm border border-rose/50 text-rose hover:bg-rose/10 transition-colors disabled:opacity-50">
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm border border-rose/50 text-rose hover:bg-rose/10 transition-colors disabled:opacity-50 min-h-[44px]">
             <Trash2 size={14} />
             {clearing === 'investments' ? 'Clearing…' : 'Clear all investments'}
           </button>

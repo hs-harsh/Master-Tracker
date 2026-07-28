@@ -59,7 +59,25 @@ const FALLBACK = {
   '--series-6': '#22d3ee',
   '--series-7': '#fb923c',
   '--series-8': '#94a3b8',
+  '--hue-gold-rgb':    '202 138 4',
+  '--hue-amber-rgb':   '251 191 36',
+  '--hue-orange-rgb':  '249 115 22',
+  '--hue-emerald-rgb': '52 211 153',
+  '--hue-green-rgb':   '74 222 128',
+  '--hue-teal-rgb':    '45 212 191',
+  '--hue-blue-rgb':    '96 165 250',
+  '--hue-violet-rgb':  '167 139 250',
+  '--hue-purple-rgb':  '232 121 249',
+  '--hue-rose-rgb':    '251 113 133',
+  '--hue-pink-rgb':    '236 72 153',
+  '--hue-slate-rgb':   '148 163 184',
 };
+
+/** The identity hues, in the order they read as a palette. */
+const HUE_NAMES = [
+  'gold', 'amber', 'orange', 'emerald', 'green', 'teal',
+  'blue', 'violet', 'purple', 'rose', 'pink', 'slate',
+];
 
 function compute() {
   const cs = typeof document !== 'undefined'
@@ -118,6 +136,10 @@ function compute() {
       v('--series-1'), v('--series-2'), v('--series-3'), v('--series-4'),
       v('--series-5'), v('--series-6'), v('--series-7'), v('--series-8'),
     ],
+
+    hues: Object.fromEntries(
+      HUE_NAMES.map(n => [n, `rgb(${v(`--hue-${n}-rgb`)})`]),
+    ),
   };
 }
 
@@ -176,6 +198,63 @@ export const GRID = {
 export const SERIES = new Proxy([], {
   get: (_t, prop) => Reflect.get(theme().series, prop),
 });
+
+/**
+ * Identity hues — the counterpart to SERIES.
+ *
+ * SERIES is chrome: charts whose colours mean nothing, free to follow the
+ * accent picker. HUE is for colours that carry identity — a person, a broker,
+ * an asset class, a spend category. Those must NOT follow the accent picker
+ * (your broker doesn't change colour because you like purple), but they do
+ * need a light-theme cut: the 400-level literals these maps used to hardcode
+ * measured 1.71–2.69:1 on the light tooltip's white background.
+ *
+ * `HUE.teal` → the current theme's teal. Hue identity is stable across themes;
+ * only the lightness moves.
+ */
+export const HUE = new Proxy({}, {
+  get: (_t, name) => theme().hues[name],
+  has: (_t, name) => name in theme().hues,
+  ownKeys: () => Reflect.ownKeys(theme().hues),
+  getOwnPropertyDescriptor: () => ({ enumerable: true, configurable: true }),
+});
+
+/**
+ * Build a theme-reactive identity palette from hue *names*.
+ *
+ *   const ASSET_COLORS  = identityPalette({ Equity: 'orange', Debt: 'blue' });
+ *   const BROKER_COLORS = identityPalette(['teal', 'gold', 'blue']);
+ *
+ * Returns a live view, not a snapshot — the same trick SERIES uses. These maps
+ * are module-level consts evaluated once at import, so resolving the colours
+ * eagerly would freeze them to whichever theme happened to be active on first
+ * paint and never repaint on a theme flip. Reading through the proxy means
+ * `ASSET_COLORS.Equity` and `Object.values(ASSET_COLORS)` both hit the current
+ * theme at render time.
+ *
+ * Arrays stay arrays (index, .length, .map all work); objects stay objects
+ * (Object.keys/values/entries all work).
+ */
+export function identityPalette(spec) {
+  const isArr = Array.isArray(spec);
+  const resolve = () => {
+    const h = theme().hues;
+    return isArr
+      ? spec.map(name => h[name])
+      : Object.fromEntries(Object.entries(spec).map(([k, name]) => [k, h[name]]));
+  };
+  return new Proxy(isArr ? [] : {}, {
+    get: (_t, prop) => Reflect.get(resolve(), prop),
+    has: (_t, prop) => Reflect.has(resolve(), prop),
+    ownKeys: () => Reflect.ownKeys(resolve()),
+    // Must report configurable:true — the proxy target is empty, and the
+    // invariant check would otherwise reject describing a property it lacks.
+    getOwnPropertyDescriptor: (_t, prop) => {
+      const d = Reflect.getOwnPropertyDescriptor(resolve(), prop);
+      return d && { ...d, configurable: true };
+    },
+  });
+}
 
 /** Individual chrome colours, for the odd ReferenceLine or legend swatch. */
 export const CHROME = {

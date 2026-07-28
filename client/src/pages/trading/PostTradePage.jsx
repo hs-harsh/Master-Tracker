@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, BarChart2 } from 'lucide-react';
 import {
   ComposedChart, Area, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import { TT, AX, GRID } from '../../lib/chartTheme';
 import api from '../../lib/api';
+import EmptyState, { EmptyRow } from '../../components/EmptyState';
 
 function fmtPct(v) {
   if (v == null) return '—';
@@ -64,14 +65,12 @@ export default function PostTradePage() {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar */}
-        <div className="w-56 shrink-0 border-r border-white/5 overflow-y-auto p-3 space-y-4">
+        <div className="w-56 shrink-0 border-r border-hairline/5 overflow-y-auto p-3 space-y-4">
           {loading ? (
             <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-muted" /></div>
           ) : strategies.length === 0 ? (
-            <div className="py-8 text-center space-y-2">
-              <p className="text-muted text-xs">No completed backtests yet.</p>
-              <p className="text-muted/60 text-[11px]">Run a backtest first.</p>
-            </div>
+            <EmptyState compact icon={BarChart2} title="No completed backtests yet"
+              hint="Run a backtest to review its execution here." />
           ) : (
             <>
               {Object.entries(grouped).map(([desk, strats]) => (
@@ -89,7 +88,7 @@ export default function PostTradePage() {
                         <p className="text-xs font-medium text-white truncate">{s.name}</p>
                         <p className="text-[10px] font-mono text-muted mt-0.5 truncate">{s.instruments?.join(', ')}</p>
                         {s.stats?.totalReturn != null && (
-                          <p className={`text-[11px] font-mono font-medium mt-0.5 ${s.stats.totalReturn >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          <p className={`text-[11px] font-mono font-medium mt-0.5 ${s.stats.totalReturn >= 0 ? 'text-pos' : 'text-neg'}`}>
                             {fmtPct(s.stats.totalReturn)}
                           </p>
                         )}
@@ -100,14 +99,14 @@ export default function PostTradePage() {
               ))}
 
               {/* Summary by desk */}
-              <div className="border-t border-white/8 pt-3">
+              <div className="border-t border-hairline/8 pt-3">
                 <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-2 px-1">Summary by Desk</p>
                 {Object.entries(grouped).map(([desk, strats]) => {
                   const total = strats.reduce((sum, s) => sum + (s.stats?.totalReturn || 0), 0);
                   return (
                     <div key={desk} className="flex justify-between items-center px-1 py-1">
                       <span className="text-[11px] text-muted font-mono truncate">{desk}</span>
-                      <span className={`text-[11px] font-mono font-medium shrink-0 ml-2 ${total >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      <span className={`text-[11px] font-mono font-medium shrink-0 ml-2 ${total >= 0 ? 'text-pos' : 'text-neg'}`}>
                         {fmtPct(total)}
                       </span>
                     </div>
@@ -143,12 +142,12 @@ export default function PostTradePage() {
               {stats && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
-                    { label: 'Return',        value: fmtPct(stats.totalReturn),    c: stats.totalReturn >= 0 ? 'text-emerald-400' : 'text-red-400' },
-                    { label: 'Max DD',         value: fmtPct(stats.maxDrawdown),    c: 'text-red-400' },
+                    { label: 'Return',        value: fmtPct(stats.totalReturn),    c: stats.totalReturn >= 0 ? 'text-pos' : 'text-neg' },
+                    { label: 'Max DD',         value: fmtPct(stats.maxDrawdown),    c: 'text-neg' },
                     { label: 'Sharpe',         value: fmtNum(stats.sharpe),         c: 'text-white' },
-                    { label: 'Win Rate',       value: fmtPct(stats.winRate),        c: stats.winRate >= 50 ? 'text-emerald-400' : 'text-amber-400' },
+                    { label: 'Win Rate',       value: fmtPct(stats.winRate),        c: stats.winRate >= 50 ? 'text-pos' : 'text-hue-amber' },
                     { label: 'Trades',         value: stats.totalTrades,            c: 'text-white' },
-                    { label: 'Profit Factor',  value: fmtNum(stats.profitFactor),   c: stats.profitFactor >= 1 ? 'text-emerald-400' : 'text-red-400' },
+                    { label: 'Profit Factor',  value: fmtNum(stats.profitFactor),   c: stats.profitFactor >= 1 ? 'text-pos' : 'text-neg' },
                     { label: 'Avg Hold',       value: `${fmtNum(stats.avgTradeDays, 1)}d`, c: 'text-white' },
                     { label: 'Final Capital',  value: fmtCurrency(stats.finalCapital), c: 'text-white' },
                   ].map(({ label, value, c }) => (
@@ -202,26 +201,27 @@ export default function PostTradePage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-white/8">
+                        <tr className="border-b border-hairline/8">
                           {['Symbol','Side','Entry','Entry ₹','Exit','Exit ₹','P&L','Return','Days'].map(h => (
                             <th key={h} className="text-left px-3 py-2.5 text-muted font-mono font-normal whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {!trades.length && <tr><td colSpan={9} className="px-3 py-8 text-center text-muted">No trades</td></tr>}
+                        {!trades.length && <EmptyRow colSpan={9} icon={BarChart2} title="No trades yet"
+                          hint="Log a trade to review your execution here." />}
                         {trades.map((t, i) => (
-                          <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02]">
+                          <tr key={i} className="border-b border-hairline/5 hover:bg-white/[0.02]">
                             <td className="px-3 py-2 font-mono text-white">{t.symbol}</td>
-                            <td className="px-3 py-2 font-mono"><span className={t.side === 'long' ? 'text-emerald-400' : 'text-red-400'}>{t.side}</span></td>
+                            <td className="px-3 py-2 font-mono"><span className={t.side === 'long' ? 'text-pos' : 'text-neg'}>{t.side}</span></td>
                             <td className="px-3 py-2 font-mono text-muted">{t.entryDate}</td>
                             <td className="px-3 py-2 font-mono text-soft">{t.entryPrice?.toFixed(2)}</td>
                             <td className="px-3 py-2 font-mono text-muted">{t.exitDate || '—'}</td>
                             <td className="px-3 py-2 font-mono text-soft">{t.exitPrice?.toFixed(2) || '—'}</td>
-                            <td className={`px-3 py-2 font-mono font-medium ${(t.pnl||0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <td className={`px-3 py-2 font-mono font-medium ${(t.pnl||0) >= 0 ? 'text-pos' : 'text-neg'}`}>
                               {(t.pnl||0) >= 0 ? '+' : ''}₹{Math.round(t.pnl||0)}
                             </td>
-                            <td className={`px-3 py-2 font-mono ${(t.pnlPct||0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <td className={`px-3 py-2 font-mono ${(t.pnlPct||0) >= 0 ? 'text-pos' : 'text-neg'}`}>
                               {(t.pnlPct||0) >= 0 ? '+' : ''}{(t.pnlPct||0).toFixed(2)}%
                             </td>
                             <td className="px-3 py-2 font-mono text-muted">{t.holdDays || '—'}</td>
@@ -236,26 +236,27 @@ export default function PostTradePage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-white/8">
+                        <tr className="border-b border-hairline/8">
                           {['Symbol','Qty / Side','Entry ₹','P&L','Status'].map(h => (
                             <th key={h} className="text-left px-3 py-2.5 text-muted font-mono font-normal whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {!trades.length && <tr><td colSpan={5} className="px-3 py-8 text-center text-muted">No positions</td></tr>}
+                        {!trades.length && <EmptyRow colSpan={5} icon={BarChart2} title="No positions yet"
+                          hint="Positions appear here once trades are logged." />}
                         {trades.slice(0, 20).map((t, i) => (
-                          <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02]">
+                          <tr key={i} className="border-b border-hairline/5 hover:bg-white/[0.02]">
                             <td className="px-3 py-2 font-mono text-white">{t.symbol}</td>
                             <td className="px-3 py-2 font-mono">
-                              <span className={t.side === 'long' ? 'text-emerald-400' : 'text-red-400'}>{t.qty || 1} {t.side}</span>
+                              <span className={t.side === 'long' ? 'text-pos' : 'text-neg'}>{t.qty || 1} {t.side}</span>
                             </td>
                             <td className="px-3 py-2 font-mono text-soft">{t.entryPrice?.toFixed(2)}</td>
-                            <td className={`px-3 py-2 font-mono font-medium ${(t.pnl||0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <td className={`px-3 py-2 font-mono font-medium ${(t.pnl||0) >= 0 ? 'text-pos' : 'text-neg'}`}>
                               {(t.pnl||0) >= 0 ? '+' : ''}₹{Math.round(t.pnl||0)}
                             </td>
                             <td className="px-3 py-2 font-mono">
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${t.exitDate ? 'bg-white/8 text-muted' : 'bg-emerald-500/15 text-emerald-400'}`}>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${t.exitDate ? 'bg-white/8 text-muted' : 'bg-emerald-500/15 text-pos'}`}>
                                 {t.exitDate ? 'closed' : 'open'}
                               </span>
                             </td>
@@ -280,7 +281,7 @@ export default function PostTradePage() {
                       ['Initial Capital', fmtCurrency(stats.initialCapital)],
                       ['Final Capital', fmtCurrency(stats.finalCapital)],
                     ].map(([label, value]) => (
-                      <div key={label} className="flex justify-between items-center py-2.5 px-1 border-b border-white/5">
+                      <div key={label} className="flex justify-between items-center py-2.5 px-1 border-b border-hairline/5">
                         <span className="text-muted text-xs font-mono">{label}</span>
                         <span className="text-soft text-xs font-mono font-medium">{value}</span>
                       </div>

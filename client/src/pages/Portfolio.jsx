@@ -9,12 +9,24 @@ import { fmt } from '../lib/utils';
 import TradeFeedbackCard from '../components/TradeFeedbackCard';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
-import { TT, AX } from '../lib/chartTheme';
+import EmptyState, { EmptyRow } from '../components/EmptyState';
+import DataRow from '../components/DataRow';
+import { TT, AX, HUE, identityPalette } from '../lib/chartTheme';
 
-const RISK_COLORS  = { Low: '#60a5fa', Medium: '#fbbf24', High: '#f97316' };
-const ASSET_COLORS = { Equity: '#f97316', Debt: '#60a5fa', Gold: '#fbbf24', Cash: '#6b7280', 'Real Estate': '#a78bfa', Crypto: '#ec4899' };
-const BROKER_COLORS = ['#2dd4bf', '#f0c040', '#60a5fa', '#a78bfa', '#fb7185', '#34d399', '#f97316', '#6b7280'];
-const ILLIQUID_TYPE_COLORS = { Property: '#a78bfa', Vehicle: '#60a5fa', Gold: '#fbbf24', PPF: '#34d399', NPS: '#2dd4bf' };
+/* Identity palettes — hue names, not hex. These carry meaning (asset class,
+   risk band, broker) so they deliberately do NOT follow the accent picker, but
+   they do need light-theme cuts: as 400-level literals they measured 1.7–2.7:1
+   against the light tooltip's white background, so a pie slice's own label was
+   unreadable. identityPalette() resolves them per theme at render time. */
+const RISK_COLORS  = identityPalette({ Low: 'blue', Medium: 'amber', High: 'orange' });
+const ASSET_COLORS = identityPalette({
+  Equity: 'orange', Debt: 'blue', Gold: 'amber',
+  Cash: 'slate', 'Real Estate': 'violet', Crypto: 'pink',
+});
+const BROKER_COLORS = identityPalette(['teal', 'gold', 'blue', 'violet', 'rose', 'emerald', 'orange', 'slate']);
+const ILLIQUID_TYPE_COLORS = identityPalette({
+  Property: 'violet', Vehicle: 'blue', Gold: 'amber', PPF: 'emerald', NPS: 'teal',
+});
 
 const riskForAsset = asset => {
   switch (asset) {
@@ -258,7 +270,7 @@ export default function Portfolio() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="card flex flex-col">
           <div className="flex items-center gap-2 text-muted mb-1"><Wallet size={14} /><span className="stat-label text-xs">Net Invested</span></div>
-          <span className="font-mono text-lg font-bold text-accent">{fmt(totalNet)}</span>
+          <span className="font-mono text-lg font-bold text-accent-ink">{fmt(totalNet)}</span>
         </div>
         <div className="card flex flex-col">
           <div className="flex items-center gap-2 text-muted mb-1"><Target size={14} /><span className="stat-label text-xs">Positions</span></div>
@@ -291,7 +303,7 @@ export default function Portfolio() {
                 }
               </span>
               <button type="button" onClick={fetchFxRates} disabled={fxFetching}
-                className="text-muted hover:text-accent transition-colors disabled:opacity-40" title="Refresh FX rates">
+                className="icon-btn text-muted hover:text-accent-ink transition-colors disabled:opacity-40" title="Refresh FX rates">
                 <Loader2 size={11} className={fxFetching ? 'animate-spin' : ''} />
               </button>
             </div>
@@ -305,7 +317,7 @@ export default function Portfolio() {
                 <div key={c} className="flex flex-col gap-0.5">
                   <span className="text-muted text-[10px] uppercase tracking-wider">{c}</span>
                   <span className="text-soft">
-                    Invested: <span className="text-accent">{sym}{inv.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                    Invested: <span className="text-text font-semibold">{sym}{inv.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                     {c !== 'INR' && <span className="text-muted"> = ₹{invINR.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
                   </span>
                 </div>
@@ -313,7 +325,7 @@ export default function Portfolio() {
             })}
             <div className="flex flex-col gap-0.5 border-l border-border pl-6">
               <span className="text-muted text-[10px] uppercase tracking-wider">Total (INR)</span>
-              <span className="text-soft">Invested: <span className="text-accent font-bold">{fmt(totalNet)}</span></span>
+              <span className="text-soft">Invested: <span className="text-text font-bold">{fmt(totalNet)}</span></span>
             </div>
           </div>
         </div>
@@ -335,7 +347,7 @@ export default function Portfolio() {
           <ResponsiveContainer width="100%" height={200}>
             <PieChart>
               <Pie data={riskPie} cx="50%" cy="45%" innerRadius={45} outerRadius={70} dataKey="value" strokeWidth={0} labelLine={false}>
-                {riskPie.map(d => <Cell key={d.name} fill={RISK_COLORS[d.name] || '#9ca3af'} />)}
+                {riskPie.map(d => <Cell key={d.name} fill={RISK_COLORS[d.name] || HUE.slate} />)}
               </Pie>
               <Legend layout="horizontal" align="center" verticalAlign="bottom" formatter={v => <span className="text-soft" style={{ fontSize: 12 }}>{v}</span>} iconType="circle" iconSize={8} wrapperStyle={{ paddingTop: 8 }} />
               <Tooltip {...TT} content={({ active, payload }) => active && payload?.[0] ? (
@@ -379,7 +391,8 @@ export default function Portfolio() {
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center justify-center h-[200px] text-muted text-sm">No broker data</div>
+            <EmptyState compact icon={Wallet} title="No broker data yet"
+              hint="Tag your investments with a broker to see how holdings are split." />
           )}
         </div>
       </div>
@@ -391,18 +404,22 @@ export default function Portfolio() {
           {assetClassGroups.map(g => {
             const assetOpen = expandedAssets.has(g.asset_class);
             return (
-              <div key={g.asset_class} className="border-b border-border/40 last:border-0">
-                <button
-                  type="button"
+              <div key={g.asset_class} className="border-b border-hairline/15 last:border-0">
+                <DataRow
                   onClick={() => toggleAsset(g.asset_class)}
-                  className="w-full flex items-center justify-between py-3 px-2 hover:bg-surface/40 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    {assetOpen ? <ChevronDown size={14} className="text-muted" /> : <ChevronRight size={14} className="text-muted" />}
-                    <span className="tag bg-card/60" style={{ color: ASSET_COLORS[g.asset_class] || '#9ca3af' }}>{g.asset_class}</span>
-                  </div>
-                  <span className="font-mono text-sm text-soft">{fmt(g.net)}</span>
-                </button>
+                  chip={
+                    <>
+                      {assetOpen
+                        ? <ChevronDown size={14} className="text-muted shrink-0" />
+                        : <ChevronRight size={14} className="text-muted shrink-0" />}
+                      <span className="tag bg-card/60 shrink-0" style={{ color: ASSET_COLORS[g.asset_class] || HUE.slate }}>
+                        {g.asset_class}
+                      </span>
+                    </>
+                  }
+                  name={`${g.instruments.length} instrument${g.instruments.length === 1 ? '' : 's'}`}
+                  value={fmt(g.net)}
+                />
                 {assetOpen && (
                   <div className="pl-6 pb-2">
                     {g.instruments.map(ins => {
@@ -437,7 +454,7 @@ export default function Portfolio() {
                                 </thead>
                                 <tbody>
                                   {txns.map(t => (
-                                    <tr key={t.id} className="border-t border-border/30">
+                                    <tr key={t.id} className="border-t border-hairline/15">
                                       <td className="py-1.5 px-2 text-soft">{t.date?.slice(0, 10)}</td>
                                       <td className={`py-1.5 px-2 ${t.side === 'SELL' ? 'text-rose' : 'text-teal'}`}>{t.side}</td>
                                       <td className="py-1.5 px-2 text-right font-mono text-soft">{fmt(Number(t.amount))}</td>
@@ -470,7 +487,7 @@ export default function Portfolio() {
                   const SortIcon = ({ k }) => sortConfig.key === k
                     ? (sortConfig.dir === 'asc' ? <ArrowUp size={10} className="inline ml-0.5" /> : <ArrowDown size={10} className="inline ml-0.5" />)
                     : null;
-                  const sortable = "text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap";
+                  const sortable = "th th-sort py-3 px-4";
                   return (<>
                     <th className={sortable} onClick={() => handleSort('goal')}>Goal<SortIcon k="goal" /></th>
                     <th className={sortable} onClick={() => handleSort('instrument')}>Instrument<SortIcon k="instrument" /></th>
@@ -485,10 +502,14 @@ export default function Portfolio() {
               {loading ? (
                 <tr><td colSpan={5} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
               ) : sortedHoldings.length === 0 ? (
-                <tr><td colSpan={5} className="py-8 text-center text-muted">{goalFilter || brokerFilter ? 'No positions for this filter' : 'No investments yet'}</td></tr>
+                goalFilter || brokerFilter
+                  ? <EmptyRow colSpan={5} icon={PieIcon} title="No positions match these filters"
+                      hint="Clear the goal or broker filter to see the rest of your holdings." />
+                  : <EmptyRow colSpan={5} icon={PieIcon} title="No investments yet"
+                      hint="Add investments to see your positions broken down here." />
               ) : (
                 sortedHoldings.map((row, i) => (
-                  <tr key={i} className="border-b border-border/40 hover:bg-surface/40 transition-colors">
+                  <tr key={i} className="border-b border-hairline/15 hover:bg-surface/40 transition-colors">
                     <td className="py-3 px-4 text-xs text-soft">{row.goal}</td>
                     <td className="py-3 px-4 text-xs text-soft max-w-[160px] truncate">{row.instrument}</td>
                     <td className="py-3 px-4 text-xs"><span className="tag bg-card/60">{row.asset_class}</span></td>
@@ -539,11 +560,11 @@ export default function Portfolio() {
               </div>
               <div className="card flex flex-col">
                 <div className="flex items-center gap-2 text-muted mb-1"><TrendingUp size={14} /><span className="stat-label text-xs">Total Loans</span></div>
-                <span className="font-mono text-lg font-bold text-rose-400">{otherLoans > 0 ? fmt(otherLoans) : '—'}</span>
+                <span className="font-mono text-lg font-bold text-neg">{otherLoans > 0 ? fmt(otherLoans) : '—'}</span>
               </div>
               <div className="card flex flex-col">
                 <div className="flex items-center gap-2 text-muted mb-1"><Target size={14} /><span className="stat-label text-xs">Net Equity</span></div>
-                <span className={`font-mono text-lg font-bold ${(otherAssetsValue - otherLoans) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{fmt(otherAssetsValue - otherLoans)}</span>
+                <span className={`font-mono text-lg font-bold ${(otherAssetsValue - otherLoans) >= 0 ? 'text-pos' : 'text-neg'}`}>{fmt(otherAssetsValue - otherLoans)}</span>
               </div>
             </div>
 
@@ -555,7 +576,7 @@ export default function Portfolio() {
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie data={typePieData} cx="50%" cy="45%" innerRadius={45} outerRadius={70} dataKey="value" strokeWidth={0} labelLine={false}>
-                      {typePieData.map(d => <Cell key={d.name} fill={ILLIQUID_TYPE_COLORS[d.name] || '#9ca3af'} />)}
+                      {typePieData.map(d => <Cell key={d.name} fill={ILLIQUID_TYPE_COLORS[d.name] || HUE.slate} />)}
                     </Pie>
                     <Legend layout="horizontal" align="center" verticalAlign="bottom" formatter={v => <span className="text-soft" style={{ fontSize: 12 }}>{v}</span>} iconType="circle" iconSize={8} wrapperStyle={{ paddingTop: 8 }} />
                     <Tooltip {...TT} content={({ active, payload }) => active && payload?.[0] ? (
@@ -579,8 +600,13 @@ export default function Portfolio() {
                       </div>
                     ) : null} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="Value" radius={[0, 4, 4, 0]}>
-                      {assetBarData.map(d => <Cell key={d.name} fill={ILLIQUID_TYPE_COLORS[d.type] || '#9ca3af'} />)}
+                    {/* The per-Cell fills below colour each bar by asset type, but
+                        Recharts builds the Legend swatch from the Bar's own `fill`
+                        — which was unset, so the "Value" swatch painted black and
+                        vanished on the dark theme. A neutral default gives the
+                        legend something visible; Cells still win per bar. */}
+                    <Bar dataKey="Value" fill={HUE.slate} radius={[0, 4, 4, 0]}>
+                      {assetBarData.map(d => <Cell key={d.name} fill={ILLIQUID_TYPE_COLORS[d.type] || HUE.slate} />)}
                     </Bar>
                     <Bar dataKey="Loan" fill="#fb7185" radius={[0, 4, 4, 0]} />
                   </BarChart>
@@ -596,7 +622,7 @@ export default function Portfolio() {
             <div className="card">
               <div className="flex items-center justify-between mb-2">
                 <p className="stat-label text-xs">Net Worth (All Assets)</p>
-                <a href="/other-assets" className="text-xs text-accent hover:underline">Manage Illiquid →</a>
+                <a href="/other-assets" className="tap text-xs text-soft hover:text-text hover:underline transition-colors">Manage Illiquid →</a>
               </div>
               <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm font-mono">
                 <div>
@@ -605,17 +631,20 @@ export default function Portfolio() {
                 </div>
                 <div>
                   <div className="text-muted text-xs">Illiquid Investments</div>
-                  <div className="font-semibold" style={{ color: '#a78bfa' }}>{fmt(otherAssetsValue)}</div>
+                  {/* Violet ties this figure to the illiquid charts above. Was a
+                      hardcoded #a78bfa, which is ~2.4:1 on the light theme's
+                      white card; the token carries the darker light cut. */}
+                  <div className="font-semibold text-hue-violet">{fmt(otherAssetsValue)}</div>
                 </div>
                 {otherLoans > 0 && (
                   <div>
                     <div className="text-muted text-xs">Loans</div>
-                    <div className="text-rose-400 font-semibold">−{fmt(otherLoans)}</div>
+                    <div className="text-neg font-semibold">−{fmt(otherLoans)}</div>
                   </div>
                 )}
                 <div className="border-l border-border pl-8">
                   <div className="text-muted text-xs">Total Net Worth</div>
-                  <div className={`text-xl font-bold font-display ${netWorth >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{fmt(netWorth)}</div>
+                  <div className={`text-xl font-bold font-display ${netWorth >= 0 ? 'text-pos' : 'text-neg'}`}>{fmt(netWorth)}</div>
                 </div>
               </div>
             </div>

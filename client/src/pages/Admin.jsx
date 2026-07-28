@@ -24,10 +24,10 @@ function StatCard({ label, value, icon: Icon, color, sub }) {
 
 function Badge({ label, color }) {
   const colors = {
-    green:  'bg-green-500/15 text-green-400 border-green-500/20',
-    red:    'bg-red-500/15 text-red-400 border-red-500/20',
-    amber:  'bg-amber-500/15 text-amber-400 border-amber-500/20',
-    blue:   'bg-blue-500/15 text-blue-400 border-blue-500/20',
+    green:  'bg-green-500/15 text-pos border-green-500/20',
+    red:    'bg-red-500/15 text-neg border-red-500/20',
+    amber:  'bg-amber-500/15 text-hue-amber border-amber-500/20',
+    blue:   'bg-blue-500/15 text-hue-blue border-blue-500/20',
     muted:  'bg-surface text-muted border-border',
   };
   return (
@@ -147,11 +147,11 @@ export default function Admin() {
       />
 
       {msg && (
-        <div className={`text-sm px-4 py-2 rounded-lg border ${msg.err ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-accent/10 border-accent/30 text-accent'}`}>
+        <div className={`text-sm px-4 py-2 rounded-lg border ${msg.err ? 'bg-red-500/10 border-red-500/30 text-neg' : 'bg-accent/10 border-accent/30 text-accent-ink'}`}>
           {msg.text}
         </div>
       )}
-      {error && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-2 rounded-lg">{error}</div>}
+      {error && <div className="bg-red-500/10 border border-red-500/30 text-neg text-sm px-4 py-2 rounded-lg">{error}</div>}
 
       {/* Stats */}
       {stats && (
@@ -168,10 +168,10 @@ export default function Admin() {
       {/* Password info banner */}
       <div className="bg-surface border border-border rounded-xl p-4 flex gap-3">
         <div className="p-2 bg-blue-500/15 rounded-lg shrink-0 h-fit">
-          <Lock size={16} className="text-blue-400" />
+          <Lock size={16} className="text-hue-blue" />
         </div>
         <div className="text-sm">
-          <button onClick={() => setShowPwNote(p => !p)} className="font-semibold text-text hover:text-accent transition-colors text-left">
+          <button onClick={() => setShowPwNote(p => !p)} className="font-semibold text-text hover:text-accent-ink transition-colors text-left">
             Why can't you see user passwords? {showPwNote ? '▲' : '▼'}
           </button>
           {showPwNote && <p className="text-muted mt-2 leading-relaxed">{PASSWORD_NOTE}</p>}
@@ -209,14 +209,14 @@ export default function Admin() {
               </thead>
               <tbody>
                 {users.map((u) => (
-                  <tr key={u.id} className={`border-b border-border/50 transition-colors ${u.is_active === false ? 'opacity-50' : 'hover:bg-background/30'}`}>
+                  <tr key={u.id} className={`border-b border-hairline/15 transition-colors ${u.is_active === false ? 'opacity-50' : 'hover:bg-background/30'}`}>
                     <td className="px-4 py-3 text-muted">#{u.id}</td>
                     <td className="px-4 py-3 text-text font-medium max-w-[180px] truncate">{u.username}</td>
                     <td className="px-4 py-3 text-muted">{u.person_name || '—'}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {(u.persons || []).map(p => (
-                          <span key={p} className="px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-xs">{p}</span>
+                          <span key={p} className="px-1.5 py-0.5 rounded-full bg-accent/15 text-accent-ink text-xs">{p}</span>
                         ))}
                       </div>
                     </td>
@@ -246,29 +246,29 @@ export default function Admin() {
                       <div className="flex items-center justify-center gap-1">
                         {/* Toggle admin */}
                         <button onClick={() => confirmAction('admin', u)} title={u.is_admin ? 'Remove admin' : 'Make admin'}
-                          className={`p-1.5 rounded-lg transition-colors ${u.is_admin ? 'text-amber-400 hover:bg-amber-400/10' : 'text-muted hover:text-amber-400 hover:bg-amber-400/10'}`}>
+                          className={`p-1.5 rounded-lg transition-colors ${u.is_admin ? 'text-hue-amber hover:bg-amber-400/10' : 'text-muted hover:text-hue-amber hover:bg-amber-400/10'}`}>
                           <Crown size={14} />
                         </button>
                         {/* Enable / disable */}
                         <button onClick={() => confirmAction('disable', u)} title={u.is_active !== false ? 'Disable account' : 'Enable account'}
-                          className={`p-1.5 rounded-lg transition-colors ${u.is_active === false ? 'text-green-400 hover:bg-green-400/10' : 'text-muted hover:text-orange-400 hover:bg-orange-400/10'}`}>
+                          className={`p-1.5 rounded-lg transition-colors ${u.is_active === false ? 'text-pos hover:bg-green-400/10' : 'text-muted hover:text-hue-orange hover:bg-orange-400/10'}`}>
                           {u.is_active !== false ? <UserX size={14} /> : <UserCheck size={14} />}
                         </button>
                         {/* Remove password */}
                         {u.has_password && (
                           <button onClick={() => confirmAction('remove-password', u)} title="Remove password (force OTP)"
-                            className="p-1.5 rounded-lg text-muted hover:text-orange-400 hover:bg-orange-400/10 transition-colors">
+                            className="p-1.5 rounded-lg text-muted hover:text-hue-orange hover:bg-orange-400/10 transition-colors">
                             <LockOpen size={14} />
                           </button>
                         )}
                         {/* Clear data */}
                         <button onClick={() => confirmAction('clear-data', u)} title="Clear all data"
-                          className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                          className="p-1.5 rounded-lg text-muted hover:text-neg hover:bg-red-400/10 transition-colors">
                           <Database size={14} />
                         </button>
                         {/* Delete user */}
                         <button onClick={() => confirmAction('delete', u)} title="Delete user"
-                          className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                          className="p-1.5 rounded-lg text-muted hover:text-neg hover:bg-red-400/10 transition-colors">
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -306,7 +306,7 @@ export default function Admin() {
             <div className="bg-surface border border-border rounded-2xl p-6 max-w-sm w-full shadow-2xl">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-red-500/20 rounded-lg">
-                  <AlertTriangle size={18} className="text-red-400" />
+                  <AlertTriangle size={18} className="text-neg" />
                 </div>
                 <h3 className="font-semibold text-text">{cfg.title}</h3>
               </div>

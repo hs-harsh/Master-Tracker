@@ -12,15 +12,15 @@ function toNum(x) {
 }
 
 const RATING_COLOR = {
-  'STRONG BUY': 'text-green-400',
-  BUY: 'text-teal-400',
-  HOLD: 'text-amber-400',
+  'STRONG BUY': 'text-pos',
+  BUY: 'text-hue-teal',
+  HOLD: 'text-hue-amber',
   AVOID: 'text-rose',
 };
-const RISK_COLOR = { Low: 'text-green-400', Medium: 'text-amber-400', High: 'text-rose' };
+const RISK_COLOR = { Low: 'text-pos', Medium: 'text-hue-amber', High: 'text-rose' };
 const OUTLOOK_COLOR = {
-  BULLISH: { text: 'text-green-400', bg: 'bg-green-400/10 border-green-400/30' },
-  NEUTRAL: { text: 'text-amber-400', bg: 'bg-amber-400/10 border-amber-400/30' },
+  BULLISH: { text: 'text-pos', bg: 'bg-green-400/10 border-green-400/30' },
+  NEUTRAL: { text: 'text-hue-amber', bg: 'bg-amber-400/10 border-amber-400/30' },
   BEARISH: { text: 'text-rose', bg: 'bg-rose/10 border-rose/30' },
 };
 
@@ -45,8 +45,8 @@ function CompositeScoreSection({ technicalScore, fundamentalScore, compositeScor
   if (t == null && f == null && c == null) return null;
 
   const scoreColor = (s) => {
-    if (s >= 7.5) return 'text-green-400';
-    if (s >= 5) return 'text-amber-400';
+    if (s >= 7.5) return 'text-pos';
+    if (s >= 5) return 'text-hue-amber';
     return 'text-rose';
   };
 
@@ -65,7 +65,7 @@ function CompositeScoreSection({ technicalScore, fundamentalScore, compositeScor
           <p className="text-muted text-xs mt-0.5">/ 10</p>
         </div>
         <div className="rounded-xl bg-accent/10 border-2 border-accent/30 p-4">
-          <p className="text-accent text-xs uppercase tracking-wider mb-1 font-semibold">Composite</p>
+          <p className="text-accent-ink text-xs uppercase tracking-wider mb-1 font-semibold">Composite</p>
           <p className={`font-mono text-3xl font-bold ${scoreColor(c ?? 0)}`}>{c != null ? c.toFixed(1) : '—'}</p>
           <p className="text-muted text-xs mt-0.5">/ 10</p>
         </div>
@@ -88,12 +88,12 @@ function FinalAssessmentSection({ assessment }) {
           <p className="text-muted text-xs mt-1">Aggressive allocation</p>
         </div>
         <div className="rounded-xl bg-amber-400/10 border border-amber-400/30 p-4">
-          <p className="text-amber-400 text-xs font-semibold uppercase tracking-wider mb-1">Medium risk</p>
+          <p className="text-hue-amber text-xs font-semibold uppercase tracking-wider mb-1">Medium risk</p>
           <p className="font-mono text-xl font-bold text-white">₹{(mediumRiskAmount ?? 0).toLocaleString('en-IN')}</p>
           <p className="text-muted text-xs mt-1">Balanced allocation</p>
         </div>
         <div className="rounded-xl bg-green-400/10 border border-green-400/30 p-4">
-          <p className="text-green-400 text-xs font-semibold uppercase tracking-wider mb-1">Low risk</p>
+          <p className="text-pos text-xs font-semibold uppercase tracking-wider mb-1">Low risk</p>
           <p className="font-mono text-xl font-bold text-white">₹{(lowRiskAmount ?? 0).toLocaleString('en-IN')}</p>
           <p className="text-muted text-xs mt-1">Conservative allocation</p>
         </div>
@@ -104,7 +104,7 @@ function FinalAssessmentSection({ assessment }) {
           <ul className="space-y-2">
             {levelsToWatch.map((l, i) => (
               <li key={i} className="flex items-center justify-between gap-4 text-sm">
-                <span className="font-mono text-accent shrink-0">
+                <span className="font-mono text-accent-ink shrink-0">
                   {l.level != null ? Number(l.level).toLocaleString('en-IN') : '—'}
                 </span>
                 <span className="text-soft text-right">{l.reason || ''}</span>
@@ -129,24 +129,24 @@ function NewsSection({ macroNews, sectorNews }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {hasMacro && (
           <div>
-            <p className="text-xs text-amber-400 font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <p className="text-xs text-hue-amber font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <TrendingUp size={12} /> Macro
             </p>
             <ul className="space-y-1.5 text-sm text-soft">
               {macroNews.map((n, i) => (
-                <li key={i} className="flex gap-2"><span className="text-amber-400 shrink-0">•</span>{n}</li>
+                <li key={i} className="flex gap-2"><span className="text-hue-amber shrink-0">•</span>{n}</li>
               ))}
             </ul>
           </div>
         )}
         {hasSector && (
           <div>
-            <p className="text-xs text-blue-400 font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <p className="text-xs text-hue-blue font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Newspaper size={12} /> Sector
             </p>
             <ul className="space-y-1.5 text-sm text-soft">
               {sectorNews.map((n, i) => (
-                <li key={i} className="flex gap-2"><span className="text-blue-400 shrink-0">•</span>{n}</li>
+                <li key={i} className="flex gap-2"><span className="text-hue-blue shrink-0">•</span>{n}</li>
               ))}
             </ul>
           </div>
@@ -163,8 +163,8 @@ function FundamentalsGrid({ fundamentals }) {
     { label: 'P/B', val: fundamentals.pb, fmt: (v) => v?.toFixed(2) },
     { label: 'ROE %', val: fundamentals.roe, fmt: (v) => `${v?.toFixed(1)}%` },
     { label: 'D/E', val: fundamentals.debtToEquity, fmt: (v) => v?.toFixed(2) },
-    { label: 'Rev Growth YoY', val: fundamentals.revenueGrowthYoY, fmt: (v) => `${v > 0 ? '+' : ''}${v?.toFixed(1)}%`, color: fundamentals.revenueGrowthYoY >= 0 ? 'text-green-400' : 'text-rose' },
-    { label: 'Profit Growth YoY', val: fundamentals.profitGrowthYoY, fmt: (v) => `${v > 0 ? '+' : ''}${v?.toFixed(1)}%`, color: fundamentals.profitGrowthYoY >= 0 ? 'text-green-400' : 'text-rose' },
+    { label: 'Rev Growth YoY', val: fundamentals.revenueGrowthYoY, fmt: (v) => `${v > 0 ? '+' : ''}${v?.toFixed(1)}%`, color: fundamentals.revenueGrowthYoY >= 0 ? 'text-pos' : 'text-rose' },
+    { label: 'Profit Growth YoY', val: fundamentals.profitGrowthYoY, fmt: (v) => `${v > 0 ? '+' : ''}${v?.toFixed(1)}%`, color: fundamentals.profitGrowthYoY >= 0 ? 'text-pos' : 'text-rose' },
     { label: 'Operating Margin', val: fundamentals.operatingMargin, fmt: (v) => `${v?.toFixed(1)}%` },
     { label: 'Net Margin', val: fundamentals.netMargin, fmt: (v) => `${v?.toFixed(1)}%` },
     { label: 'EPS', val: fundamentals.eps, fmt: (v) => v?.toLocaleString('en-IN') },
@@ -287,14 +287,14 @@ function BuyTheDipSection({ buyTheDipAnalysis, screening }) {
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <p className="text-muted text-xs">Current dip from 52w high</p>
-          <p className="font-mono text-2xl font-bold text-amber-400">
+          <p className="font-mono text-2xl font-bold text-hue-amber">
             {toNum(dip.currentDipPct) != null ? `${Number(dip.currentDipPct).toFixed(1)}%` : `${Number(screening?.dipFromHighPct || 0).toFixed(1)}%`}
           </p>
         </div>
         {dip.assessment && (
           <div className="text-right">
             <p className="text-muted text-xs mb-1">Assessment</p>
-            <span className="text-xs font-medium text-amber-400 bg-amber-400/10 border border-amber-400/30 rounded px-2 py-1">
+            <span className="text-xs font-medium text-hue-amber bg-amber-400/10 border border-amber-400/30 rounded px-2 py-1">
               {dip.assessment}
             </span>
           </div>
@@ -312,7 +312,7 @@ function BuyTheDipSection({ buyTheDipAnalysis, screening }) {
                 )}
               </div>
               <div className="flex items-center gap-4 shrink-0">
-                <span className="font-mono text-accent">{Number(lvl.level).toLocaleString('en-IN')}</span>
+                <span className="font-mono text-accent-ink">{Number(lvl.level).toLocaleString('en-IN')}</span>
                 {lvl.allocPct != null && (
                   <span className="text-xs text-soft bg-accent/10 rounded px-2 py-0.5">{lvl.allocPct}% of budget</span>
                 )}
@@ -346,7 +346,10 @@ export default function ReportModal({ instrument, parsed, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-ink border-b border-border px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between shrink-0 safe-area-top">
+        <div
+          className="sticky top-0 bg-ink border-b border-border px-4 sm:px-6 pb-3 flex items-center justify-between shrink-0 safe-area-top"
+          style={{ '--safe-pad-top': '0.75rem' }}
+        >
           <div className="min-w-0 pr-8">
             <h2 className="font-display text-lg sm:text-xl font-bold text-white truncate">
               {parsed?.reportTitle || instrument.name}
@@ -378,7 +381,7 @@ export default function ReportModal({ instrument, parsed, onClose }) {
                   <div><p className="text-muted text-xs">52w High</p><p className="font-mono text-white">{Number(screening.high52wOrRecent).toLocaleString('en-IN')}</p></div>
                 )}
                 {screening.dipFromHighPct != null && (
-                  <div><p className="text-muted text-xs">Dip from high</p><p className="font-mono text-amber-400">{Number(screening.dipFromHighPct).toFixed(1)}%</p></div>
+                  <div><p className="text-muted text-xs">Dip from high</p><p className="font-mono text-hue-amber">{Number(screening.dipFromHighPct).toFixed(1)}%</p></div>
                 )}
                 {screening.rating && (
                   <div><p className="text-muted text-xs">Rating</p><p className={`font-semibold ${RATING_COLOR[screening.rating] || 'text-white'}`}>{screening.rating}</p></div>
@@ -417,7 +420,7 @@ export default function ReportModal({ instrument, parsed, onClose }) {
 
           {/* ₹1 Lakh allocation */}
           <div className="rounded-xl bg-accent/15 border-2 border-accent/40 p-5">
-            <p className="stat-label text-accent mb-2">₹1 Lakh allocation</p>
+            <p className="stat-label text-accent-ink mb-2">₹1 Lakh allocation</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
               <div>
                 <p className="text-muted text-xs uppercase">Invest today</p>
@@ -425,7 +428,7 @@ export default function ReportModal({ instrument, parsed, onClose }) {
               </div>
               <div>
                 <p className="text-muted text-xs uppercase">Wait for level</p>
-                <p className="font-mono text-lg text-accent">
+                <p className="font-mono text-lg text-accent-ink">
                   {alloc.waitForLevel != null
                     ? (typeof alloc.waitForLevel === 'number' ? alloc.waitForLevel.toLocaleString('en-IN') : String(alloc.waitForLevel))
                     : '—'}
@@ -446,10 +449,10 @@ export default function ReportModal({ instrument, parsed, onClose }) {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {parsed.pros?.length > 0 && (
                 <div className="card">
-                  <p className="text-xs text-green-400 font-semibold uppercase tracking-wider mb-2">Pros</p>
+                  <p className="text-xs text-pos font-semibold uppercase tracking-wider mb-2">Pros</p>
                   <ul className="space-y-1.5 text-sm text-soft">
                     {parsed.pros.map((p, i) => (
-                      <li key={i} className="flex gap-2"><span className="text-green-400 shrink-0">✓</span>{p}</li>
+                      <li key={i} className="flex gap-2"><span className="text-pos shrink-0">✓</span>{p}</li>
                     ))}
                   </ul>
                 </div>
@@ -466,10 +469,10 @@ export default function ReportModal({ instrument, parsed, onClose }) {
               )}
               {parsed.risks?.length > 0 && (
                 <div className="card">
-                  <p className="text-xs text-amber-400 font-semibold uppercase tracking-wider mb-2">Risks</p>
+                  <p className="text-xs text-hue-amber font-semibold uppercase tracking-wider mb-2">Risks</p>
                   <ul className="space-y-1.5 text-sm text-soft">
                     {parsed.risks.map((r, i) => (
-                      <li key={i} className="flex gap-2"><span className="text-amber-400 shrink-0">⚠</span>{r}</li>
+                      <li key={i} className="flex gap-2"><span className="text-hue-amber shrink-0">⚠</span>{r}</li>
                     ))}
                   </ul>
                 </div>
@@ -501,13 +504,13 @@ export default function ReportModal({ instrument, parsed, onClose }) {
               <SectionTitle>Key levels</SectionTitle>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                 {supportLevels.length > 0 && (
-                  <div><p className="text-muted text-xs">Support</p><p className="font-mono text-green-400">{supportLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p></div>
+                  <div><p className="text-muted text-xs">Support</p><p className="font-mono text-pos">{supportLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p></div>
                 )}
                 {resistanceLevels.length > 0 && (
-                  <div><p className="text-muted text-xs">Resistance</p><p className="font-mono text-amber-400">{resistanceLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p></div>
+                  <div><p className="text-muted text-xs">Resistance</p><p className="font-mono text-hue-amber">{resistanceLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p></div>
                 )}
                 {buyLevels.length > 0 && (
-                  <div><p className="text-muted text-xs">Buy the dip</p><p className="font-mono text-accent">{buyLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p></div>
+                  <div><p className="text-muted text-xs">Buy the dip</p><p className="font-mono text-accent-ink">{buyLevels.map((l) => l.toLocaleString('en-IN')).join(', ')}</p></div>
                 )}
               </div>
             </div>

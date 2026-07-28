@@ -44,7 +44,7 @@ export default function InstallPrompt() {
   if (showIOSHint) {
     return (
       <div className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-soft">
-        <Share size={18} className="shrink-0 text-accent" />
+        <Share size={18} className="shrink-0 text-accent-ink" />
         <span className="text-left">Tap Share, then &quot;Add to Home Screen&quot;</span>
       </div>
     );
@@ -56,7 +56,7 @@ export default function InstallPrompt() {
     <button
       type="button"
       onClick={handleInstall}
-      className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-accent hover:bg-accent/10 border border-accent/20 transition-all w-full min-h-[44px]"
+      className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-accent-ink hover:bg-accent/10 border border-accent/20 transition-all w-full min-h-[44px]"
     >
       <Download size={18} />
       Add to Home Screen

@@ -4,12 +4,14 @@ import {
   ChevronLeft, ChevronRight,
   Star, Leaf, Activity, Trophy, AlertTriangle, TrendingUp,
   Settings, Plus, X, Heart, Zap, Moon, Coffee, Book, Music, Apple, Droplets, Sun, Flame,
+  CheckSquare,
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ReferenceLine, Legend, CartesianGrid,
 } from 'recharts';
 import { TT, AX, GRID } from '../../lib/chartTheme';
+import EmptyState from '../../components/EmptyState';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
 import PageHeader from '../../components/PageHeader';
@@ -31,14 +33,14 @@ const PRESET_ICONS = ['Leaf', 'Activity', 'Dumbbell', 'Trophy', 'Heart', 'Zap', 
 
 // ─── color palette rotation ───────────────────────────────────────────────────
 const COLOR_PALETTE = [
-  { color: 'text-amber-400',   dot: 'bg-amber-400',   ring: 'bg-amber-400/10 border-amber-400/25',   stroke: '#fbbf24' },
-  { color: 'text-teal-400',    dot: 'bg-teal-400',    ring: 'bg-teal-400/10 border-teal-400/25',     stroke: '#2dd4bf' },
-  { color: 'text-blue-400',    dot: 'bg-blue-400',    ring: 'bg-blue-400/10 border-blue-400/25',     stroke: '#60a5fa' },
-  { color: 'text-purple-400',  dot: 'bg-purple-400',  ring: 'bg-purple-400/10 border-purple-400/25', stroke: '#c084fc' },
-  { color: 'text-pink-400',    dot: 'bg-pink-400',    ring: 'bg-pink-400/10 border-pink-400/25',     stroke: '#f472b6' },
-  { color: 'text-orange-400',  dot: 'bg-orange-400',  ring: 'bg-orange-400/10 border-orange-400/25', stroke: '#fb923c' },
-  { color: 'text-green-400',   dot: 'bg-green-400',   ring: 'bg-green-400/10 border-green-400/25',   stroke: '#4ade80' },
-  { color: 'text-red-400',     dot: 'bg-red-400',     ring: 'bg-red-400/10 border-red-400/25',       stroke: '#f87171' },
+  { color: 'text-hue-amber',   dot: 'bg-amber-400',   ring: 'bg-amber-400/10 border-amber-400/25',   stroke: '#fbbf24' },
+  { color: 'text-hue-teal',    dot: 'bg-teal-400',    ring: 'bg-teal-400/10 border-teal-400/25',     stroke: '#2dd4bf' },
+  { color: 'text-hue-blue',    dot: 'bg-blue-400',    ring: 'bg-blue-400/10 border-blue-400/25',     stroke: '#60a5fa' },
+  { color: 'text-hue-purple',  dot: 'bg-purple-400',  ring: 'bg-purple-400/10 border-purple-400/25', stroke: '#c084fc' },
+  { color: 'text-hue-pink',    dot: 'bg-pink-400',    ring: 'bg-pink-400/10 border-pink-400/25',     stroke: '#f472b6' },
+  { color: 'text-hue-orange',  dot: 'bg-orange-400',  ring: 'bg-orange-400/10 border-orange-400/25', stroke: '#fb923c' },
+  { color: 'text-pos',   dot: 'bg-green-400',   ring: 'bg-green-400/10 border-green-400/25',   stroke: '#4ade80' },
+  { color: 'text-neg',     dot: 'bg-red-400',     ring: 'bg-red-400/10 border-red-400/25',       stroke: '#f87171' },
 ];
 
 const DEFAULT_HABITS = [
@@ -366,19 +368,20 @@ export default function WellnessHabits() {
               {habitTypes.map((ht, idx) => {
                 const Icon = ICON_MAP[ht.icon] || Leaf;
                 return (
-                  <div key={ht.key} className="flex items-center gap-3 px-3 py-2 rounded-xl border border-white/8 bg-white/[0.02]">
+                  <div key={ht.key} className="flex items-center gap-3 px-3 py-2 rounded-xl border border-hairline/8 bg-white/[0.02]">
                     <Icon size={14} className={ht.color} />
                     <span className={`text-sm flex-1 ${ht.color}`}>{ht.label}</span>
                     <button
                       onClick={() => deleteHabit(ht.key)}
-                      className="text-muted/60 hover:text-red-400 transition-colors p-1">
+                      className="text-muted/60 hover:text-neg transition-colors p-1">
                       <X size={13} />
                     </button>
                   </div>
                 );
               })}
               {habitTypes.length === 0 && (
-                <p className="text-xs text-muted/60 text-center py-4">No habits — add one below</p>
+                <EmptyState compact icon={CheckSquare} title="No habits configured yet"
+                  hint="Add one below to start tracking it." />
               )}
             </div>
           </div>
@@ -401,8 +404,8 @@ export default function WellnessHabits() {
                     <button key={iconName} onClick={() => setNewHabitIcon(iconName)}
                       className={`p-2 rounded-lg border transition-all ${
                         newHabitIcon === iconName
-                          ? 'border-accent/50 bg-accent/10 text-accent'
-                          : 'border-white/10 text-muted hover:text-white hover:border-white/20'
+                          ? 'border-accent/50 bg-accent/10 text-accent-ink'
+                          : 'border-hairline/10 text-muted hover:text-white hover:border-hairline/20'
                       }`}>
                       <Icon size={14} />
                     </button>
@@ -454,20 +457,20 @@ export default function WellnessHabits() {
     const isCurrentWeek = weekStart === currentWeekStart;
     return (
       <div className="card fade-up-1 overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-white/5">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-hairline/5">
           <div className="flex items-center gap-2">
             <button onClick={() => shiftWeek(-1)}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+              className="icon-btn p-1.5 rounded-lg hover:bg-hairline/8 text-soft hover:text-white transition-colors">
               <ChevronLeft size={18} />
             </button>
             <p className="text-white text-sm font-semibold font-body">{fmtWeekRange(weekStart)}</p>
             <button onClick={() => shiftWeek(1)}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+              className="icon-btn p-1.5 rounded-lg hover:bg-hairline/8 text-soft hover:text-white transition-colors">
               <ChevronRight size={18} />
             </button>
             {!isCurrentWeek && (
               <button onClick={() => setWeekStart(currentWeekStart)}
-                className="px-2.5 py-1 rounded-lg text-xs font-mono bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors">
+                className="px-2.5 py-1 rounded-lg text-xs font-mono bg-accent/10 text-accent-ink border border-accent/20 hover:bg-accent/20 transition-colors">
                 Today
               </button>
             )}
@@ -479,7 +482,7 @@ export default function WellnessHabits() {
             </div>
             <button onClick={openManage}
               title="Manage habits"
-              className="p-1.5 rounded-lg border border-white/10 text-muted hover:text-white hover:border-white/25 transition-colors">
+              className="icon-btn p-1.5 rounded-lg border border-hairline/10 text-muted hover:text-white hover:border-hairline/25 transition-colors">
               <Settings size={15} />
             </button>
           </div>
@@ -488,22 +491,23 @@ export default function WellnessHabits() {
         {configLoading ? (
           <div className="p-8 text-center text-muted text-sm">Loading habit config…</div>
         ) : habitTypes.length === 0 ? (
-          <div className="p-8 text-center text-muted text-sm">
-            No habits configured. <button onClick={openManage} className="text-accent underline ml-1">Add habits →</button>
-          </div>
+          <EmptyState icon={CheckSquare} title="No habits configured yet"
+            hint="Choose the habits you want to track and they'll appear on this planner."
+            action={<button onClick={openManage} className="btn-ghost inline-flex items-center gap-2 text-sm">
+              <Plus size={14} /> Add habits</button>} />
         ) : (
           <div className="overflow-x-auto" ref={scrollRef}>
             <div className="min-w-[680px]">
-              <div className="grid border-b border-white/5" style={{ gridTemplateColumns: `minmax(100px,140px) repeat(7, 1fr)` }}>
+              <div className="grid border-b border-hairline/5" style={{ gridTemplateColumns: `minmax(100px,140px) repeat(7, 1fr)` }}>
                 <div className="p-3" data-label-col="true"
-                  style={{ position: 'sticky', left: 0, zIndex: 2, background: 'var(--surface, #1a1a1a)' }} />
+                  style={{ position: 'sticky', left: 0, zIndex: 2, background: 'var(--card-bg)' }} />
                 {weekDays.map(ds => {
                   const h = fmtDayHeader(ds);
                   const isT = ds === today;
                   return (
-                    <div key={ds} data-today-col={isT ? 'true' : undefined} className={`p-3 text-center border-l border-white/5 ${isT ? 'bg-accent/5' : ''}`}>
-                      <p className={`text-xs font-mono uppercase ${isT ? 'text-accent' : 'text-muted'}`}>{h.wd}</p>
-                      <p className={`text-xl font-bold font-display ${isT ? 'text-accent' : 'text-white'}`}>{h.day}</p>
+                    <div key={ds} data-today-col={isT ? 'true' : undefined} className={`p-3 text-center border-l border-hairline/5 ${isT ? 'bg-accent/5' : ''}`}>
+                      <p className={`text-xs font-mono uppercase ${isT ? 'text-accent-ink' : 'text-muted'}`}>{h.wd}</p>
+                      <p className={`text-xl font-bold font-display ${isT ? 'text-accent-ink' : 'text-white'}`}>{h.day}</p>
                       <p className="text-xs text-muted font-mono">{h.mo}</p>
                     </div>
                   );
@@ -513,10 +517,10 @@ export default function WellnessHabits() {
               {habitTypes.map(ht => {
                 const Icon = ICON_MAP[ht.icon] || Leaf;
                 return (
-                  <div key={ht.key} className="grid border-b border-white/5 last:border-0"
+                  <div key={ht.key} className="grid border-b border-hairline/5 last:border-0"
                     style={{ gridTemplateColumns: `minmax(100px,140px) repeat(7, 1fr)` }}>
-                    <div className={`flex items-center gap-2 p-3 border-r border-white/5 ${ht.ring.split(' ')[0]}`}
-                      style={{ position: 'sticky', left: 0, zIndex: 2, background: 'var(--surface, #1a1a1a)' }}>
+                    <div className={`flex items-center gap-2 p-3 border-r border-hairline/5 ${ht.ring.split(' ')[0]}`}
+                      style={{ position: 'sticky', left: 0, zIndex: 2, background: 'var(--card-bg)' }}>
                       <Icon size={14} className={ht.color} />
                       <span className={`text-xs font-semibold ${ht.color} truncate max-w-[80px]`}>{ht.label}</span>
                     </div>
@@ -526,7 +530,7 @@ export default function WellnessHabits() {
                       const isSav= saving[ds];
                       return (
                         <div key={ds}
-                          className={`px-1 py-2 border-l border-white/5 min-h-[72px] flex flex-col justify-center ${isT ? 'bg-accent/5' : ''}`}>
+                          className={`px-1 py-2 border-l border-hairline/5 min-h-[72px] flex flex-col justify-center ${isT ? 'bg-accent/5' : ''}`}>
                           <div className="flex gap-px flex-wrap">
                             {[1,2,3,4,5].map(n => (
                               <button key={n} onClick={() => setHabit(ds, ht.key, n)}
@@ -563,9 +567,10 @@ export default function WellnessHabits() {
     );
     if (!stats?.chartData?.length) return (
       <div className="card p-8 text-center fade-up-1">
-        <p className="text-muted text-sm">No habit data yet for this period. Start logging habits in the planner.</p>
+        <EmptyState icon={CheckSquare} title="No habits logged in this period"
+            hint="Log habits in the planner to see your trends here." />
         <button onClick={() => setView('planner')}
-          className="mt-4 text-xs text-accent underline hover:text-accent/80 transition-colors">
+          className="mt-4 text-xs text-accent-ink underline hover:text-accent-ink/80 transition-colors">
           Go to Planner →
         </button>
       </div>
@@ -597,8 +602,8 @@ export default function WellnessHabits() {
             {alerts.map((a, i) => (
               <div key={i} className={`flex items-start gap-3 px-4 py-3 rounded-xl border text-sm ${
                 a.type === 'good'
-                  ? 'bg-emerald-400/5 border-emerald-400/20 text-emerald-300'
-                  : 'bg-amber-400/5 border-amber-400/20 text-amber-300'
+                  ? 'bg-emerald-400/5 border-emerald-400/20 text-pos'
+                  : 'bg-amber-400/5 border-amber-400/20 text-hue-amber'
               }`}>
                 <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                 {a.msg}
@@ -611,7 +616,7 @@ export default function WellnessHabits() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="card px-4 py-3 col-span-2 sm:col-span-1">
             <p className="text-[10px] text-muted uppercase tracking-wider">Health Score</p>
-            <p className={`font-mono text-2xl font-bold ${healthPct >= 60 ? 'text-emerald-400' : healthPct >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+            <p className={`font-mono text-2xl font-bold ${healthPct >= 60 ? 'text-pos' : healthPct >= 40 ? 'text-hue-amber' : 'text-neg'}`}>
               {healthPct != null ? `${healthPct}%` : '—'}
             </p>
             <p className="text-[10px] text-muted mt-0.5">avg/5 × 100</p>
@@ -638,7 +643,7 @@ export default function WellnessHabits() {
         {/* consistency cards */}
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <Flame size={14} className="text-orange-400" />
+            <Flame size={14} className="text-hue-orange" />
             <p className="text-xs text-muted uppercase tracking-widest font-mono">Habit Consistency</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -671,7 +676,7 @@ export default function WellnessHabits() {
         <div className="card p-4">
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <TrendingUp size={14} className="text-accent" />
+              <TrendingUp size={14} className="text-accent-ink" />
               <p className="text-xs text-muted uppercase tracking-widest font-mono">Daily total score vs target ({dailyTarget}/{statMaxScore})</p>
             </div>
             <RangeChips options={PERIODS} value={period} onChange={setPeriod} />
@@ -708,13 +713,13 @@ export default function WellnessHabits() {
         <div className="card fade-up-1 overflow-hidden animate-pulse">
           <div className="grid grid-cols-8 gap-0">
             {[...Array(8)].map((_, i) => (
-              <div key={i} className={`h-20 ${i === 0 ? '' : 'border-l border-white/5'} bg-white/[0.03]`} />
+              <div key={i} className={`h-20 ${i === 0 ? '' : 'border-l border-hairline/5'} bg-white/[0.03]`} />
             ))}
           </div>
           {[...Array(4)].map((_, r) => (
-            <div key={r} className="grid grid-cols-8 border-t border-white/5">
+            <div key={r} className="grid grid-cols-8 border-t border-hairline/5">
               {[...Array(8)].map((_, i) => (
-                <div key={i} className={`h-[72px] ${i === 0 ? '' : 'border-l border-white/5'} bg-white/[0.02]`} />
+                <div key={i} className={`h-[72px] ${i === 0 ? '' : 'border-l border-hairline/5'} bg-white/[0.02]`} />
               ))}
             </div>
           ))}

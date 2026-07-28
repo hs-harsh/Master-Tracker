@@ -3,20 +3,21 @@ import {
   ChevronLeft, ChevronRight,
   Plus, X, Check, Save, Sparkles, Copy,
   Coffee, Sun, Moon, Apple,
-  ChevronDown, ChevronUp, RefreshCw, Mail,
+  ChevronDown, ChevronUp, RefreshCw, Mail, Lightbulb,
 } from 'lucide-react';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
 import PageHeader from '../../components/PageHeader';
+import EmptyState from '../../components/EmptyState';
 import SegmentedToggle from '../../components/SegmentedToggle';
 import { parseD, todayStr, getMonday, getWeekDays, fmtWeekRange } from '../../lib/utils';
 
 // ─── meal types ───────────────────────────────────────────────────────────────
 const MEAL_TYPES = [
-  { key: 'breakfast', label: 'Breakfast', icon: Coffee, color: 'text-amber-400',   dot: 'bg-amber-400',   ring: 'bg-amber-400/10 border-amber-400/25',   stroke: '#fbbf24' },
-  { key: 'lunch',     label: 'Lunch',     icon: Sun,    color: 'text-emerald-400', dot: 'bg-emerald-400', ring: 'bg-emerald-400/10 border-emerald-400/25', stroke: '#34d399' },
-  { key: 'dinner',    label: 'Dinner',    icon: Moon,   color: 'text-blue-400',    dot: 'bg-blue-400',    ring: 'bg-blue-400/10 border-blue-400/25',      stroke: '#60a5fa' },
-  { key: 'snack',     label: 'Snack',     icon: Apple,  color: 'text-purple-400',  dot: 'bg-purple-400',  ring: 'bg-purple-400/10 border-purple-400/25',  stroke: '#c084fc' },
+  { key: 'breakfast', label: 'Breakfast', icon: Coffee, color: 'text-hue-amber',   dot: 'bg-amber-400',   ring: 'bg-amber-400/10 border-amber-400/25',   stroke: '#fbbf24' },
+  { key: 'lunch',     label: 'Lunch',     icon: Sun,    color: 'text-pos', dot: 'bg-emerald-400', ring: 'bg-emerald-400/10 border-emerald-400/25', stroke: '#34d399' },
+  { key: 'dinner',    label: 'Dinner',    icon: Moon,   color: 'text-hue-blue',    dot: 'bg-blue-400',    ring: 'bg-blue-400/10 border-blue-400/25',      stroke: '#60a5fa' },
+  { key: 'snack',     label: 'Snack',     icon: Apple,  color: 'text-hue-purple',  dot: 'bg-purple-400',  ring: 'bg-purple-400/10 border-purple-400/25',  stroke: '#c084fc' },
 ];
 const MEAL_MAP = Object.fromEntries(MEAL_TYPES.map(m => [m.key, m]));
 
@@ -86,14 +87,14 @@ function MealPlanCardContent({ entry, compact }) {
       <p className={`text-white font-semibold leading-snug break-words ${tTitle}`}>{entry.title}</p>
       <div className="flex flex-wrap gap-1.5 mt-2">
         {entry.calories ? (
-          <span className="px-2 py-0.5 rounded-md text-[11px] font-mono border border-accent/45 text-accent bg-accent/10">
+          <span className="px-2 py-0.5 rounded-md text-[11px] font-mono border border-accent/45 text-accent-ink bg-accent/10">
             {entry.calories} kcal
           </span>
         ) : null}
         {macroLabels.map((lab, i) => (
           <span
             key={i}
-            className="px-2 py-0.5 rounded-md text-[11px] font-mono border border-emerald-500/45 text-emerald-300 bg-emerald-500/10"
+            className="px-2 py-0.5 rounded-md text-[11px] font-mono border border-emerald-500/45 text-pos bg-emerald-500/10"
           >
             {lab}
           </span>
@@ -121,14 +122,14 @@ function cachePreferences(person, prefs) {
 
 function nutritionTagClass(tag) {
   const t = String(tag).toLowerCase();
-  if (t.includes('protein')) return 'bg-teal-500/15 text-teal-300 border-teal-500/30';
-  if (t.includes('fibre') || t.includes('fiber')) return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
-  if (t.includes('healthy fat')) return 'bg-amber-500/15 text-amber-200 border-amber-500/30';
-  if (t.includes('iron')) return 'bg-rose-500/15 text-rose-200 border-rose-500/30';
-  if (t.includes('calcium')) return 'bg-sky-500/15 text-sky-200 border-sky-500/30';
-  if (t.includes('complex') || t.includes('carb')) return 'bg-violet-500/15 text-violet-200 border-violet-500/30';
-  if (t.includes('vitamin')) return 'bg-lime-500/15 text-lime-200 border-lime-500/30';
-  return 'bg-white/5 text-muted border-white/10';
+  if (t.includes('protein')) return 'bg-teal-500/15 text-hue-teal border-teal-500/30';
+  if (t.includes('fibre') || t.includes('fiber')) return 'bg-emerald-500/15 text-pos border-emerald-500/30';
+  if (t.includes('healthy fat')) return 'bg-amber-500/15 text-hue-amber border-amber-500/30';
+  if (t.includes('iron')) return 'bg-rose-500/15 text-neg border-rose-500/30';
+  if (t.includes('calcium')) return 'bg-sky-500/15 text-hue-blue border-sky-500/30';
+  if (t.includes('complex') || t.includes('carb')) return 'bg-violet-500/15 text-hue-violet border-violet-500/30';
+  if (t.includes('vitamin')) return 'bg-lime-500/15 text-hue-green border-lime-500/30';
+  return 'bg-white/5 text-muted border-hairline/10';
 }
 
 // ─── component ────────────────────────────────────────────────────────────────
@@ -438,7 +439,7 @@ export default function WellnessMeals() {
   function Planner() {
     return (
       <div className="card fade-up-1 overflow-hidden">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between p-4 border-b border-white/5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between p-4 border-b border-hairline/5">
           <div className="flex items-center justify-center sm:justify-start gap-2 min-w-0">
             <button onClick={() => shiftWeek(-1)}
               className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
@@ -447,8 +448,8 @@ export default function WellnessMeals() {
             <div>
               <p className="text-white text-sm font-semibold font-body">{fmtWeekRange(weekStart)}</p>
               {isAccepted
-                ? <span className="flex items-center gap-1 text-xs text-emerald-400 font-mono"><Check size={10} /> Accepted</span>
-                : <span className="text-xs text-amber-400/60 font-mono">Draft</span>}
+                ? <span className="flex items-center gap-1 text-xs text-pos font-mono"><Check size={10} /> Accepted</span>
+                : <span className="text-xs text-hue-amber/60 font-mono">Draft</span>}
             </div>
             <button onClick={() => shiftWeek(1)}
               className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
@@ -459,13 +460,13 @@ export default function WellnessMeals() {
             <div className="flex gap-2 flex-wrap justify-center sm:justify-end items-center w-full">
               {isAccepted ? (
                 <>
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-400 text-xs font-semibold border border-emerald-400/20">
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-pos text-xs font-semibold border border-emerald-400/20">
                     <Check size={13} /> Plan Accepted — saved to calendar
                   </span>
                   <button onClick={resetPlan} disabled={resetting}
                     title="Reset to draft so you can edit or regenerate"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
-                      border border-white/15 text-soft hover:text-white hover:border-white/30 transition-colors disabled:opacity-50">
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold min-h-[44px]
+                      border border-hairline/15 text-soft hover:text-white hover:border-hairline/30 transition-colors disabled:opacity-50">
                     <RefreshCw size={12} />{resetting ? 'Resetting…' : 'Reset Plan'}
                   </button>
                   {hasPlanContent && (
@@ -510,9 +511,9 @@ export default function WellnessMeals() {
         </div>
 
         {!isAccepted && (
-          <div className="p-3 border-b border-white/5 bg-white/[0.02] space-y-2">
+          <div className="p-3 border-b border-hairline/5 bg-white/[0.02] space-y-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-1.5 text-xs text-purple-400 font-semibold shrink-0">
+              <div className="flex items-center gap-1.5 text-xs text-hue-purple font-semibold shrink-0">
                 <Sparkles size={13} />AI
               </div>
               <input
@@ -524,7 +525,7 @@ export default function WellnessMeals() {
               />
               <button onClick={generatePlan} disabled={generating}
                 className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-xs font-semibold
-                  bg-purple-500/20 text-purple-300 border border-purple-500/30
+                  bg-purple-500/20 text-hue-purple border border-purple-500/30
                   hover:bg-purple-500/30 transition-colors disabled:opacity-50">
                 <Sparkles size={12} />{generating ? 'Generating…' : 'Generate'}
               </button>
@@ -532,22 +533,22 @@ export default function WellnessMeals() {
             {/* Saved Preferences chips — all always sent to AI; × to remove */}
             {preferences.length > 0 && (
               <div>
-                <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5">Saved Preferences <span className="normal-case text-purple-400/60">(all applied on generate)</span></p>
+                <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5">Saved Preferences <span className="normal-case text-hue-purple/60">(all applied on generate)</span></p>
                 <div className="flex flex-wrap gap-1.5">
                   {preferences.map((pref, i) => (
-                    <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-300 text-xs group">
+                    <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-purple-500/30 bg-purple-500/10 text-hue-purple text-xs group">
                       <button
                         onClick={() => { navigator.clipboard.writeText(pref); setCopiedPref(pref); setTimeout(() => setCopiedPref(null), 1500); }}
                         className="truncate max-w-[160px] text-left hover:text-white transition-colors"
                         title="Click to copy">
                         {copiedPref === pref
-                          ? <span className="flex items-center gap-1 text-teal-400"><Check size={10} />Copied</span>
+                          ? <span className="flex items-center gap-1 text-hue-teal"><Check size={10} />Copied</span>
                           : <span className="flex items-center gap-1">{pref}<Copy size={9} className="opacity-0 group-hover:opacity-50 flex-shrink-0" /></span>
                         }
                       </button>
                       <button
                         onClick={() => deletePreference(pref)}
-                        className="text-purple-400/60 hover:text-red-400 transition-colors ml-0.5 flex-shrink-0"
+                        className="text-hue-purple/60 hover:text-neg transition-colors ml-0.5 flex-shrink-0"
                         title="Remove preference">
                         <X size={10} />
                       </button>
@@ -556,21 +557,21 @@ export default function WellnessMeals() {
                 </div>
               </div>
             )}
-            {aiError && <p className="text-xs text-red-400">{aiError}</p>}
+            {aiError && <p className="text-xs text-neg">{aiError}</p>}
             {/* Reasoning panel */}
             {reasoning && (
-              <div className="rounded-lg overflow-hidden border border-white/8">
+              <div className="rounded-lg overflow-hidden border border-hairline/8">
                 <button
                   onClick={() => setShowReasoning(r => !r)}
                   className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-white/[0.02] transition-colors">
                   <div className="flex items-center gap-2">
-                    <Sparkles size={12} className="text-purple-400" />
-                    <span className="text-xs text-purple-300 font-semibold uppercase tracking-wider">AI Reasoning</span>
+                    <Sparkles size={12} className="text-hue-purple" />
+                    <span className="text-xs text-hue-purple font-semibold uppercase tracking-wider">AI Reasoning</span>
                   </div>
                   {showReasoning ? <ChevronUp size={13} className="text-muted" /> : <ChevronDown size={13} className="text-muted" />}
                 </button>
                 {showReasoning && (
-                  <div className="px-3 pb-3 text-xs text-soft leading-relaxed border-t border-white/5">
+                  <div className="px-3 pb-3 text-xs text-soft leading-relaxed border-t border-hairline/5">
                     {reasoning}
                   </div>
                 )}
@@ -582,15 +583,15 @@ export default function WellnessMeals() {
         {/* Desktop: classic week grid */}
         <div className="hidden lg:block overflow-x-auto">
           <div className="min-w-[680px]">
-            <div className="grid grid-cols-8 border-b border-white/5">
+            <div className="grid grid-cols-8 border-b border-hairline/5">
               <div className="p-3" />
               {weekDays.map(ds => {
                 const h = fmtDayHeader(ds);
                 const isT = ds === today;
                 return (
-                  <div key={ds} className={`p-3 text-center border-l border-white/5 ${isT ? 'bg-accent/5' : ''}`}>
-                    <p className={`text-xs font-mono uppercase ${isT ? 'text-accent' : 'text-muted'}`}>{h.wd}</p>
-                    <p className={`text-xl font-bold font-display ${isT ? 'text-accent' : 'text-white'}`}>{h.day}</p>
+                  <div key={ds} className={`p-3 text-center border-l border-hairline/5 ${isT ? 'bg-accent/5' : ''}`}>
+                    <p className={`text-xs font-mono uppercase ${isT ? 'text-accent-ink' : 'text-muted'}`}>{h.wd}</p>
+                    <p className={`text-xl font-bold font-display ${isT ? 'text-accent-ink' : 'text-white'}`}>{h.day}</p>
                     <p className="text-xs text-muted font-mono">{h.mo}</p>
                   </div>
                 );
@@ -598,8 +599,8 @@ export default function WellnessMeals() {
             </div>
 
             {MEAL_TYPES.map(mt => (
-              <div key={mt.key} className="grid grid-cols-8 border-b border-white/5 last:border-0">
-                <div className={`flex items-center gap-2 p-3 border-r border-white/5 ${mt.ring.split(' ')[0]}`}>
+              <div key={mt.key} className="grid grid-cols-8 border-b border-hairline/5 last:border-0">
+                <div className={`flex items-center gap-2 p-3 border-r border-hairline/5 ${mt.ring.split(' ')[0]}`}>
                   <mt.icon size={14} className={mt.color} />
                   <span className={`text-xs font-semibold ${mt.color}`}>{mt.label}</span>
                 </div>
@@ -610,7 +611,7 @@ export default function WellnessMeals() {
                   const cellInteractive = !isAccepted || !!entry?.title;
                   return (
                     <div key={ds} onClick={() => openCell(ds, mt.key)}
-                      className={`group relative p-2.5 border-l border-white/5 min-h-[128px] align-top transition-colors
+                      className={`group relative p-2.5 border-l border-hairline/5 min-h-[128px] align-top transition-colors
                         ${isT ? 'bg-accent/5' : ''}
                         ${cellInteractive ? 'cursor-pointer hover:bg-white/[0.04]' : 'cursor-default'}`}>
                       {entry?.title ? (
@@ -620,9 +621,9 @@ export default function WellnessMeals() {
                             <button
                               onClick={e => { e.stopPropagation(); refreshEntry(ds, mt.key); }}
                               disabled={!!refreshingCell}
-                              className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md bg-white/5 hover:bg-white/10 text-muted hover:text-white"
+                              className="icon-btn absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md bg-white/5 hover:bg-white/10 text-muted hover:text-white"
                               title="Get a different meal">
-                              <RefreshCw size={11} className={refreshingCell === key ? 'animate-spin text-purple-400' : ''} />
+                              <RefreshCw size={11} className={refreshingCell === key ? 'animate-spin text-hue-purple' : ''} />
                             </button>
                           )}
                         </div>
@@ -647,7 +648,7 @@ export default function WellnessMeals() {
             const isT = ds === today;
             return (
               <section key={ds} className="space-y-3">
-                <h3 className={`text-base font-bold font-display tracking-tight ${isT ? 'text-accent' : 'text-[#e8bc3d]'}`}>
+                <h3 className={`text-base font-bold font-display tracking-tight ${isT ? 'text-accent-ink' : 'text-[#e8bc3d]'}`}>
                   {fmtDayLine(ds)}
                 </h3>
                 <div className="space-y-3">
@@ -668,7 +669,7 @@ export default function WellnessMeals() {
                               openCell(ds, mt.key);
                             }
                           }}
-                          className={`rounded-xl border border-white/10 bg-[#141414] p-3.5 shadow-[0_1px_0_rgba(255,255,255,0.04)] ${
+                          className={`rounded-xl border border-hairline/10 bg-[#141414] p-3.5 shadow-[0_1px_0_rgba(255,255,255,0.04)] ${
                             cellInteractive ? 'cursor-pointer active:bg-white/[0.03]' : 'cursor-default'
                           }`}
                         >
@@ -683,7 +684,7 @@ export default function WellnessMeals() {
                                 disabled={!!refreshingCell}
                                 className="p-1 rounded-md text-muted hover:text-white hover:bg-white/10 transition-colors"
                                 title="Get a different meal">
-                                <RefreshCw size={12} className={refreshingCell === eKey(ds, mt.key) ? 'animate-spin text-purple-400' : ''} />
+                                <RefreshCw size={12} className={refreshingCell === eKey(ds, mt.key) ? 'animate-spin text-hue-purple' : ''} />
                               </button>
                             )}
                           </div>
@@ -697,7 +698,7 @@ export default function WellnessMeals() {
                           key={mt.key}
                           type="button"
                           onClick={() => openCell(ds, mt.key)}
-                          className="w-full rounded-xl border border-dashed border-white/15 bg-white/[0.02] py-5 flex flex-col items-center justify-center gap-1.5 text-muted text-xs hover:border-white/25 hover:bg-white/[0.04] transition-colors"
+                          className="w-full rounded-xl border border-dashed border-hairline/15 bg-white/[0.02] py-5 flex flex-col items-center justify-center gap-1.5 text-muted text-xs hover:border-hairline/25 hover:bg-white/[0.04] transition-colors"
                         >
                           <Plus size={18} strokeWidth={1.75} />
                           <span>Add {mt.label}</span>
@@ -707,7 +708,7 @@ export default function WellnessMeals() {
                     return (
                       <div
                         key={mt.key}
-                        className="rounded-xl border border-white/5 bg-white/[0.02] py-5 text-center text-muted text-xs"
+                        className="rounded-xl border border-hairline/5 bg-white/[0.02] py-5 text-center text-muted text-xs"
                       >
                         —
                       </div>
@@ -770,7 +771,8 @@ export default function WellnessMeals() {
                     </button>
                   </div>
                   {list.length === 0 ? (
-                    <p className="text-muted text-xs py-2">No ideas yet — add your first one above.</p>
+                    <EmptyState compact icon={Lightbulb} title="No meal ideas yet"
+                      hint="Add one above to build up your list." />
                   ) : (
                     <ul className="divide-y divide-border/40">
                       {list.map(idea => (
@@ -779,7 +781,7 @@ export default function WellnessMeals() {
                           <button
                             type="button"
                             onClick={() => deleteIdea(key, idea.id)}
-                            className="text-muted hover:text-rose transition-colors shrink-0"
+                            className="icon-btn text-muted hover:text-rose transition-colors shrink-0"
                             title="Remove idea"
                           >
                             <X size={14} />
@@ -827,7 +829,7 @@ export default function WellnessMeals() {
               </div>
               <p className="text-muted text-xs mt-0.5">
                 {d?.toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'short' })}
-                {readOnly && <span className="ml-2 text-amber-400/80">· View only</span>}
+                {readOnly && <span className="ml-2 text-hue-amber/80">· View only</span>}
               </p>
             </div>
             <button onClick={() => setEditCell(null)} className="text-muted hover:text-white transition-colors">
@@ -859,13 +861,13 @@ export default function WellnessMeals() {
                 </div>
               )}
 
-              <div className="mt-4 border-t border-white/10 pt-3 space-y-2">
+              <div className="mt-4 border-t border-hairline/10 pt-3 space-y-2">
                 <button
                   type="button"
                   onClick={fetchNutritionBreakdown}
                   disabled={nutLoading || !editData.title?.trim()}
                   className="w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold
-                    bg-purple-500/15 text-purple-200 border border-purple-500/30 hover:bg-purple-500/25 transition-colors disabled:opacity-50"
+                    bg-purple-500/15 text-hue-purple border border-purple-500/30 hover:bg-purple-500/25 transition-colors disabled:opacity-50"
                 >
                   <Sparkles size={12} />
                   {nutLoading ? 'Fetching nutrition…' : 'Fetch nutrition (AI)'}
@@ -874,10 +876,10 @@ export default function WellnessMeals() {
                   Portions, macros, small add-ons (e.g. ghee), and nutrient tags (protein / fibre rich, etc.). Approximate values.
                 </p>
                 {nut?.items?.length > 0 && (
-                  <div className="overflow-x-auto rounded-lg border border-white/10 mt-2">
+                  <div className="overflow-x-auto rounded-lg border border-hairline/10 mt-2">
                     <table className="w-full text-xs text-left">
                       <thead>
-                        <tr className="text-muted uppercase border-b border-white/10">
+                        <tr className="text-muted uppercase border-b border-hairline/10">
                           <th className="py-2 pr-2 pl-2">Item</th>
                           <th className="py-2 pr-2">Portion</th>
                           <th className="py-2 pr-2 min-w-[100px]">Tags</th>
@@ -891,7 +893,7 @@ export default function WellnessMeals() {
                         {nut.items.flatMap((row, i) => {
                           const comps = Array.isArray(row.components) ? row.components : [];
                           const main = (
-                            <tr key={`m-${i}`} className="border-b border-white/5 bg-white/[0.03]">
+                            <tr key={`m-${i}`} className="border-b border-hairline/5 bg-white/[0.03]">
                               <td className="py-1.5 pr-2 pl-2 text-soft font-medium">{row.name}</td>
                               <td className="py-1.5 pr-2 text-muted max-w-[120px]">{row.portion || '—'}</td>
                               <td className="py-1.5 pr-2">
@@ -913,7 +915,7 @@ export default function WellnessMeals() {
                             </tr>
                           );
                           const sub = comps.map((c, k) => (
-                            <tr key={`c-${i}-${k}`} className="border-b border-white/5">
+                            <tr key={`c-${i}-${k}`} className="border-b border-hairline/5">
                               <td className="py-1 pr-2 pl-5 text-muted text-[11px]">
                                 <span className="text-muted/60 mr-1">↳</span>
                                 {c.name}
@@ -945,7 +947,7 @@ export default function WellnessMeals() {
               <div className="flex gap-2 mt-4">
                 {!readOnly && (
                   <>
-                    <button type="button" onClick={clearCell} className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">Clear</button>
+                    <button type="button" onClick={clearCell} className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-neg hover:bg-red-400/10 transition-colors">Clear</button>
                     <button type="button" onClick={() => setEditMode(true)} className="btn-primary flex-1 text-sm py-2">Edit</button>
                   </>
                 )}
@@ -979,7 +981,7 @@ export default function WellnessMeals() {
                 </div>
               </div>
               <div className="flex gap-2 mt-4">
-                <button type="button" onClick={clearCell} className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-colors">Clear</button>
+                <button type="button" onClick={clearCell} className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-neg hover:bg-red-400/10 transition-colors">Clear</button>
                 <button type="button" onClick={saveCell} className="btn-primary flex-1 text-sm py-2">Save</button>
               </div>
             </>

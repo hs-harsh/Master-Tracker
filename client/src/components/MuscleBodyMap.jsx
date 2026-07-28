@@ -157,11 +157,11 @@ export default function MuscleBodyMap({ muscles, selected, onSelect }) {
       </div>
 
       {selected && (
-        <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.02] p-4">
+        <div className="mt-4 rounded-xl border border-hairline/8 bg-white/[0.02] p-4">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-white text-sm font-semibold font-body">{muscleLabel(selected)}</p>
             {detail && detail.score > 0 ? (
-              <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
+              <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-accent/15 text-accent-ink border border-accent/30">
                 {detail.score}/10 · {detail.sets} sets
               </span>
             ) : detailExercises.length > 0 ? (

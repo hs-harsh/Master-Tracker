@@ -1,3 +1,5 @@
+import { identityPalette } from './chartTheme';
+
 const CURRENCY_SYMBOLS = { INR: '₹', USD: '$' };
 let _currencySymbol = '₹';
 
@@ -71,7 +73,7 @@ export function fmtWeekRange(ws) {
   return `${s.toLocaleDateString('en-IN', opts)} – ${e.toLocaleDateString('en-IN', { ...opts, year: 'numeric' })}`;
 }
 
-const PERSON_COLORS = ['#f0c040', '#a78bfa', '#2dd4bf', '#fb7185', '#60a5fa', '#f97316'];
+const PERSON_COLORS = identityPalette(['gold', 'violet', 'teal', 'rose', 'blue', 'orange']);
 export const colorFor = (person) => {
   if (!person) return PERSON_COLORS[0];
   let hash = 0;
@@ -79,26 +81,35 @@ export const colorFor = (person) => {
   return PERSON_COLORS[Math.abs(hash) % PERSON_COLORS.length];
 };
 
-export const ASSET_COLORS = {
-  cash: '#60a5fa',
-  gold_silver: '#fbbf24',
-  debt_pf: '#34d399',
-  debt_ppf: '#2dd4bf',
-  debt_mf: '#6ee7b7',
-  equity_indian: '#f97316',
-  equity_intl: '#fb923c',
-  equity_nps: '#c084fc',
-  equity_trading: '#f472b6',
-  equity_smallcase: '#e879f9',
-  real_estate: '#94a3b8',
-};
+/* Eleven buckets, eleven distinct hues. The old literals leaned on shades of
+   the same hue to fill the list — equity_indian #f97316 next to equity_intl
+   #fb923c, debt_pf #34d399 next to debt_mf #6ee7b7 — which are hard to tell
+   apart in a pie at any size and became indistinguishable once both were
+   darkened for the light theme. Each bucket now gets its own hue. */
+export const ASSET_COLORS = identityPalette({
+  cash:             'blue',
+  gold_silver:      'amber',
+  debt_pf:          'emerald',
+  debt_ppf:         'teal',
+  debt_mf:          'green',
+  equity_indian:    'orange',
+  equity_intl:      'gold',
+  equity_nps:       'purple',
+  equity_trading:   'pink',
+  equity_smallcase: 'violet',
+  real_estate:      'slate',
+});
 
-export const TYPE_COLORS = {
-  Income: '#4ade80',
-  'Other Income': '#22c55e',
-  Major: '#fb7185',
-  'Non-Recurring': '#fbbf24',
-  Regular: '#94a3b8',
-  EMI: '#a78bfa',
-  Trips: '#2dd4bf',
-};
+/* Transaction-type colours. These match the `.tag-*` classes in index.css and
+   Cashflow's copy of this map — the three used to disagree, so the same
+   "Income" row was teal in one chart, light green in another and emerald as a
+   tag on the same screen. */
+export const TYPE_COLORS = identityPalette({
+  Income:          'emerald',
+  'Other Income':  'green',
+  Major:           'rose',
+  'Non-Recurring': 'amber',
+  Regular:         'slate',
+  EMI:             'violet',
+  Trips:           'teal',
+});

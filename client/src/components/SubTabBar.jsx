@@ -25,7 +25,7 @@ export default function SubTabBar({ tabs }) {
           to={to}
           end={end}
           className={({ isActive }) =>
-            `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-body transition-all min-h-[40px] ${
+            `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-body transition-all min-h-[44px] ${
               isActive
                 ? 'bg-card text-text font-semibold ring-1 ring-inset ring-hairline/15'
                 : 'text-soft hover:text-text'

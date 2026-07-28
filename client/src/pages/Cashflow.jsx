@@ -3,14 +3,15 @@ import {
   AreaChart, Area, ComposedChart, BarChart, Bar, Line, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { Plus, Pencil, Trash2, X, Save, Target, Check, ArrowLeft } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Target, Check, ArrowLeft, Receipt, TrendingUp } from 'lucide-react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
 import SegmentedToggle from '../components/SegmentedToggle';
 import RangeChips from '../components/RangeChips';
-import { TT, AX, GRID } from '../lib/chartTheme';
+import { TT, AX, GRID, HUE, identityPalette } from '../lib/chartTheme';
 
 // ── Shared chart helpers ───────────────────────────────────────────────────────
 // Tooltip / axis / grid chrome comes from lib/chartTheme.js — see AC-4.1.
@@ -29,16 +30,19 @@ function Leg({ items }) {
   );
 }
 
-// ── Transaction type colours (shared between charts and drill-down) ────────────
-const TYPE_COLORS = {
-  'Income':        '#2dd4bf',
-  'Other Income':  '#34d399',
-  'Major':         '#fb7185',
-  'Non-Recurring': '#f97316',
-  'Regular':       '#facc15',
-  'EMI':           '#a78bfa',
-  'Trips':         '#60a5fa',
-};
+// ── Transaction type colours (shared between charts and drill-down) ───────────
+// Aligned with lib/utils.js TYPE_COLORS and the `.tag-*` classes in index.css.
+// These three disagreed before — Income was teal here, light green in utils and
+// emerald as a tag, so one transaction type had three colours on one screen.
+const TYPE_COLORS = identityPalette({
+  'Income':        'emerald',
+  'Other Income':  'green',
+  'Major':         'rose',
+  'Non-Recurring': 'amber',
+  'Regular':       'slate',
+  'EMI':           'violet',
+  'Trips':         'teal',
+});
 
 // ── Month drill-down ───────────────────────────────────────────────────────────
 function MonthDrillDown({ month, person, onBack }) {
@@ -82,7 +86,8 @@ function MonthDrillDown({ month, person, onBack }) {
       {loading && <div className="py-8 text-center text-muted text-sm">Loading…</div>}
 
       {!loading && txs.length === 0 && (
-        <div className="py-8 text-center text-muted text-sm">No transactions found for this month.</div>
+        <EmptyState compact icon={Receipt} title="No transactions this month"
+          hint="Add transactions for this month to see the breakdown." />
       )}
 
       {!loading && txs.length > 0 && (
@@ -96,7 +101,7 @@ function MonthDrillDown({ month, person, onBack }) {
               <Tooltip {...TT} formatter={money} />
               <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
                 {barData.map((entry, i) => (
-                  <Cell key={i} fill={TYPE_COLORS[entry.type] || '#6b7280'} />
+                  <Cell key={i} fill={TYPE_COLORS[entry.type] || HUE.slate} />
                 ))}
               </Bar>
             </BarChart>
@@ -108,7 +113,7 @@ function MonthDrillDown({ month, person, onBack }) {
               <div key={type}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold font-display uppercase tracking-wider"
-                    style={{ color: TYPE_COLORS[type] || '#6b7280' }}>
+                    style={{ color: TYPE_COLORS[type] || HUE.slate }}>
                     {type}
                   </span>
                   <span className="font-mono text-sm text-white">{fmt(total)}</span>
@@ -116,7 +121,7 @@ function MonthDrillDown({ month, person, onBack }) {
                 <div className="rounded-lg border border-border overflow-hidden">
                   {items.map((t, i) => (
                     <div key={i}
-                      className="flex items-center gap-3 px-3 py-2 text-xs border-b border-border/50 last:border-0 hover:bg-surface/50">
+                      className="flex items-center gap-3 px-3 py-2 text-xs border-b border-hairline/15 last:border-0 hover:bg-surface/50">
                       <span className="text-muted w-20 shrink-0">{fmtDate(t.date)}</span>
                       <span className="text-soft flex-1 truncate">{t.remark || '—'}</span>
                       <span className="font-mono text-white shrink-0">{fmt(t.amount)}</span>
@@ -252,7 +257,7 @@ function SavingChart({ data, range, setRange, onBarClick }) {
         <div>
           <p className="stat-label mb-0.5">Income Breakdown &amp; Saving</p>
           <p className="text-xs text-muted">
-            Stacked bar = where your income goes. <span className="text-orange-400">Special expenses</span> are the gap between actual and ideal saving.
+            Stacked bar = where your income goes. <span className="text-hue-orange">Special expenses</span> are the gap between actual and ideal saving.
           </p>
         </div>
         <RangeBar range={range} setRange={setRange} />
@@ -304,7 +309,7 @@ function ExpenseChart({ data, range, setRange, onBarClick }) {
           <p className="stat-label mb-0.5">Expense Breakdown</p>
           <p className="text-xs text-muted">
             Monthly spend stacked by category
-            {onBarClick && <span className="text-accent ml-1">· click a bar to drill into transactions</span>}
+            {onBarClick && <span className="text-accent-ink ml-1">· click a bar to drill into transactions</span>}
           </p>
         </div>
         <RangeBar range={range} setRange={setRange} />
@@ -556,21 +561,21 @@ function DefaultTargetWidget({ persons }) {
   if (!editing) {
     return (
       <div className="flex items-center gap-2 text-xs text-muted">
-        <Target size={13} className="text-indigo-400 shrink-0" />
+        <Target size={13} className="text-hue-violet shrink-0" />
         <span className="text-soft">Default target saving:</span>
         {hasAny
           ? persons.map(p => defaults[p] ? (
               <span key={p} className="font-mono text-white">{p}: {fmt(defaults[p])}</span>
             ) : null)
           : <span className="italic">not set</span>}
-        <button onClick={startEdit} className="ml-1 underline hover:text-white transition-colors">edit</button>
+        <button onClick={startEdit} className="tap ml-1 underline hover:text-white transition-colors">edit</button>
       </div>
     );
   }
 
   return (
     <div className="flex items-center gap-3 flex-wrap text-xs">
-      <Target size={13} className="text-indigo-400 shrink-0" />
+      <Target size={13} className="text-hue-violet shrink-0" />
       <span className="text-soft">Default target saving:</span>
       {persons.map(p => (
         <label key={p} className="flex items-center gap-1.5">
@@ -698,7 +703,8 @@ export default function Cashflow() {
 
       {!loading && data.length === 0 && (
         <div className="card py-12 text-center stack-tight">
-          <p className="text-muted">No cashflow data yet.</p>
+          <EmptyState icon={TrendingUp} title="No cashflow data yet"
+            hint="Add a monthly entry to start tracking income, spending and savings." />
           <p className="text-xs text-muted">
             Click <strong>Add Month</strong> to enter a month, or use <strong>Settings → Apply to year</strong> to seed all 12 months at once.
           </p>
@@ -731,7 +737,7 @@ export default function Cashflow() {
               <thead>
                 <tr className="border-b border-border">
                   {['Month','Income','Other Inc','Major','Non-Rec','Regular','EMI','Trips','Net Exp','Target Save','Actual Save','Corpus',''].map(h => (
-                    <th key={h} className="text-left py-3 px-3 text-muted font-display text-xs uppercase tracking-wider whitespace-nowrap">{h}</th>
+                    <th key={h} className="th py-3 px-3">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -742,10 +748,10 @@ export default function Cashflow() {
                   const ok = Number(row.actual_saving) >= Number(row.target_saving || row.target);
                   return (
                     <tr key={rowKey}
-                      className="border-b border-border/50 hover:bg-surface/50 transition-colors group">
+                      className="border-b border-hairline/15 hover:bg-surface/50 transition-colors group">
                       <td className="py-3 px-3 font-mono text-xs text-soft whitespace-nowrap">{fmtDate(row.month)}</td>
-                      <td className="py-3 px-3 font-mono text-accent">{fmt(row.income)}</td>
-                      <td className="py-3 px-3 font-mono text-accent">{fmt(row.other_income)}</td>
+                      <td className="py-3 px-3 font-mono text-accent-ink">{fmt(row.income)}</td>
+                      <td className="py-3 px-3 font-mono text-accent-ink">{fmt(row.other_income)}</td>
                       <td className="py-3 px-3 font-mono text-rose">{fmt(row.major_expense)}</td>
                       <td className="py-3 px-3 font-mono text-rose">{fmt(row.non_recurring_expense)}</td>
                       <td className="py-3 px-3 font-mono text-soft">{fmt(row.regular_expense)}</td>
@@ -780,7 +786,7 @@ export default function Cashflow() {
                       <td className={`py-3 px-3 font-mono ${ok ? 'text-teal' : 'text-rose'}`}>{fmt(row.actual_saving)}</td>
                       <td className="py-3 px-3 font-mono text-white">{fmt(row.corpus)}</td>
                       <td className="py-3 px-3">
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="tap flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => startInlineEdit(row)} className="p-1.5 rounded hover:bg-surface text-muted hover:text-white" title="Edit target saving">
                             <Pencil size={13} />
                           </button>

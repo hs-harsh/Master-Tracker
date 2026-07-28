@@ -183,7 +183,7 @@ export function OtpLoginForm() {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-accent/10 border border-accent/20 mb-4">
-            {mode === 'otp-verify' ? <Mail size={22} className="text-accent" /> : <Lock size={22} className="text-accent" />}
+            {mode === 'otp-verify' ? <Mail size={22} className="text-accent-ink" /> : <Lock size={22} className="text-accent-ink" />}
           </div>
           <h2 className="font-display text-xl font-bold text-white">{heading}</h2>
           <p className="text-muted text-sm mt-1">
@@ -218,13 +218,13 @@ export function OtpLoginForm() {
                 {loading ? <><Loader2 size={16} className="animate-spin mr-2" />Signing in…</> : 'Sign In'}
               </button>
               <button type="button" onClick={() => { reset('otp-send'); }}
-                className="btn-ghost w-full justify-center flex text-sm text-soft hover:text-accent border border-border hover:border-accent/30">
+                className="btn-ghost w-full justify-center flex text-sm text-soft hover:text-accent-ink border border-border hover:border-accent/30">
                 <Mail size={14} className="mr-2" />Sign in with code instead
               </button>
             </div>
             <p className="text-center text-xs text-muted pt-1">
               No account?{' '}
-              <button type="button" onClick={() => reset('register')} className="text-accent hover:underline">Create one</button>
+              <button type="button" onClick={() => reset('register')} className="text-accent-ink hover:underline">Create one</button>
             </p>
           </form>
         )}
@@ -249,7 +249,7 @@ export function OtpLoginForm() {
             </div>
             <p className="text-center text-xs text-muted pt-1">
               No account?{' '}
-              <button type="button" onClick={() => reset('register')} className="text-accent hover:underline">Create one</button>
+              <button type="button" onClick={() => reset('register')} className="text-accent-ink hover:underline">Create one</button>
             </p>
           </form>
         )}
@@ -270,12 +270,12 @@ export function OtpLoginForm() {
               <OtpBoxes otp={otp} setOtp={setOtp} inputsRef={otpInputs} />
             </div>
             {devOtp && (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400">
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-hue-amber">
                 <span className="font-semibold">Dev mode —</span> email not sent. Code: <span className="font-mono font-bold">{devOtp}</span>
               </div>
             )}
             {error && <p className="text-center text-rose text-sm">{error}</p>}
-            {resent && <p className="text-center text-green-400 text-sm">New code sent!</p>}
+            {resent && <p className="text-center text-pos text-sm">New code sent!</p>}
             <button type="submit" disabled={loading || otp.join('').length !== 6} className="btn-primary w-full justify-center flex">
               {loading ? <><Loader2 size={16} className="animate-spin mr-2" />Verifying…</> : isNewUser ? 'Create Account' : 'Sign In'}
             </button>
@@ -284,7 +284,7 @@ export function OtpLoginForm() {
                 <ArrowLeft size={12} /> Change email
               </button>
               <button type="button" onClick={handleResend} disabled={resending}
-                className="text-accent hover:text-accent/80 disabled:opacity-50 transition-colors">
+                className="text-accent-ink hover:text-accent-ink/80 disabled:opacity-50 transition-colors">
                 {resending ? 'Sending…' : 'Resend code'}
               </button>
             </div>
@@ -324,7 +324,7 @@ export function OtpLoginForm() {
             </div>
             <p className="text-center text-xs text-muted pt-1">
               Already have an account?{' '}
-              <button type="button" onClick={() => reset('signin')} className="text-accent hover:underline">Sign in</button>
+              <button type="button" onClick={() => reset('signin')} className="text-accent-ink hover:underline">Sign in</button>
             </p>
           </form>
         )}
@@ -375,7 +375,7 @@ function FinanceGuard() {
   if (!ready) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-[40vh]">
-        <Loader2 className="animate-spin text-accent" size={32} />
+        <Loader2 className="animate-spin text-accent-ink" size={32} />
       </div>
     );
   }
@@ -422,7 +422,7 @@ function LiveTradingGuard() {
   if (!ready) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-[40vh]">
-        <Loader2 className="animate-spin text-accent" size={32} />
+        <Loader2 className="animate-spin text-accent-ink" size={32} />
       </div>
     );
   }

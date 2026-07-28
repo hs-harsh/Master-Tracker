@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { TT, AX } from '../lib/chartTheme';
+import { TT, AX, HUE, identityPalette } from '../lib/chartTheme';
+import EmptyState from '../components/EmptyState';
 import api from '../lib/api';
 import { fmt, fmtFull } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
-import { Plus, Trash2, ChevronDown, ChevronRight, FileText, Loader2, KeyRound } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, FileText, Loader2, KeyRound, Receipt } from 'lucide-react';
 
 /** Cashflow-style buckets (same family as monthly cashflow expense columns). */
 const CASHFLOW_BUCKETS = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'EMI', 'Trips', 'Transfers'];
@@ -340,7 +341,7 @@ async function callClaude(prompt, maxTokens = 6000) {
   }
 }
 
-const CHART_COLORS = ['#2dd4bf', '#f0c040', '#f97316', '#a78bfa', '#34d399', '#60a5fa', '#fb7185', '#6b7280'];
+const CHART_COLORS = identityPalette(['teal', 'gold', 'orange', 'violet', 'emerald', 'blue', 'rose', 'slate']);
 
 export default function ExpenseAnalyser() {
   const { persons, token, fetchPersons } = useAuth();
@@ -749,7 +750,7 @@ function FileSlotRow({ slot, onFileChange, onPdfPasswordChange, onRetry, onRemov
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="flex-1 min-w-0 text-left text-sm text-soft truncate"
+          className="flex-1 min-w-0 text-left text-sm text-soft truncate min-h-[44px] sm:min-h-0"
         >
           {slot.status === 'reading' && 'Reading PDF…'}
           {slot.status === 'ready' && (slot.label || 'PDF ready')}
@@ -844,7 +845,8 @@ function CategoryTransactionTree({ transactions, showPerson = false }) {
   };
 
   if (!tree.length) {
-    return <p className="text-muted text-sm">No transactions in this data.</p>;
+    return <EmptyState compact icon={Receipt} title="No transactions in this data"
+      hint="Import or add transactions to see the breakdown." />;
   }
 
   return (
@@ -853,7 +855,7 @@ function CategoryTransactionTree({ transactions, showPerson = false }) {
         const pk = g.parent;
         const pOpen = openParents.has(pk);
         return (
-          <div key={pk} className="rounded-lg border border-border/60 bg-card/40 overflow-hidden">
+          <div key={pk} className="rounded-lg border border-hairline/15 bg-card/40 overflow-hidden">
             <button
               type="button"
               onClick={() => toggleP(pk)}
@@ -864,12 +866,12 @@ function CategoryTransactionTree({ transactions, showPerson = false }) {
               <span className="font-mono text-sm text-muted">{fmt(g.amount)}</span>
             </button>
             {pOpen && (
-              <div className="border-t border-border/40 bg-surface/20 px-2 py-2 space-y-1">
+              <div className="border-t border-hairline/15 bg-surface/20 px-2 py-2 space-y-1">
                 {g.subs.map((sub) => {
                   const sk = `${pk}::${sub.name}`;
                   const sOpen = openSubs.has(sk);
                   return (
-                    <div key={sk} className="rounded-md border border-border/50 overflow-hidden">
+                    <div key={sk} className="rounded-md border border-hairline/15 overflow-hidden">
                       <button
                         type="button"
                         onClick={() => toggleS(sk)}
@@ -881,10 +883,10 @@ function CategoryTransactionTree({ transactions, showPerson = false }) {
                         <span className="text-muted text-xs w-12 text-right">{sub.transactions.length}</span>
                       </button>
                       {sOpen && (
-                        <div className="border-t border-border/30 px-2 py-1 bg-card/30 overflow-x-auto">
+                        <div className="border-t border-hairline/15 px-2 py-1 bg-card/30 overflow-x-auto">
                           <table className="w-full text-xs">
                             <thead>
-                              <tr className="text-muted uppercase border-b border-border/40">
+                              <tr className="text-muted uppercase border-b border-hairline/15">
                                 <th className="text-left py-1 pr-2">Date</th>
                                 <th className="text-left py-1">Description</th>
                                 {showPerson ? <th className="text-left py-1">Person</th> : null}
@@ -894,14 +896,14 @@ function CategoryTransactionTree({ transactions, showPerson = false }) {
                             </thead>
                             <tbody>
                               {sub.transactions.map((t, i) => (
-                                <tr key={i} className="border-b border-border/20">
+                                <tr key={i} className="border-b border-hairline/15">
                                   <td className="py-1 text-muted whitespace-nowrap">{t.date}</td>
                                   <td className="py-1 text-soft max-w-[200px] truncate">{t.description}</td>
                                   {showPerson ? (
                                     <td className="py-1 text-muted">{typeof t.person === 'string' && t.person ? t.person : '—'}</td>
                                   ) : null}
                                   <td className="py-1 text-muted">{t.cashflowType || '—'}</td>
-                                  <td className={`py-1 text-right font-mono whitespace-nowrap ${t.type === 'credit' ? 'text-green-400' : 'text-rose'}`}>
+                                  <td className={`py-1 text-right font-mono whitespace-nowrap ${t.type === 'credit' ? 'text-pos' : 'text-rose'}`}>
                                     {t.type === 'credit' ? '+' : '−'}
                                     {fmtFull(Math.abs(Number(t.amount)))}
                                   </td>
@@ -966,7 +968,7 @@ function ResultCard({ result, index, expanded, onToggle }) {
           {s.closingBalance ? (
             <div className="text-right">
               <p className="text-xs text-muted">Balance</p>
-              <p className="font-mono text-sm text-green-400">{fmt(s.closingBalance)}</p>
+              <p className="font-mono text-sm text-pos">{fmt(s.closingBalance)}</p>
             </div>
           ) : null}
           <div className="text-right">
@@ -997,7 +999,7 @@ function ResultCard({ result, index, expanded, onToggle }) {
             {s.closingBalance ? (
               <div className="rounded-lg bg-green-500/10 border border-green-500/30 p-2">
                 <p className="text-xs text-muted uppercase">Balance</p>
-                <p className="font-mono text-sm text-green-400">{fmt(s.closingBalance)}</p>
+                <p className="font-mono text-sm text-pos">{fmt(s.closingBalance)}</p>
               </div>
             ) : null}
             {s.utilizationPct ? (
@@ -1176,7 +1178,7 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
       <div className="rounded-xl bg-accent/10 border border-accent/20 px-6 py-4 flex flex-wrap items-center gap-6">
         <div className="flex items-baseline gap-2">
           <span className="stat-label text-muted">Total spend</span>
-          <span className="font-mono text-xl font-bold text-accent">{fmt(s.totalHouseholdSpend)}</span>
+          <span className="font-mono text-xl font-bold text-accent-ink">{fmt(s.totalHouseholdSpend)}</span>
         </div>
         <div className="flex items-baseline gap-2">
           <span className="stat-label text-muted">CC dues</span>
@@ -1184,7 +1186,7 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
         </div>
         <div className="flex items-baseline gap-2">
           <span className="stat-label text-muted">Bank balance</span>
-          <span className="font-mono text-xl font-bold text-green-400">{fmt(s.bankClosingBalance)}</span>
+          <span className="font-mono text-xl font-bold text-pos">{fmt(s.bankClosingBalance)}</span>
         </div>
         {(s.totalSpendByPerson &&
         typeof s.totalSpendByPerson === 'object' &&
@@ -1310,7 +1312,7 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
                 </thead>
                 <tbody>
                   {cashflowSummary.map((c) => (
-                    <tr key={c.bucket} className="border-b border-border/50">
+                    <tr key={c.bucket} className="border-b border-hairline/15">
                       <td className="py-2 text-soft">{c.bucket}</td>
                       <td className="py-2 text-right font-mono">{fmt(c.amount)}</td>
                       <td className="py-2 text-right text-muted">{c.count ?? '—'}</td>
@@ -1341,7 +1343,7 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
       {tab === 'flags' && (
         <div className="space-y-4">
           {redFlags.length === 0 ? (
-            <div className="card text-center py-8 text-green-400">No significant red flags detected.</div>
+            <div className="card text-center py-8 text-pos">No significant red flags detected.</div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {redFlags.map((f, i) => (
@@ -1364,7 +1366,7 @@ function ExpenseReportView({ finalData, results, personNames = [], onBack }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {suggestions.map((s, i) => (
             <div key={i} className="card flex gap-3">
-              <span className="w-8 h-8 rounded-full bg-accent/20 text-accent flex items-center justify-center text-sm font-bold shrink-0">
+              <span className="w-8 h-8 rounded-full bg-accent/20 text-accent-ink flex items-center justify-center text-sm font-bold shrink-0">
                 {i + 1}
               </span>
               <p className="text-soft text-sm leading-relaxed">{s.text}</p>

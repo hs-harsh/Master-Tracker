@@ -44,10 +44,10 @@ const TRADING_NAV = [
 
 /* ── Nav link class helpers ──────────────────────────────────────────────── */
 function navClass(isActive, locked = false) {
-  const base = 'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] relative';
-  if (isActive)  return `${base} text-accent bg-accent/8`;
-  if (locked)    return `${base} text-muted/50 hover:text-muted hover:bg-white/[0.03]`;
-  return `${base} text-soft hover:text-white hover:bg-white/[0.04]`;
+  const base = 'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[44px] relative';
+  if (isActive)  return `${base} text-accent-ink bg-accent/8`;
+  if (locked)    return `${base} text-muted/50 hover:text-muted hover:bg-hairline/[0.05]`;
+  return `${base} text-soft hover:text-white hover:bg-hairline/[0.06]`;
 }
 
 export default function Layout() {
@@ -122,6 +122,11 @@ export default function Layout() {
       />
 
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
+      {/* The sidebar follows the theme like every other surface. It was briefly
+          pinned dark in both themes as a deliberate "anchor"; in practice a
+          near-black rail beside an otherwise light app just looked broken. Its
+          colours come from --sidebar-rgb and the ordinary ramp tokens, so both
+          themes fall out for free. */}
       <aside
         className={`
           w-56 flex flex-col shrink-0
@@ -130,14 +135,14 @@ export default function Layout() {
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
         style={{
-          background: '#0b0d14',
-          borderRight: '1px solid rgba(255,255,255,0.05)',
+          background: 'rgb(var(--sidebar-rgb))',
+          borderRight: '1px solid rgb(var(--hairline-rgb) / 0.08)',
         }}
       >
         {/* Logo */}
         <div
           className="flex items-center justify-between px-4 py-5 md:px-5"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+          style={{ borderBottom: '1px solid rgb(var(--hairline-rgb) / 0.08)' }}
         >
           <div className="flex items-center gap-2.5">
             <div
@@ -147,12 +152,12 @@ export default function Layout() {
                 boxShadow: '0 0 16px rgb(var(--accent-rgb) / 0.30)',
               }}
             >
-              <span className="text-ink font-display font-bold text-[10px] tracking-tight">
+              <span className="text-accent-fg font-display font-bold text-[10px] tracking-tight">
                 H·K
               </span>
             </div>
             <div>
-              <span className="font-display font-bold text-[var(--on-dark)] text-sm tracking-tight block leading-tight">
+              <span className="font-display font-bold text-white text-sm tracking-tight block leading-tight">
                 InvestTrack
               </span>
             </div>
@@ -171,7 +176,7 @@ export default function Layout() {
         {isAuth && persons.length > 1 && (
           <div
             className="px-3 py-3"
-            style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+            style={{ borderBottom: '1px solid rgb(var(--hairline-rgb) / 0.08)' }}
           >
             <p className="text-[10px] text-muted/50 uppercase tracking-widest font-mono mb-2 px-1">Profile</p>
             <div className="flex gap-1.5 p-1 rounded-full"
@@ -180,8 +185,8 @@ export default function Layout() {
                 <button
                   key={p}
                   onClick={() => setActivePerson(p)}
-                  className={`flex-1 px-2 py-1.5 rounded-full text-xs font-display font-bold transition-all
-                    ${activePerson === p ? 'bg-accent text-ink shadow-glow-accent' : 'text-soft hover:text-white'}`}
+                  className={`flex-1 px-2 py-1.5 rounded-full text-xs font-display font-bold transition-all min-h-[44px]
+                    ${activePerson === p ? 'bg-accent text-accent-fg shadow-glow-accent' : 'text-soft hover:text-white'}`}
                 >
                   {p}
                 </button>
@@ -217,7 +222,7 @@ export default function Layout() {
 
           {/* Divider */}
           <div className="py-2">
-            <div style={{ height: 1, background: 'rgba(255,255,255,0.05)' }} />
+            <div style={{ height: 1, background: 'rgb(var(--hairline-rgb) / 0.08)' }} />
           </div>
 
           {/* Finance (collapsible) */}
@@ -233,10 +238,10 @@ export default function Layout() {
                   setFinanceOpen(false);
                 }
               }}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] w-full text-left ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[44px] w-full text-left ${
                 isFinanceRoute
-                  ? 'text-accent bg-accent/8'
-                  : 'text-soft hover:text-white hover:bg-white/[0.04]'
+                  ? 'text-accent-ink bg-accent/8'
+                  : 'text-soft hover:text-white hover:bg-hairline/[0.06]'
               }`}
             >
               <Wallet size={16} className="shrink-0" />
@@ -255,8 +260,8 @@ export default function Layout() {
                     to={to}
                     end={end}
                     className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[38px] relative ${
-                        isActive ? 'text-accent bg-accent/8' : 'text-muted hover:text-soft hover:bg-white/[0.03]'
+                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[44px] relative ${
+                        isActive ? 'text-accent-ink bg-accent/8' : 'text-muted hover:text-soft hover:bg-hairline/[0.05]'
                       }`
                     }
                     onClick={closeSidebar}
@@ -294,10 +299,10 @@ export default function Layout() {
                   setWellnessOpen(false);
                 }
               }}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] w-full text-left ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[44px] w-full text-left ${
                 location.pathname.startsWith('/wellness')
-                  ? 'text-accent bg-accent/8'
-                  : 'text-soft hover:text-white hover:bg-white/[0.04]'
+                  ? 'text-accent-ink bg-accent/8'
+                  : 'text-soft hover:text-white hover:bg-hairline/[0.06]'
               }`}
             >
               <Heart size={16} className="shrink-0" />
@@ -315,8 +320,8 @@ export default function Layout() {
                     key={to}
                     to={to}
                     className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[38px] relative ${
-                        isActive ? 'text-accent bg-accent/8' : !isAuth ? 'text-muted/50 hover:text-muted hover:bg-white/[0.03]' : 'text-muted hover:text-soft hover:bg-white/[0.03]'
+                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[44px] relative ${
+                        isActive ? 'text-accent-ink bg-accent/8' : !isAuth ? 'text-muted/50 hover:text-muted hover:bg-hairline/[0.05]' : 'text-muted hover:text-soft hover:bg-hairline/[0.05]'
                       }`
                     }
                     onClick={closeSidebar}
@@ -353,10 +358,10 @@ export default function Layout() {
                   setArchiveOpen(false);
                 }
               }}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] w-full text-left ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[44px] w-full text-left ${
                 location.pathname === '/expense-analyser'
-                  ? 'text-accent bg-accent/8'
-                  : 'text-soft hover:text-white hover:bg-white/[0.04]'
+                  ? 'text-accent-ink bg-accent/8'
+                  : 'text-soft hover:text-white hover:bg-hairline/[0.06]'
               }`}
             >
               <Archive size={16} className="shrink-0" />
@@ -374,8 +379,8 @@ export default function Layout() {
                     key={to}
                     to={to}
                     className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[38px] relative ${
-                        isActive ? 'text-accent bg-accent/8' : 'text-muted hover:text-soft hover:bg-white/[0.03]'
+                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[44px] relative ${
+                        isActive ? 'text-accent-ink bg-accent/8' : 'text-muted hover:text-soft hover:bg-hairline/[0.05]'
                       }`
                     }
                     onClick={closeSidebar}
@@ -408,10 +413,10 @@ export default function Layout() {
                 if (!tradingOpen) { setTradingOpen(true); navigate('/live-trading/backtest'); }
                 else { setTradingOpen(false); }
               }}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] w-full text-left ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[44px] w-full text-left ${
                 location.pathname.startsWith('/live-trading')
-                  ? 'text-accent bg-accent/8'
-                  : 'text-soft hover:text-white hover:bg-white/[0.04]'
+                  ? 'text-accent-ink bg-accent/8'
+                  : 'text-soft hover:text-white hover:bg-hairline/[0.06]'
               }`}
             >
               <BarChart3 size={16} className="shrink-0" />
@@ -423,8 +428,8 @@ export default function Layout() {
                 {TRADING_NAV.map(({ to, icon: Icon, label }) => (
                   <NavLink key={to} to={to}
                     className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[38px] relative ${
-                        isActive ? 'text-accent bg-accent/8' : 'text-muted hover:text-soft hover:bg-white/[0.03]'
+                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[44px] relative ${
+                        isActive ? 'text-accent-ink bg-accent/8' : 'text-muted hover:text-soft hover:bg-hairline/[0.05]'
                       }`
                     }
                     onClick={closeSidebar}
@@ -468,15 +473,15 @@ export default function Layout() {
           {isAdmin && (
             <>
               <div className="py-2">
-                <div style={{ height: 1, background: 'rgba(255,255,255,0.05)' }} />
+                <div style={{ height: 1, background: 'rgb(var(--hairline-rgb) / 0.08)' }} />
               </div>
               <NavLink
                 to="/admin"
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[42px] relative ${
+                  `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[44px] relative ${
                     isActive
-                      ? 'text-amber-400 bg-amber-500/8'
-                      : 'text-amber-500/50 hover:text-amber-400 hover:bg-amber-500/5'
+                      ? 'text-hue-amber bg-hue-amber/8'
+                      : 'text-hue-amber/50 hover:text-hue-amber hover:bg-hue-amber/5'
                   }`
                 }
                 onClick={closeSidebar}
@@ -498,13 +503,13 @@ export default function Layout() {
         {/* Bottom — install + sign out */}
         <div
           className="px-3 py-4 space-y-1"
-          style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
+          style={{ borderTop: '1px solid rgb(var(--hairline-rgb) / 0.08)' }}
         >
           <InstallPrompt />
           {isAuth ? (
             <button
               onClick={handleLogout}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-soft hover:text-rose hover:bg-rose/5 transition-all w-full min-h-[42px]"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-soft hover:text-rose hover:bg-rose/5 transition-all w-full min-h-[44px]"
             >
               <LogOut size={16} />
               Sign Out
@@ -512,7 +517,7 @@ export default function Layout() {
           ) : (
             <button
               onClick={() => { navigate('/'); closeSidebar(); }}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-soft hover:text-accent hover:bg-accent/5 transition-all w-full min-h-[42px]"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-soft hover:text-accent-ink hover:bg-accent/5 transition-all w-full min-h-[44px]"
             >
               <LogIn size={16} />
               Sign In
@@ -525,11 +530,14 @@ export default function Layout() {
       <div className="flex flex-col flex-1 min-w-0">
         {/* Mobile top bar */}
         <header
-          className="md:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3 safe-area-top"
+          className="md:hidden sticky top-0 z-30 flex items-center gap-3 px-4 pb-3 safe-area-top"
           style={{
-            background: 'rgba(9, 9, 14, 0.92)',
+            // Kept padding; the notch inset is added on top of it. `py-3` would
+            // have been overridden outright by .safe-area-top.
+            '--safe-pad-top': '0.75rem',
+            background: 'rgb(var(--ink-rgb) / 0.92)',
             backdropFilter: 'blur(16px)',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            borderBottom: '1px solid rgb(var(--hairline-rgb) / 0.08)',
           }}
         >
           <button
@@ -548,9 +556,9 @@ export default function Layout() {
                 boxShadow: '0 0 12px rgb(var(--accent-rgb) / 0.25)',
               }}
             >
-              <span className="text-ink font-display font-bold text-[9px]">H·K</span>
+              <span className="text-accent-fg font-display font-bold text-[9px]">H·K</span>
             </div>
-            <span className="font-display font-bold text-[var(--on-dark)] text-sm tracking-tight">
+            <span className="font-display font-bold text-white text-sm tracking-tight">
               InvestTrack
             </span>
           </div>
@@ -559,8 +567,8 @@ export default function Layout() {
               style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
               {persons.map(p => (
                 <button key={p} onClick={() => setActivePerson(p)}
-                  className={`px-3 py-1 rounded-full text-[11px] font-display font-bold transition-all
-                    ${activePerson === p ? 'bg-accent text-ink shadow-glow-accent' : 'text-muted hover:text-white'}`}>
+                  className={`px-3 py-1 rounded-full text-[11px] font-display font-bold transition-all min-h-[44px]
+                    ${activePerson === p ? 'bg-accent text-accent-fg shadow-glow-accent' : 'text-muted hover:text-white'}`}>
                   {p}
                 </button>
               ))}
@@ -569,7 +577,7 @@ export default function Layout() {
           {!isAuth && (
             <button
               onClick={() => navigate('/')}
-              className="text-accent text-sm font-medium hover:opacity-80 transition-opacity"
+              className="text-accent-ink text-sm font-medium hover:opacity-80 transition-opacity"
             >
               Sign In
             </button>

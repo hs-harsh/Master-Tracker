@@ -3,24 +3,28 @@ import api from '../lib/api';
 import { fmt } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
 import {
   Plus, Trash2, Edit2, X, Save, ArrowUp, ArrowDown,
-  LayoutList, LayoutGrid, Camera, Mail, Tag, ChevronRight, RefreshCw,
+  LayoutList, LayoutGrid, Camera, Mail, Tag, ChevronRight, RefreshCw, Landmark, History,
 } from 'lucide-react';
 import {
   ComposedChart, Line, Area, XAxis, YAxis, Tooltip, CartesianGrid,
   ResponsiveContainer, Legend,
 } from 'recharts';
-import { TT, AX, GRID } from '../lib/chartTheme';
+import { TT, AX, GRID, identityPalette } from '../lib/chartTheme';
 
 const DEFAULT_TYPES = ['Property', 'Vehicle', 'Gold', 'PPF', 'NPS'];
 const HAS_LOAN_DEFAULT = ['Property', 'Vehicle'];
 const HAS_QTY_DEFAULT  = ['Gold'];
 const HAS_CONTRIBUTION = ['PPF', 'NPS'];
 
-const DEFAULT_COLORS = {
-  Property: '#a78bfa', Vehicle: '#60a5fa', Gold: '#fbbf24', PPF: '#34d399', NPS: '#2dd4bf',
-};
+// Same hues as Portfolio's ILLIQUID_TYPE_COLORS — these two maps describe the
+// same asset types and must agree. User-defined categories bring their own
+// stored hex and are left alone.
+const DEFAULT_COLORS = identityPalette({
+  Property: 'violet', Vehicle: 'blue', Gold: 'amber', PPF: 'emerald', NPS: 'teal',
+});
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -185,7 +189,7 @@ function UpdateValueModal({ asset, typeMap, onSave, onCancel }) {
   };
 
   const days = daysSince(asset.as_of_date);
-  const staleClass = days == null ? 'text-muted' : days > 60 ? 'text-rose-400' : days > 30 ? 'text-amber-400' : 'text-muted';
+  const staleClass = days == null ? 'text-muted' : days > 60 ? 'text-neg' : days > 30 ? 'text-hue-amber' : 'text-muted';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
@@ -389,23 +393,23 @@ function DetailModal({ asset, typeColor, onClose, onEdit }) {
 
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-hairline/5">
             <div className="text-xs text-muted mb-1">Current Value</div>
             <div className="font-bold text-white">{fmt2(cur)}</div>
             <div className="text-xs text-muted mt-1">as of {staleText}</div>
           </div>
           {loan > 0 && (
-            <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
+            <div className="bg-white/[0.03] rounded-lg p-3 border border-hairline/5">
               <div className="text-xs text-muted mb-1">Loan Outstanding</div>
-              <div className="font-bold text-rose-400">{fmt2(loan)}</div>
+              <div className="font-bold text-neg">{fmt2(loan)}</div>
             </div>
           )}
-          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-hairline/5">
             <div className="text-xs text-muted mb-1">Net Equity</div>
-            <div className={`font-bold ${equity >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{fmt2(equity)}</div>
+            <div className={`font-bold ${equity >= 0 ? 'text-pos' : 'text-neg'}`}>{fmt2(equity)}</div>
           </div>
           {asset.loan_emi && Number(asset.loan_emi) > 0 && (
-            <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
+            <div className="bg-white/[0.03] rounded-lg p-3 border border-hairline/5">
               <div className="text-xs text-muted mb-1">EMI</div>
               <div className="font-bold text-white text-sm">{fmt2(asset.loan_emi)}<span className="text-muted text-xs font-normal">/mo</span></div>
               <div className="text-xs text-muted mt-0.5">
@@ -418,7 +422,7 @@ function DetailModal({ asset, typeColor, onClose, onEdit }) {
 
         {/* Loan dates */}
         {isLoan && (asset.loan_start_date || asset.loan_tenure_months) && (
-          <div className="flex flex-wrap gap-4 text-xs bg-white/[0.02] rounded-lg p-3 border border-white/5">
+          <div className="flex flex-wrap gap-4 text-xs bg-white/[0.02] rounded-lg p-3 border border-hairline/5">
             {asset.loan_start_date && (
               <div><span className="text-muted">Started </span>
                 <span className="text-soft">{new Date(String(asset.loan_start_date).slice(0,10) + 'T12:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</span>
@@ -431,7 +435,7 @@ function DetailModal({ asset, typeColor, onClose, onEdit }) {
             )}
             {payoffEntry && (
               <div><span className="text-muted">Projected payoff </span>
-                <span className="text-emerald-400 font-semibold">{fmtYM(payoffEntry[0])}</span>
+                <span className="text-pos font-semibold">{fmtYM(payoffEntry[0])}</span>
               </div>
             )}
           </div>
@@ -450,9 +454,8 @@ function DetailModal({ asset, typeColor, onClose, onEdit }) {
           {loadingHist ? (
             <div className="text-muted text-xs py-8 text-center">Loading…</div>
           ) : chartData.length === 0 ? (
-            <div className="text-muted text-xs py-8 text-center">
-              No history yet — values are recorded each time you update.
-            </div>
+            <EmptyState compact icon={History} title="No value history yet"
+              hint="Each time you update this asset's value, the change is recorded here." />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
@@ -606,7 +609,7 @@ function AssetModal({ initial, persons, assetTypes, typeMap, onSave, onCancel })
           {isLoan && (
             <>
               {/* Divider */}
-              <div className="col-span-2 border-t border-white/8 pt-1">
+              <div className="col-span-2 border-t border-hairline/8 pt-1">
                 <span className="text-xs text-muted uppercase tracking-wide">Loan Details</span>
               </div>
               <div>
@@ -675,10 +678,10 @@ function AssetCard({ asset, typeColor, onEdit, onDelete, onDetail, onUpdate, con
   const isContrib = HAS_CONTRIBUTION.includes(asset.asset_type);
   const color     = typeColor || '#9ca3af';
   const days      = daysSince(asset.as_of_date);
-  const staleClass = days == null ? 'text-muted' : days > 60 ? 'text-rose-400' : days > 30 ? 'text-amber-400' : 'text-muted';
+  const staleClass = days == null ? 'text-muted' : days > 60 ? 'text-neg' : days > 30 ? 'text-hue-amber' : 'text-muted';
 
   return (
-    <div className="card space-y-3 cursor-pointer hover:border-white/15 transition-colors"
+    <div className="card space-y-3 cursor-pointer hover:border-hairline/15 transition-colors"
       onClick={() => onDetail(asset)}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
@@ -698,8 +701,8 @@ function AssetCard({ asset, typeColor, onEdit, onDelete, onDetail, onUpdate, con
         </div>
         {loan > 0 && (
           <>
-            <div><div className="text-muted text-xs">Loan</div><div className="text-rose-400">{fmt2(loan)}</div></div>
-            <div><div className="text-muted text-xs">Equity</div><div className={equity >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{fmt2(equity)}</div></div>
+            <div><div className="text-muted text-xs">Loan</div><div className="text-neg">{fmt2(loan)}</div></div>
+            <div><div className="text-muted text-xs">Equity</div><div className={equity >= 0 ? 'text-pos' : 'text-neg'}>{fmt2(equity)}</div></div>
           </>
         )}
         {isGold && asset.quantity && (
@@ -714,24 +717,24 @@ function AssetCard({ asset, typeColor, onEdit, onDelete, onDetail, onUpdate, con
         </div>
       )}
 
-      <div className="flex items-center justify-between text-xs pt-1 border-t border-white/5"
+      <div className="flex items-center justify-between text-xs pt-1 border-t border-hairline/5"
         onClick={e => e.stopPropagation()}>
         <span className={staleClass}>{days != null ? `${days}d ago` : '—'}</span>
         <div className="flex gap-2 items-center">
           {confirmDeleteId === asset.id ? (
             <>
-              <span className="text-rose-400">Delete?</span>
-              <button onClick={() => onDelete(asset.id)} className="text-rose-400 font-semibold">Yes</button>
+              <span className="text-neg">Delete?</span>
+              <button onClick={() => onDelete(asset.id)} className="text-neg font-semibold">Yes</button>
               <button onClick={() => setConfirmDeleteId(null)} className="text-muted hover:text-white">No</button>
             </>
           ) : (
             <>
               <button onClick={() => onUpdate(asset)}
-                className="text-muted hover:text-accent flex items-center gap-1">
+                className="tap text-muted hover:text-accent-ink flex items-center gap-1">
                 <RefreshCw size={12} /> Update
               </button>
-              <button onClick={() => onEdit(asset)} className="text-muted hover:text-white ml-1"><Edit2 size={13} /></button>
-              <button onClick={() => setConfirmDeleteId(asset.id)} className="text-muted hover:text-rose-400"><Trash2 size={13} /></button>
+              <button onClick={() => onEdit(asset)} className="icon-btn text-muted hover:text-white ml-1"><Edit2 size={13} /></button>
+              <button onClick={() => setConfirmDeleteId(asset.id)} className="icon-btn text-muted hover:text-neg"><Trash2 size={13} /></button>
             </>
           )}
         </div>
@@ -896,7 +899,7 @@ export default function OtherAssets() {
   }));
 
   const accounts = useMemo(() => ['All', ...new Set(assets.map(a => a.account))], [assets]);
-  const thCls = 'px-3 py-2.5 text-left text-xs text-muted font-semibold uppercase tracking-wide cursor-pointer select-none hover:text-white';
+  const thCls = 'th th-sort px-3 py-2.5';
 
   if (loading) return <div className="text-muted text-sm p-4">Loading…</div>;
 
@@ -912,11 +915,11 @@ export default function OtherAssets() {
         </div>
         <div className="card">
           <div className="text-muted text-xs uppercase tracking-wide mb-1">Total Loans</div>
-          <div className="font-display text-xl font-bold text-rose-400">{totalLoans > 0 ? fmt2(totalLoans) : '—'}</div>
+          <div className="font-display text-xl font-bold text-neg">{totalLoans > 0 ? fmt2(totalLoans) : '—'}</div>
         </div>
         <div className="card">
           <div className="text-muted text-xs uppercase tracking-wide mb-1">Net Equity</div>
-          <div className={`font-display text-xl font-bold ${netEquity >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{fmt2(netEquity)}</div>
+          <div className={`font-display text-xl font-bold ${netEquity >= 0 ? 'text-pos' : 'text-neg'}`}>{fmt2(netEquity)}</div>
         </div>
         <div className="card flex flex-col gap-2 justify-between">
           <div className="text-muted text-xs uppercase tracking-wide">Actions</div>
@@ -927,11 +930,15 @@ export default function OtherAssets() {
               const { data } = await api.get('/other-assets/snapshots'); setSnapshots(data);
             } catch (err) { alert(err.response?.data?.error || 'Error'); }
             finally { setSnapshotSaving(false); }
-          }} disabled={snapshotSaving} className="btn-primary flex items-center gap-1 text-xs py-1.5">
+          {/* btn-ghost, not btn-primary: "Add Asset" is this page's one primary
+              CTA, and two accent pills competing for it is what the accent
+              budget exists to prevent. Recording a snapshot is a maintenance
+              action, so it takes the secondary treatment. */}
+          }} disabled={snapshotSaving} className="btn-ghost flex items-center gap-1 text-xs py-1.5">
             <Camera size={12} />{snapshotSaving ? 'Saving…' : 'Record Snapshot'}
           </button>
           <button onClick={handleSendReminder} disabled={reminderSending}
-            className="btn-ghost flex items-center gap-1 text-xs py-1.5 border border-white/10 rounded-lg hover:border-white/20">
+            className="btn-ghost flex items-center gap-1 text-xs py-1.5 border border-hairline/10 rounded-lg hover:border-hairline/20">
             <Mail size={12} />{reminderSending ? 'Sending…' : 'Send Update Email'}
           </button>
         </div>
@@ -944,7 +951,7 @@ export default function OtherAssets() {
             style={{ background: getColor(t) + '18', border: `1px solid ${getColor(t)}33` }}>
             <span style={{ color: getColor(t) }} className="font-semibold">{t}</span>
             <span className="text-white">{fmt2(typeBreakdown[t].value)}</span>
-            {typeBreakdown[t].loan > 0 && <span className="text-rose-400">−{fmt2(typeBreakdown[t].loan)}</span>}
+            {typeBreakdown[t].loan > 0 && <span className="text-neg">−{fmt2(typeBreakdown[t].loan)}</span>}
           </div>
         ))}
       </div>
@@ -954,7 +961,7 @@ export default function OtherAssets() {
         <div className="flex gap-1 p-1 rounded-lg bg-hairline/[0.04] border border-hairline/10 flex-wrap">
           {['All', ...allTypes].map(t => (
             <button key={t} onClick={() => setTypeFilter(t)}
-              className={`px-3 py-1 rounded text-xs transition-all ${
+              className={`px-3 py-1 rounded text-xs transition-all min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 ${
                 typeFilter === t
                   ? 'bg-card text-text font-semibold ring-1 ring-inset ring-hairline/15'
                   : 'text-soft hover:text-text font-medium'
@@ -967,10 +974,10 @@ export default function OtherAssets() {
           {accounts.map(a => <option key={a}>{a}</option>)}
         </select>
         <div className="ml-auto flex gap-1 items-center">
-          <button onClick={() => setViewMode('card')} className={`p-1.5 rounded ${viewMode === 'card' ? 'text-accent' : 'text-muted hover:text-white'}`}><LayoutGrid size={16} /></button>
-          <button onClick={() => setViewMode('table')} className={`p-1.5 rounded ${viewMode === 'table' ? 'text-accent' : 'text-muted hover:text-white'}`}><LayoutList size={16} /></button>
+          <button onClick={() => setViewMode('card')} className={`icon-btn p-1.5 rounded ${viewMode === 'card' ? 'text-accent-ink' : 'text-muted hover:text-white'}`}><LayoutGrid size={16} /></button>
+          <button onClick={() => setViewMode('table')} className={`icon-btn p-1.5 rounded ${viewMode === 'table' ? 'text-accent-ink' : 'text-muted hover:text-white'}`}><LayoutList size={16} /></button>
           <button onClick={() => setShowCategoryModal(true)}
-            className="flex items-center gap-1.5 text-xs text-muted hover:text-white border border-white/10 hover:border-white/20 rounded-lg px-3 py-1.5 ml-1 transition-all">
+            className="flex items-center gap-1.5 text-xs text-muted hover:text-white border border-hairline/10 hover:border-hairline/20 rounded-lg px-3 py-1.5 ml-1 transition-all min-h-[44px] sm:min-h-0">
             <Tag size={12} /> Category
           </button>
           <button onClick={() => { setEditing(null); setShowModal(true); }}
@@ -988,14 +995,19 @@ export default function OtherAssets() {
               style={{ borderColor: ct.color + '44', background: ct.color + '11' }}>
               <span className="w-2 h-2 rounded-full" style={{ background: ct.color }} />
               <span style={{ color: ct.color }} className="font-semibold">{ct.type_name}</span>
-              <button onClick={() => handleDeleteCategory(ct.type_name)} className="text-muted hover:text-rose-400 ml-0.5"><X size={10} /></button>
+              <button onClick={() => handleDeleteCategory(ct.type_name)} className="icon-btn text-muted hover:text-neg ml-0.5"><X size={10} /></button>
             </div>
           ))}
         </div>
       )}
 
       {sorted.length === 0 && (
-        <div className="card text-center text-muted py-10">No assets yet. Click <strong className="text-white">Add Asset</strong> to start.</div>
+        <div className="card">
+          <EmptyState icon={Landmark} title="No illiquid investments yet"
+            hint="Track property, vehicles, gold, PPF and NPS alongside your liquid portfolio."
+            action={<button onClick={() => { setEditing(null); setShowModal(true); }}
+              className="btn-ghost inline-flex items-center gap-2 text-sm"><Plus size={14} /> Add Asset</button>} />
+        </div>
       )}
 
       {/* Card view */}
@@ -1015,7 +1027,7 @@ export default function OtherAssets() {
         <div className="card p-0 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/8">
+              <tr className="border-b border-hairline/8">
                 <th className={thCls} onClick={() => handleSort('asset_type')}>Type <SortIcon col="asset_type" /></th>
                 <th className={thCls} onClick={() => handleSort('name')}>Name <SortIcon col="name" /></th>
                 <th className={thCls} onClick={() => handleSort('account')}>Account <SortIcon col="account" /></th>
@@ -1023,36 +1035,36 @@ export default function OtherAssets() {
                 <th className={thCls} onClick={() => handleSort('loan_outstanding')}>Loan <SortIcon col="loan_outstanding" /></th>
                 <th className={thCls} onClick={() => handleSort('net_equity')}>Equity <SortIcon col="net_equity" /></th>
                 <th className={`${thCls} hidden md:table-cell`} onClick={() => handleSort('as_of_date')}>Updated <SortIcon col="as_of_date" /></th>
-                <th className="px-3 py-2.5 text-right text-xs text-muted">Actions</th>
+                <th className="th th-right px-3 py-2.5">Actions</th>
               </tr>
             </thead>
             <tbody>
               {sorted.map(a => {
                 const cur = Number(a.current_value)||0, loan = Number(a.loan_outstanding)||0, eq = cur - loan;
                 const d = daysSince(a.as_of_date);
-                const sc = d == null ? 'text-muted' : d > 60 ? 'text-rose-400' : d > 30 ? 'text-amber-400' : 'text-muted';
+                const sc = d == null ? 'text-muted' : d > 60 ? 'text-neg' : d > 30 ? 'text-hue-amber' : 'text-muted';
                 return (
-                  <tr key={a.id} className="border-b border-white/5 hover:bg-white/[0.02] cursor-pointer"
+                  <tr key={a.id} className="border-b border-hairline/5 hover:bg-white/[0.02] cursor-pointer"
                     onClick={() => setDetailAsset(a)}>
                     <td className="px-3 py-2.5"><TypeBadge type={a.asset_type} color={getColor(a.asset_type)} /></td>
                     <td className="px-3 py-2.5 text-white font-medium">{a.name}</td>
                     <td className="px-3 py-2.5 text-soft text-xs">{a.account}</td>
                     <td className="px-3 py-2.5 font-semibold text-white">{fmt2(cur)}</td>
-                    <td className="px-3 py-2.5">{loan > 0 ? <span className="text-rose-400">{fmt2(loan)}</span> : <span className="text-muted">—</span>}</td>
-                    <td className="px-3 py-2.5"><span className={eq >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{fmt2(eq)}</span></td>
+                    <td className="px-3 py-2.5">{loan > 0 ? <span className="text-neg">{fmt2(loan)}</span> : <span className="text-muted">—</span>}</td>
+                    <td className="px-3 py-2.5"><span className={eq >= 0 ? 'text-pos' : 'text-neg'}>{fmt2(eq)}</span></td>
                     <td className={`px-3 py-2.5 text-xs hidden md:table-cell ${sc}`}>{d != null ? `${d}d ago` : '—'}</td>
                     <td className="px-3 py-2.5 text-right" onClick={e => e.stopPropagation()}>
                       {confirmDeleteId === a.id ? (
                         <span className="flex items-center gap-1 justify-end text-xs">
-                          <span className="text-rose-400">Delete?</span>
-                          <button onClick={() => handleDelete(a.id)} className="text-rose-400 font-semibold">Yes</button>
+                          <span className="text-neg">Delete?</span>
+                          <button onClick={() => handleDelete(a.id)} className="text-neg font-semibold">Yes</button>
                           <button onClick={() => setConfirmDeleteId(null)} className="text-muted ml-1">No</button>
                         </span>
                       ) : (
                         <span className="flex items-center gap-2 justify-end">
-                          <button onClick={() => setUpdateAsset(a)} className="text-muted hover:text-accent" title="Quick update"><RefreshCw size={13} /></button>
-                          <button onClick={() => { setEditing(a); setShowModal(true); }} className="text-muted hover:text-white"><Edit2 size={13} /></button>
-                          <button onClick={() => setConfirmDeleteId(a.id)} className="text-muted hover:text-rose-400"><Trash2 size={13} /></button>
+                          <button onClick={() => setUpdateAsset(a)} className="icon-btn text-muted hover:text-accent-ink" title="Quick update"><RefreshCw size={13} /></button>
+                          <button onClick={() => { setEditing(a); setShowModal(true); }} className="icon-btn text-muted hover:text-white"><Edit2 size={13} /></button>
+                          <button onClick={() => setConfirmDeleteId(a.id)} className="text-muted hover:text-neg"><Trash2 size={13} /></button>
                         </span>
                       )}
                     </td>

@@ -3,13 +3,14 @@ import {
   TrendingUp, Plus, X, Trash2, Play, Sparkles,
   Loader2, AlertCircle, RefreshCw, ArrowRight, ArrowLeft, Check,
   Download, Search, ChevronDown, ChevronRight, Wand2, MessageSquare,
-  Lightbulb, Save, RotateCcw, Copy, Pencil,
+  Lightbulb, Save, RotateCcw, Copy, Pencil, FlaskConical, BarChart3,
 } from 'lucide-react';
 import {
   ComposedChart, Area, Bar, Line, Scatter, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
 import { TT, AX, GRID } from '../../lib/chartTheme';
+import EmptyState, { EmptyRow } from '../../components/EmptyState';
 import api from '../../lib/api';
 import { SECTORS, NIFTY_INDICES } from '../../lib/indianStocks';
 
@@ -76,9 +77,9 @@ function downloadCsv(rows, filename) {
 function StatusBadge({ status }) {
   const map = {
     draft:   'bg-white/8 text-muted',
-    running: 'bg-amber-500/15 text-amber-400',
-    done:    'bg-emerald-500/15 text-emerald-400',
-    error:   'bg-red-500/15 text-red-400',
+    running: 'bg-amber-500/15 text-hue-amber',
+    done:    'bg-emerald-500/15 text-pos',
+    error:   'bg-red-500/15 text-neg',
   };
   return (
     <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${map[status] || map.draft}`}>
@@ -124,9 +125,9 @@ function StockPickerModal({ current, onConfirm, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-[#0d0f1a] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+      <div className="bg-[#0d0f1a] border border-hairline/10 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-hairline/8 shrink-0">
           <div>
             <p className="text-white font-display font-bold">Stock Picker</p>
             <p className="text-muted text-xs mt-0.5">{selected.size} selected</p>
@@ -137,7 +138,7 @@ function StockPickerModal({ current, onConfirm, onClose }) {
         </div>
 
         {/* Search */}
-        <div className="px-4 py-3 border-b border-white/8 shrink-0">
+        <div className="px-4 py-3 border-b border-hairline/8 shrink-0">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <input
@@ -152,17 +153,17 @@ function StockPickerModal({ current, onConfirm, onClose }) {
 
         {/* Index presets */}
         {!search && (
-          <div className="px-4 py-3 border-b border-white/8 shrink-0">
+          <div className="px-4 py-3 border-b border-hairline/8 shrink-0">
             <p className="text-[10px] text-muted uppercase tracking-wider mb-2 font-mono">Index Presets</p>
             <div className="flex flex-wrap gap-1.5">
               {NIFTY_INDICES.map(idx => (
                 <button key={idx.label} onClick={() => selectIndex(idx)}
-                  className="px-2.5 py-1 rounded-lg text-xs font-mono bg-accent/10 border border-accent/20 text-accent hover:bg-accent/20 transition-colors">
+                  className="px-2.5 py-1 rounded-lg text-xs font-mono bg-accent/10 border border-accent/20 text-accent-ink hover:bg-accent/20 transition-colors">
                   {idx.label}
                 </button>
               ))}
               <button onClick={() => setSelected(new Set())}
-                className="px-2.5 py-1 rounded-lg text-xs font-mono bg-white/5 border border-white/10 text-muted hover:text-soft transition-colors">
+                className="px-2.5 py-1 rounded-lg text-xs font-mono bg-white/5 border border-hairline/10 text-muted hover:text-soft transition-colors">
                 Clear all
               </button>
             </div>
@@ -190,7 +191,7 @@ function StockPickerModal({ current, onConfirm, onClose }) {
               const allIn = stocks.every(s => selected.has(s.sym));
               const someIn = stocks.some(s => selected.has(s.sym));
               return (
-                <div key={sector} className="rounded-xl border border-white/8 overflow-hidden">
+                <div key={sector} className="rounded-xl border border-hairline/8 overflow-hidden">
                   <div className="flex items-center gap-3 px-3 py-2.5 bg-white/[0.03] cursor-pointer hover:bg-white/[0.05] transition-colors"
                     onClick={() => setExpanded(p => ({ ...p, [sector]: !isOpen }))}>
                     <input type="checkbox" checked={allIn} ref={el => { if (el) el.indeterminate = !allIn && someIn; }}
@@ -220,7 +221,7 @@ function StockPickerModal({ current, onConfirm, onClose }) {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-white/8 flex items-center justify-between shrink-0">
+        <div className="px-5 py-4 border-t border-hairline/8 flex items-center justify-between shrink-0">
           <p className="text-muted text-sm">{selected.size} stocks selected</p>
           <div className="flex gap-2">
             <button onClick={onClose} className="btn-ghost text-sm px-4 py-2">Cancel</button>
@@ -248,9 +249,9 @@ function InstrumentInput({ value, onChange }) {
 
   return (
     <>
-      <div className="flex flex-wrap gap-1.5 p-2 rounded-xl border border-white/10 bg-surface min-h-[42px] items-center focus-within:border-accent/40 transition-colors">
+      <div className="flex flex-wrap gap-1.5 p-2 rounded-xl border border-hairline/10 bg-surface min-h-[44px] items-center focus-within:border-accent/40 transition-colors">
         {value.map(sym => (
-          <span key={sym} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/15 text-accent text-xs font-mono">
+          <span key={sym} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/15 text-accent-ink text-xs font-mono">
             {sym}
             <button type="button" onClick={() => onChange(value.filter(s => s !== sym))} className="hover:text-white transition-colors">
               <X size={10} />
@@ -266,7 +267,7 @@ function InstrumentInput({ value, onChange }) {
           onBlur={add}
         />
         <button type="button" onClick={() => setShowPicker(true)}
-          className="shrink-0 px-2 py-1 rounded-lg text-xs font-mono bg-accent/10 border border-accent/20 text-accent hover:bg-accent/20 transition-colors flex items-center gap-1">
+          className="shrink-0 px-2 py-1 rounded-lg text-xs font-mono bg-accent/10 border border-accent/20 text-accent-ink hover:bg-accent/20 transition-colors flex items-center gap-1">
           <Search size={11} /> Indian Stocks
         </button>
       </div>
@@ -285,16 +286,16 @@ function InstrumentInput({ value, onChange }) {
 function AiStatusBar({ active, step, error }) {
   if (!active && !error) return null;
   if (error) return (
-    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-300">
+    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-neg">
       <AlertCircle size={13} className="shrink-0" />
       <span>{error}</span>
     </div>
   );
   return (
-    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-sm text-purple-300">
+    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-sm text-hue-purple">
       <Loader2 size={13} className="animate-spin shrink-0" />
       <span>{AI_STEPS[Math.min(step, AI_STEPS.length - 1)]}</span>
-      <span className="ml-auto text-[10px] font-mono text-purple-400/60">{step + 1}/{AI_STEPS.length}</span>
+      <span className="ml-auto text-[10px] font-mono text-hue-purple/60">{step + 1}/{AI_STEPS.length}</span>
     </div>
   );
 }
@@ -303,10 +304,10 @@ function RunStatusBar({ active, step }) {
   if (!active) return null;
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-300">
+      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-sm text-pos">
         <Loader2 size={13} className="animate-spin shrink-0" />
         <span>{RUN_STEPS[Math.min(step, RUN_STEPS.length - 1)]}</span>
-        <span className="ml-auto text-[10px] font-mono text-emerald-400/60">{step + 1}/{RUN_STEPS.length}</span>
+        <span className="ml-auto text-[10px] font-mono text-pos/60">{step + 1}/{RUN_STEPS.length}</span>
       </div>
       {/* Mini step trail */}
       <div className="flex gap-1.5 px-1">
@@ -686,10 +687,13 @@ export default function BacktestPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex flex-1 overflow-hidden">
+      {/* Stacks at mobile. Side by side, the fixed 224px strategy list left
+          ~150px for the results pane at 375px, so its stat cards clipped —
+          the two panes simply do not both fit on a phone. */}
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Left sidebar */}
-        <div className="w-56 shrink-0 flex flex-col border-r border-white/5 overflow-hidden">
-          <div className="p-3 border-b border-white/5 shrink-0">
+        <div className="w-full md:w-56 shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-hairline/5 overflow-hidden max-h-[45vh] md:max-h-none">
+          <div className="p-3 border-b border-hairline/5 shrink-0">
             <button onClick={createNew} disabled={saving}
               className="btn-primary w-full justify-center flex gap-2 text-sm py-2">
               <Plus size={14} /> New Strategy
@@ -699,7 +703,8 @@ export default function BacktestPage() {
             {loading ? (
               <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-muted" /></div>
             ) : strategies.length === 0 ? (
-              <p className="text-muted text-xs text-center py-8">No strategies yet</p>
+              <EmptyState compact icon={FlaskConical} title="No strategies yet"
+                hint="Create a strategy to run your first backtest." />
             ) : strategies.map(s => (
               <div key={s.id} onClick={() => selectStrategy(s)}
                 className={`group relative p-2.5 rounded-xl cursor-pointer transition-all ${
@@ -710,19 +715,19 @@ export default function BacktestPage() {
                 <div className="flex items-start justify-between gap-1">
                   <p className="text-xs font-medium text-white truncate flex-1">{s.name}</p>
                   <button onClick={e => { e.stopPropagation(); setConfirmDelete(s.id); }}
-                    className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all p-0.5 shrink-0">
+                    className="icon-btn opacity-0 group-hover:opacity-100 text-muted hover:text-neg transition-all p-0.5 shrink-0">
                     <Trash2 size={11} />
                   </button>
                 </div>
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                   <StatusBadge status={s.status} />
                   {s.status === 'done' && s.stats?.totalReturn != null && (
-                    <span className={`text-[10px] font-mono ${s.stats.totalReturn >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <span className={`text-[10px] font-mono ${s.stats.totalReturn >= 0 ? 'text-pos' : 'text-neg'}`}>
                       {fmtPct(s.stats.totalReturn)}
                     </span>
                   )}
                   {loadDraft(s.id) && (
-                    <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-amber-500/15 text-amber-400">draft</span>
+                    <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-amber-500/15 text-hue-amber">draft</span>
                   )}
                 </div>
                 {s.instruments?.length > 0 && (
@@ -737,11 +742,8 @@ export default function BacktestPage() {
         <div className="flex-1 overflow-y-auto">
           {!selectedId ? (
             <div className="flex flex-col items-center justify-center h-full text-center p-8">
-              <div className="w-14 h-14 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center mb-4">
-                <TrendingUp size={24} className="text-accent" />
-              </div>
-              <p className="text-soft font-display font-bold mb-1">No strategy selected</p>
-              <p className="text-muted text-sm">Create a new strategy or select one from the list</p>
+              <EmptyState icon={TrendingUp} title="No strategy selected"
+                hint="Create a strategy or pick one from the list to see its results." />
             </div>
           ) : showResults && selected?.status === 'done' ? (
             <ResultsPanel
@@ -787,7 +789,7 @@ export default function BacktestPage() {
             <div className="flex gap-3">
               <button onClick={() => setConfirmDelete(null)} className="btn-ghost flex-1 justify-center flex">Cancel</button>
               <button onClick={() => deleteStrategy(confirmDelete)}
-                className="flex-1 justify-center flex px-4 py-2 rounded-xl text-sm font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors">
+                className="flex-1 justify-center flex px-4 py-2 rounded-xl text-sm font-medium bg-red-500/15 text-neg hover:bg-red-500/25 transition-colors">
                 Delete
               </button>
             </div>
@@ -816,9 +818,9 @@ function WizardPanel({
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-6">
-      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+      <div className="rounded-xl border border-hairline/10 bg-white/[0.02] p-4 space-y-3">
         <p className="text-sm font-display font-semibold text-white flex items-center gap-2">
-          <Lightbulb size={16} className="text-accent shrink-0" />
+          <Lightbulb size={16} className="text-accent-ink shrink-0" />
           How strategy creation works
         </p>
         <ol className="text-xs text-soft space-y-2.5 list-decimal pl-4 leading-relaxed marker:text-muted">
@@ -842,9 +844,9 @@ function WizardPanel({
       {/* Draft banner */}
       {hasDraft && (
         <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
-          <Save size={13} className="text-amber-400 shrink-0" />
-          <span className="text-amber-300 text-xs flex-1">Unsaved draft — auto-saved locally</span>
-          <button onClick={onDiscard} className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors">
+          <Save size={13} className="text-hue-amber shrink-0" />
+          <span className="text-hue-amber text-xs flex-1">Unsaved draft — auto-saved locally</span>
+          <button onClick={onDiscard} className="flex items-center gap-1 text-xs text-hue-amber hover:text-hue-amber transition-colors">
             <RotateCcw size={11} /> Discard
           </button>
         </div>
@@ -858,11 +860,11 @@ function WizardPanel({
             <div key={n} className="flex items-center flex-1">
               <div className="flex flex-col items-center gap-1 shrink-0">
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
-                  done ? 'bg-accent border-accent text-ink' : active ? 'border-accent text-accent bg-accent/10' : 'border-white/15 text-muted'
+                  done ? 'bg-accent border-accent text-accent-fg' : active ? 'border-accent text-accent-ink bg-accent/10' : 'border-hairline/15 text-muted'
                 }`}>
                   {done ? <Check size={13} /> : n}
                 </div>
-                <span className={`text-[10px] font-mono whitespace-nowrap ${active ? 'text-accent' : done ? 'text-soft' : 'text-muted'}`}>{label}</span>
+                <span className={`text-[10px] font-mono whitespace-nowrap ${active ? 'text-accent-ink' : done ? 'text-soft' : 'text-muted'}`}>{label}</span>
               </div>
               {i < STEPS.length - 1 && (
                 <div className={`flex-1 h-px mx-2 mb-3.5 ${step > n ? 'bg-accent/50' : 'bg-white/10'}`} />
@@ -891,8 +893,8 @@ function WizardPanel({
                 <button key={f} type="button" onClick={() => setForm1(p => ({ ...p, frequency: f }))}
                   className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all ${
                     form1.frequency === f
-                      ? 'bg-accent/20 border border-accent/40 text-accent'
-                      : 'bg-white/5 border border-white/10 text-muted hover:text-soft'
+                      ? 'bg-accent/20 border border-accent/40 text-accent-ink'
+                      : 'bg-white/5 border border-hairline/10 text-muted hover:text-soft'
                   }`}>{f}</button>
               ))}
             </div>
@@ -921,7 +923,7 @@ function WizardPanel({
               Fetch & Preview Data
             </button>
             {ohlcvSymbols.length > 0 && (
-              <span className="text-xs text-emerald-400 font-mono">
+              <span className="text-xs text-pos font-mono">
                 {ohlcvSymbols.length} symbol{ohlcvSymbols.length > 1 ? 's' : ''} loaded
               </span>
             )}
@@ -929,7 +931,7 @@ function WizardPanel({
           {Object.keys(ohlcvErrors).length > 0 && (
             <div className="space-y-1">
               {Object.entries(ohlcvErrors).map(([sym, err]) => (
-                <p key={sym} className="text-red-400 text-xs font-mono">{sym === '_' ? err : `${sym}: ${err}`}</p>
+                <p key={sym} className="text-neg text-xs font-mono">{sym === '_' ? err : `${sym}: ${err}`}</p>
               ))}
             </div>
           )}
@@ -943,8 +945,8 @@ function WizardPanel({
                   <button key={sym} onClick={() => setOhlcvTab(sym)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all ${
                       ohlcvTab === sym
-                        ? 'bg-accent/20 border border-accent/40 text-accent'
-                        : 'bg-white/5 border border-white/10 text-muted hover:text-soft'
+                        ? 'bg-accent/20 border border-accent/40 text-accent-ink'
+                        : 'bg-white/5 border border-hairline/10 text-muted hover:text-soft'
                     }`}>{sym}</button>
                 ))}
               </div>
@@ -960,10 +962,10 @@ function WizardPanel({
                       <Download size={12} /> CSV
                     </button>
                   </div>
-                  <div className="overflow-x-auto rounded-xl border border-white/8">
+                  <div className="overflow-x-auto rounded-xl border border-hairline/8">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-white/8">
+                        <tr className="border-b border-hairline/8">
                           {['Date','Open','High','Low','Close','Volume'].map(h => (
                             <th key={h} className="text-left px-3 py-2 text-muted font-mono font-normal">{h}</th>
                           ))}
@@ -971,11 +973,11 @@ function WizardPanel({
                       </thead>
                       <tbody>
                         {ohlcvMap[ohlcvTab].slice(-10).map((r, i) => (
-                          <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02]">
+                          <tr key={i} className="border-b border-hairline/5 hover:bg-white/[0.02]">
                             <td className="px-3 py-1.5 font-mono text-muted">{r.date}</td>
                             <td className="px-3 py-1.5 font-mono text-soft">{r.open}</td>
-                            <td className="px-3 py-1.5 font-mono text-emerald-400">{r.high}</td>
-                            <td className="px-3 py-1.5 font-mono text-red-400">{r.low}</td>
+                            <td className="px-3 py-1.5 font-mono text-pos">{r.high}</td>
+                            <td className="px-3 py-1.5 font-mono text-neg">{r.low}</td>
                             <td className="px-3 py-1.5 font-mono text-white font-medium">{r.close}</td>
                             <td className="px-3 py-1.5 font-mono text-muted">{(r.volume||0).toLocaleString()}</td>
                           </tr>
@@ -1002,8 +1004,8 @@ function WizardPanel({
       {step === 2 && (
         <div className="space-y-5">
           <div className={`rounded-xl border px-4 py-3 text-xs ${Object.keys(ohlcvMap).length >= form1.instruments.length && form1.instruments.every(s => ohlcvMap[s]?.length)
-            ? 'border-emerald-500/25 bg-emerald-500/5 text-emerald-200/90'
-            : 'border-amber-500/25 bg-amber-500/8 text-amber-200/90'}`}>
+            ? 'border-emerald-500/25 bg-emerald-500/5 text-pos/90'
+            : 'border-amber-500/25 bg-amber-500/8 text-hue-amber/90'}`}>
             <p className="font-medium text-white/90 mb-1">Uses Step 1 data only</p>
             <p className="text-muted leading-relaxed">
               The backtest runs on the OHLCV you fetched in Data Setup — it does not download prices again.
@@ -1016,13 +1018,13 @@ function WizardPanel({
 
           {/* Let AI Decide — prominent at top */}
           <div className="flex items-center gap-3 p-4 rounded-xl bg-violet-500/8 border border-violet-500/20">
-            <Wand2 size={16} className="text-violet-400 shrink-0" />
+            <Wand2 size={16} className="text-hue-violet shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-violet-200 font-medium">Let AI build your strategy</p>
-              <p className="text-xs text-violet-400/70 mt-0.5">AI will fill all fields — you can edit before running</p>
+              <p className="text-sm text-hue-violet font-medium">Let AI build your strategy</p>
+              <p className="text-xs text-hue-violet/70 mt-0.5">AI will fill all fields — you can edit before running</p>
             </div>
             <button onClick={() => onCallAI(true)} disabled={aiActive}
-              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-500/20 border border-violet-500/40 text-violet-200 text-sm font-medium hover:bg-violet-500/30 transition-colors disabled:opacity-50">
+              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-500/20 border border-violet-500/40 text-hue-violet text-sm font-medium hover:bg-violet-500/30 transition-colors disabled:opacity-50">
               {aiActive ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
               Let AI Decide
             </button>
@@ -1037,7 +1039,7 @@ function WizardPanel({
               <button
                 type="button"
                 onClick={onResetPrompts}
-                className="flex items-center gap-1.5 text-xs text-muted hover:text-soft px-2.5 py-1.5 rounded-lg border border-white/10 hover:bg-white/[0.04] transition-colors shrink-0"
+                className="flex items-center gap-1.5 text-xs text-muted hover:text-soft px-2.5 py-1.5 rounded-lg border border-hairline/10 hover:bg-white/[0.04] transition-colors shrink-0"
               >
                 <RotateCcw size={12} /> Reset prompts
               </button>
@@ -1066,7 +1068,7 @@ function WizardPanel({
           <button onClick={() => onCallAI(false)}
             disabled={aiActive || !strategyPrompt.trim()}
             className="btn-ghost flex items-center gap-2 text-sm">
-            <Sparkles size={14} className="text-purple-400" />
+            <Sparkles size={14} className="text-hue-purple" />
             AI Parse Strategy
           </button>
 
@@ -1074,14 +1076,14 @@ function WizardPanel({
           {aiInterpretation?.interpretation && (
             <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
               <div className="flex items-center gap-2">
-                <Sparkles size={13} className="text-purple-400" />
-                <span className="text-xs text-purple-300 font-semibold uppercase tracking-wider">AI Interpretation</span>
+                <Sparkles size={13} className="text-hue-purple" />
+                <span className="text-xs text-hue-purple font-semibold uppercase tracking-wider">AI Interpretation</span>
               </div>
               <p className="text-sm text-soft">{aiInterpretation.interpretation}</p>
               {aiInterpretation.indicators?.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {aiInterpretation.indicators.map((ind, i) => (
-                    <span key={i} className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-white/8 text-soft border border-white/10">
+                    <span key={i} className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-white/8 text-soft border border-hairline/10">
                       {ind.name.toUpperCase()}({ind.period})
                     </span>
                   ))}
@@ -1094,11 +1096,11 @@ function WizardPanel({
           {aiSuggestions.length > 0 && (
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-2">
               <div className="flex items-center gap-2 mb-1">
-                <Lightbulb size={13} className="text-amber-400" />
-                <span className="text-xs text-amber-300 font-semibold uppercase tracking-wider">Suggestions</span>
+                <Lightbulb size={13} className="text-hue-amber" />
+                <span className="text-xs text-hue-amber font-semibold uppercase tracking-wider">Suggestions</span>
               </div>
               {aiSuggestions.map((s, i) => (
-                <p key={i} className="text-sm text-soft flex gap-2"><span className="text-amber-400 shrink-0">•</span>{s}</p>
+                <p key={i} className="text-sm text-soft flex gap-2"><span className="text-hue-amber shrink-0">•</span>{s}</p>
               ))}
             </div>
           )}
@@ -1107,31 +1109,31 @@ function WizardPanel({
           {aiQuestions.length > 0 && (
             <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-2">
               <div className="flex items-center gap-2 mb-1">
-                <MessageSquare size={13} className="text-blue-400" />
-                <span className="text-xs text-blue-300 font-semibold uppercase tracking-wider">AI needs more info</span>
+                <MessageSquare size={13} className="text-hue-blue" />
+                <span className="text-xs text-hue-blue font-semibold uppercase tracking-wider">AI needs more info</span>
               </div>
               {aiQuestions.map((q, i) => (
-                <p key={i} className="text-sm text-soft flex gap-2"><span className="text-blue-400 shrink-0">?</span>{q}</p>
+                <p key={i} className="text-sm text-soft flex gap-2"><span className="text-hue-blue shrink-0">?</span>{q}</p>
               ))}
             </div>
           )}
 
           {/* Parsed rules preview */}
           {rules && (
-            <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-2 font-mono text-xs">
+            <div className="rounded-xl border border-hairline/8 bg-white/[0.02] p-4 space-y-2 font-mono text-xs">
               <p className="text-[10px] text-muted uppercase tracking-wider mb-2">Parsed Rules</p>
               {rules.interpretation && (
                 <p className="text-soft italic text-xs mb-2">{rules.interpretation}</p>
               )}
-              <p className="text-muted">ENTRY: <span className="text-emerald-400">
+              <p className="text-muted">ENTRY: <span className="text-pos">
                 {rules.entry?.long?.map(r => `${r.left} ${r.op} ${r.right}`).join(' AND ') || '—'}
               </span></p>
-              <p className="text-muted">EXIT: <span className="text-red-400">
+              <p className="text-muted">EXIT: <span className="text-neg">
                 {rules.exit?.long?.map(r => `${r.left} ${r.op} ${r.right}`).join(' OR ') || '—'}
               </span></p>
               <p className="text-muted">
-                STOP: <span className="text-amber-400">{rules.stopLoss ? `-${(rules.stopLoss*100).toFixed(1)}%` : '—'}</span>
-                {'  '}TARGET: <span className="text-emerald-400">{rules.takeProfit ? `+${(rules.takeProfit*100).toFixed(1)}%` : '—'}</span>
+                STOP: <span className="text-hue-amber">{rules.stopLoss ? `-${(rules.stopLoss*100).toFixed(1)}%` : '—'}</span>
+                {'  '}TARGET: <span className="text-pos">{rules.takeProfit ? `+${(rules.takeProfit*100).toFixed(1)}%` : '—'}</span>
               </p>
               {rules.indicators?.length > 0 && (
                 <p className="text-muted">INDICATORS: <span className="text-soft">
@@ -1146,8 +1148,8 @@ function WizardPanel({
 
           {runError && (
             <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
-              <AlertCircle size={14} className="text-red-400 shrink-0 mt-0.5" />
-              <p className="text-red-400 text-sm">{runError}</p>
+              <AlertCircle size={14} className="text-neg shrink-0 mt-0.5" />
+              <p className="text-neg text-sm">{runError}</p>
             </div>
           )}
 
@@ -1191,7 +1193,8 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
   }, [strategyId]);
 
   if (loading) return <div className="flex items-center justify-center h-48"><Loader2 size={20} className="animate-spin text-muted" /></div>;
-  if (!fullData?.results) return <div className="p-8 text-muted text-center">No results data</div>;
+  if (!fullData?.results) return <EmptyState icon={BarChart3} title="No results for this run"
+      hint="Re-run the backtest to regenerate its results." />;
 
   const { stats: r, equityCurve, trades, bySymbol } = fullData.results;
   const symKeys = bySymbol && typeof bySymbol === 'object' ? Object.keys(bySymbol) : [];
@@ -1221,12 +1224,12 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
   }
 
   const statCards = [
-    { label: 'Total Return',  value: fmtPct(rView.totalReturn),    color: rView.totalReturn >= 0 ? 'text-emerald-400' : 'text-red-400' },
-    { label: 'CAGR',          value: fmtPct(rView.cagr),           color: rView.cagr >= 0 ? 'text-emerald-400' : 'text-red-400' },
-    { label: 'Max Drawdown',  value: fmtPct(rView.maxDrawdown),    color: 'text-red-400' },
+    { label: 'Total Return',  value: fmtPct(rView.totalReturn),    color: rView.totalReturn >= 0 ? 'text-pos' : 'text-neg' },
+    { label: 'CAGR',          value: fmtPct(rView.cagr),           color: rView.cagr >= 0 ? 'text-pos' : 'text-neg' },
+    { label: 'Max Drawdown',  value: fmtPct(rView.maxDrawdown),    color: 'text-neg' },
     { label: 'Sharpe Ratio',  value: fmtNum(rView.sharpe),         color: 'text-white' },
-    { label: 'Win Rate',      value: fmtPct(rView.winRate),        color: rView.winRate >= 50 ? 'text-emerald-400' : 'text-amber-400' },
-    { label: 'Profit Factor', value: fmtNum(rView.profitFactor),   color: rView.profitFactor >= 1 ? 'text-emerald-400' : 'text-red-400' },
+    { label: 'Win Rate',      value: fmtPct(rView.winRate),        color: rView.winRate >= 50 ? 'text-pos' : 'text-hue-amber' },
+    { label: 'Profit Factor', value: fmtNum(rView.profitFactor),   color: rView.profitFactor >= 1 ? 'text-pos' : 'text-neg' },
     { label: 'Total Trades',  value: rView.totalTrades,            color: 'text-white' },
     { label: 'Final Capital', value: fmtCurrency(rView.finalCapital), color: 'text-white' },
   ];
@@ -1261,28 +1264,28 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
         <div className="card p-4 space-y-3 border border-violet-500/15 bg-violet-500/[0.03]">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <p className="text-xs font-semibold text-violet-200 uppercase tracking-wider font-mono">AI implementation</p>
+              <p className="text-xs font-semibold text-hue-violet uppercase tracking-wider font-mono">AI implementation</p>
               <p className="text-[11px] text-muted mt-0.5">Structured rules JSON the simulator runs (indicators, entry/exit, risk).</p>
             </div>
             {rulesJson && (
               <button
                 type="button"
                 onClick={() => void copyRulesJson()}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-white/10 text-soft hover:bg-white/[0.06] transition-colors shrink-0"
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-hairline/10 text-soft hover:bg-white/[0.06] transition-colors shrink-0"
               >
-                {rulesCopied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                {rulesCopied ? <Check size={13} className="text-pos" /> : <Copy size={13} />}
                 {rulesCopied ? 'Copied' : 'Copy JSON'}
               </button>
             )}
           </div>
           {fullData.strategy_prompt ? (
-            <div className="rounded-lg bg-black/30 border border-white/8 p-3">
+            <div className="rounded-lg bg-black/30 border border-hairline/8 p-3">
               <p className="text-[10px] text-muted uppercase tracking-wider font-mono mb-1">Saved strategy text</p>
               <p className="text-xs text-soft whitespace-pre-wrap leading-relaxed">{fullData.strategy_prompt}</p>
             </div>
           ) : null}
           {rulesJson ? (
-            <pre className="text-[11px] font-mono text-emerald-200/90 bg-black/40 border border-white/8 rounded-lg p-3 overflow-x-auto max-h-[min(420px,50vh)] overflow-y-auto leading-relaxed">
+            <pre className="text-[11px] font-mono text-pos/90 bg-black/40 border border-hairline/8 rounded-lg p-3 overflow-x-auto max-h-[min(420px,50vh)] overflow-y-auto leading-relaxed">
               {rulesJson}
             </pre>
           ) : (
@@ -1298,7 +1301,7 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
             type="button"
             onClick={() => setInstTab('all')}
             className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all ${
-              instTab === 'all' ? 'bg-accent/20 border border-accent/40 text-accent' : 'bg-white/5 border border-white/10 text-muted hover:text-soft'
+              instTab === 'all' ? 'bg-accent/20 border border-accent/40 text-accent-ink' : 'bg-white/5 border border-hairline/10 text-muted hover:text-soft'
             }`}
           >
             Combined
@@ -1309,7 +1312,7 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
               type="button"
               onClick={() => setInstTab(sym)}
               className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-all max-w-[200px] truncate ${
-                instTab === sym ? 'bg-violet-500/20 border border-violet-400/40 text-violet-200' : 'bg-white/5 border border-white/10 text-muted hover:text-soft'
+                instTab === sym ? 'bg-violet-500/20 border border-violet-400/40 text-hue-violet' : 'bg-white/5 border border-hairline/10 text-muted hover:text-soft'
               }`}
             >
               {sym}
@@ -1398,26 +1401,27 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-white/8">
+                <tr className="border-b border-hairline/8">
                   {['Symbol','Side','Entry Date','Entry ₹','Exit Date','Exit ₹','P&L','Return','Exit Reason'].map(h => (
                     <th key={h} className="text-left px-3 py-2.5 text-muted font-mono font-normal whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {!tradesView?.length && <tr><td colSpan={9} className="px-3 py-8 text-center text-muted">No trades executed</td></tr>}
+                {!tradesView?.length && <EmptyRow colSpan={9} icon={TrendingUp} title="No trades executed"
+                  hint="This strategy produced no entries over the selected period." />}
                 {tradesView?.map((t, i) => (
-                  <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02]">
+                  <tr key={i} className="border-b border-hairline/5 hover:bg-white/[0.02]">
                     <td className="px-3 py-2 font-mono text-white">{t.symbol}</td>
-                    <td className="px-3 py-2 font-mono"><span className={t.side === 'long' ? 'text-emerald-400' : 'text-red-400'}>{t.side}</span></td>
+                    <td className="px-3 py-2 font-mono"><span className={t.side === 'long' ? 'text-pos' : 'text-neg'}>{t.side}</span></td>
                     <td className="px-3 py-2 font-mono text-muted">{t.entryDate}</td>
                     <td className="px-3 py-2 font-mono text-soft">{t.entryPrice?.toFixed(2)}</td>
                     <td className="px-3 py-2 font-mono text-muted">{t.exitDate || '—'}</td>
                     <td className="px-3 py-2 font-mono text-soft">{t.exitPrice?.toFixed(2) || '—'}</td>
-                    <td className={`px-3 py-2 font-mono font-medium ${(t.pnl||0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <td className={`px-3 py-2 font-mono font-medium ${(t.pnl||0) >= 0 ? 'text-pos' : 'text-neg'}`}>
                       {(t.pnl||0) >= 0 ? '+' : ''}₹{Math.round(t.pnl||0)}
                     </td>
-                    <td className={`px-3 py-2 font-mono ${(t.pnlPct||0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <td className={`px-3 py-2 font-mono ${(t.pnlPct||0) >= 0 ? 'text-pos' : 'text-neg'}`}>
                       {(t.pnlPct||0) >= 0 ? '+' : ''}{(t.pnlPct||0).toFixed(2)}%
                     </td>
                     <td className="px-3 py-2 font-mono text-muted text-[10px]">{t.exitReason || '—'}</td>
@@ -1444,7 +1448,7 @@ function ResultsPanel({ strategyId, strategies, onEdit, onReload }) {
               ['Gross Profit',     fmtCurrency(rView.grossProfit)],
               ['Gross Loss',       fmtCurrency(rView.grossLoss)],
             ].map(([k, v]) => (
-              <div key={`${instTab}-${k}`} className="flex justify-between items-center px-3 py-2.5 border-b border-white/5 last:border-0">
+              <div key={`${instTab}-${k}`} className="flex justify-between items-center px-3 py-2.5 border-b border-hairline/5 last:border-0">
                 <span className="text-xs text-muted font-mono">{k}</span>
                 <span className="text-xs text-soft font-mono font-medium">{v}</span>
               </div>

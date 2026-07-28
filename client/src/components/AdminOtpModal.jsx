@@ -82,7 +82,7 @@ export default function AdminOtpModal() {
             <X size={16} />
           </button>
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/25 mb-4">
-            <Shield size={26} className="text-amber-400" />
+            <Shield size={26} className="text-hue-amber" />
           </div>
           <h2 className="text-lg font-bold text-text">Admin Verification</h2>
           <p className="text-sm text-muted mt-1">
@@ -117,10 +117,10 @@ export default function AdminOtpModal() {
           </div>
 
           {error && (
-            <p className="text-center text-sm text-red-400">{error}</p>
+            <p className="text-center text-sm text-neg">{error}</p>
           )}
           {resent && (
-            <p className="text-center text-sm text-green-400">New code sent to your email!</p>
+            <p className="text-center text-sm text-pos">New code sent to your email!</p>
           )}
 
           <button
@@ -137,7 +137,7 @@ export default function AdminOtpModal() {
               type="button"
               onClick={handleResend}
               disabled={resending}
-              className="flex items-center gap-1 text-accent hover:text-accent/80 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1 text-accent-ink hover:text-accent-ink/80 transition-colors disabled:opacity-50"
             >
               <RefreshCw size={11} className={resending ? 'animate-spin' : ''} />
               {resending ? 'Sending…' : 'Resend code'}
@@ -146,7 +146,7 @@ export default function AdminOtpModal() {
 
           <p className="text-center text-xs text-muted pt-1">
             Skip for now?{' '}
-            <button type="button" onClick={dismissAdminOtp} className="text-accent hover:underline">
+            <button type="button" onClick={dismissAdminOtp} className="text-accent-ink hover:underline">
               Continue without admin
             </button>
           </p>

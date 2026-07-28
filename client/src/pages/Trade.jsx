@@ -312,7 +312,7 @@ function BalancedPortfolioCard({ onComputeAllocation, loading, allocation, resul
             type="button"
             onClick={() => onComputeAllocation(riskProfile, results)}
             disabled={loading}
-            className="btn-primary flex items-center gap-2"
+            className="btn-ghost flex items-center gap-2"
           >
             {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
             {loading ? 'Computing…' : allocation ? 'Refresh' : 'Compute allocation'}
@@ -483,7 +483,7 @@ export default function Trade() {
       {INSTRUMENT_GROUPS.map((group) => (
         <div key={group.label} className="space-y-3">
           <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
-            <BarChart3 size={18} className="text-accent" />
+            <BarChart3 size={18} className="text-soft" />
             {group.label}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -517,8 +517,8 @@ function toNum(x) {
   return typeof x === 'number' && !isNaN(x) ? x : !isNaN(n) ? n : null;
 }
 
-const RATING_COLOR = { 'STRONG BUY': 'text-green-400', BUY: 'text-teal-400', HOLD: 'text-amber-400', AVOID: 'text-rose' };
-const RISK_COLOR = { Low: 'text-green-400', Medium: 'text-amber-400', High: 'text-rose' };
+const RATING_COLOR = { 'STRONG BUY': 'text-pos', BUY: 'text-hue-teal', HOLD: 'text-hue-amber', AVOID: 'text-rose' };
+const RISK_COLOR = { Low: 'text-pos', Medium: 'text-hue-amber', High: 'text-rose' };
 
 function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }) {
   const hasResult = !!result;
@@ -553,7 +553,7 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }
             type="button"
             onClick={onAnalyze}
             disabled={!!loading}
-            className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-xs"
+            className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 text-xs"
           >
             {loading ? <Loader2 size={12} className="animate-spin" /> : <TrendingUp size={12} />}
             {loading ? 'Analyzing…' : hasResult ? 'Refresh' : 'Analyze'}
@@ -619,7 +619,7 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport }
                   </span>
                 )}
               </div>
-              <button type="button" onClick={onViewReport} className="text-accent hover:underline text-xs font-medium">
+              <button type="button" onClick={onViewReport} className="text-soft hover:text-text hover:underline text-xs font-medium">
                 View full report →
               </button>
             </div>

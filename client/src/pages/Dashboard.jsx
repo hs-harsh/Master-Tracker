@@ -14,10 +14,11 @@ import { TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle2, Info, Arr
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
 import RangeChips from '../components/RangeChips';
-import { TT, AX, GRID, CHROME } from '../lib/chartTheme';
+import { TT, AX, GRID, CHROME, identityPalette } from '../lib/chartTheme';
 import { useNavigate } from 'react-router-dom';
 
-const RISK_COLORS = ['#60a5fa', '#fbbf24', '#f97316'];
+// Low / Medium / High — same hues as Portfolio's RISK_COLORS map.
+const RISK_COLORS = identityPalette(['blue', 'amber', 'orange']);
 
 // Convert an investment's amount to INR using its currency and the live FX rate map.
 function toINR(inv, fxRates) {
@@ -69,14 +70,14 @@ function AlertBar({ alerts }) {
       {alerts.map((a, i) => (
         <div key={i} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm
           ${a.level === 'error'   ? 'bg-rose/10 border border-rose/25 text-rose' :
-            a.level === 'warning' ? 'bg-amber-500/10 border border-amber-500/25 text-amber-400' :
-                                    'bg-accent/10 border border-accent/25 text-accent'}`}>
+            a.level === 'warning' ? 'bg-amber-500/10 border border-amber-500/25 text-hue-amber' :
+                                    'bg-accent/10 border border-accent/25 text-accent-ink'}`}>
           {a.level === 'error'   ? <AlertTriangle size={15} className="shrink-0" /> :
            a.level === 'warning' ? <AlertTriangle size={15} className="shrink-0" /> :
                                    <Info size={15} className="shrink-0" />}
           <span className="flex-1">{a.message}</span>
           {a.cta && (
-            <a href={a.href} className="flex items-center gap-1 text-xs font-semibold underline shrink-0 hover:opacity-80">
+            <a href={a.href} className="tap flex items-center gap-1 text-xs font-semibold underline shrink-0 hover:opacity-80">
               {a.cta} <ArrowRight size={11} />
             </a>
           )}
@@ -223,7 +224,7 @@ function CorpusVsInvestedChart({ cashflowData, investments, allCashflowData, fxR
           <p className="stat-label mb-0.5">Corpus vs Deployed</p>
           <p className="text-xs text-muted">
             Gap (uninvested cash):
-            <span className={`font-mono ml-1 ${gap > 0 ? 'text-amber-400' : 'text-teal'}`}>
+            <span className={`font-mono ml-1 ${gap > 0 ? 'text-hue-amber' : 'text-teal'}`}>
               {gap > 0 ? '+' : ''}{fmt(gap)}
             </span>
           </p>
@@ -367,9 +368,27 @@ function PersonPanel({ person, cashflowData, investments, fxRates }) {
       {/* Alerts */}
       <AlertBar alerts={alerts} />
 
-      {/* Hero + stat row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <div className="col-span-2 sm:col-span-1">
+      {/* Hero + stat row.
+          The hero gets its own full-width row; the four secondary stats sit
+          below it, 2-up until `lg` and 4-up above. Two earlier attempts failed
+          because they tried to fit all five cards on one line:
+
+            5 equal columns  — gave the app's largest type (48px .stat-hero) the
+                               same 141px box as the 30px .stat-value cards, so
+                               ₹1.04Cr clipped at desktop.
+            hero spanning 2  — fixed the hero but left the four siblings ~149px
+              of 4/6 cols       between roughly 640 and 1010px, so CORPUS,
+                               TOTAL INVESTED and UNINVESTED GAP all clipped
+                               instead. One clipped card became four.
+
+          The figures simply do not all fit on one line at tablet widths. Giving
+          the hero its own row is what actually resolves it: the primary figure
+          gets the full container, and the secondary stats never drop below half
+          the container each. It costs one row of height and it holds at every
+          width rather than at a lucky range of them. Shrinking .stat-hero was
+          not an option — it is part of the mono-numeral type ramp. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="col-span-2 lg:col-span-4">
           <HeroCard
             label="Net Asset"
             value={latest ? fmt(netAsset) : '—'}
@@ -394,7 +413,7 @@ function PersonPanel({ person, cashflowData, investments, fxRates }) {
           value={fmt(Math.abs(corpusGap))}
           sub={corpusGap > 0 ? 'cash not yet deployed' : 'investments > corpus (returns!)'}
           trend={corpusGap > 0 ? -1 : 1}
-          accent={corpusGap > 0 ? 'text-amber-400' : 'text-teal'}
+          accent={corpusGap > 0 ? 'text-hue-amber' : 'text-teal'}
         />
         <StatCard
           label="Savings Rate"

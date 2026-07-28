@@ -132,7 +132,7 @@ export default function Login() {
         {/* Logo */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-accent mb-4">
-            <span className="text-ink font-display font-bold text-lg">IT</span>
+            <span className="text-accent-fg font-display font-bold text-lg">IT</span>
           </div>
           <h1 className="font-display text-2xl font-bold text-white">InvestTrack</h1>
           <p className="text-muted text-sm mt-1">
@@ -173,7 +173,7 @@ export default function Login() {
             </div>
             <p className="text-center text-xs text-muted pt-1">
               No account?{' '}
-              <button type="button" onClick={() => reset('register')} className="text-accent hover:underline">Create one</button>
+              <button type="button" onClick={() => reset('register')} className="text-accent-ink hover:underline">Create one</button>
             </p>
           </form>
         )}
@@ -198,7 +198,7 @@ export default function Login() {
             </div>
             <p className="text-center text-xs text-muted pt-1">
               No account?{' '}
-              <button type="button" onClick={() => reset('register')} className="text-accent hover:underline">Create one</button>
+              <button type="button" onClick={() => reset('register')} className="text-accent-ink hover:underline">Create one</button>
             </p>
           </form>
         )}
@@ -219,12 +219,12 @@ export default function Login() {
               <OtpBoxes otp={otp} setOtp={setOtp} inputsRef={otpInputs} />
             </div>
             {devOtp && (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400">
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-hue-amber">
                 <span className="font-semibold">Dev mode —</span> SMTP not configured. Code: <span className="font-mono font-bold">{devOtp}</span>
               </div>
             )}
             {error && <p className="text-center text-rose text-sm">{error}</p>}
-            {resent && <p className="text-center text-green-400 text-sm">New code sent!</p>}
+            {resent && <p className="text-center text-pos text-sm">New code sent!</p>}
             <button type="submit" disabled={loading || otp.join('').length !== 6} className="btn-primary w-full justify-center flex">
               {loading ? <><Loader2 size={16} className="animate-spin mr-2" />Verifying…</> : isNewUser ? 'Create Account & Sign In' : 'Sign In'}
             </button>
@@ -233,7 +233,7 @@ export default function Login() {
                 <ArrowLeft size={12} /> Change email
               </button>
               <button type="button" onClick={handleResend} disabled={resending}
-                className="text-accent hover:text-accent/80 disabled:opacity-50 transition-colors">
+                className="text-accent-ink hover:text-accent-ink/80 disabled:opacity-50 transition-colors">
                 {resending ? 'Sending…' : 'Resend code'}
               </button>
             </div>
@@ -271,7 +271,7 @@ export default function Login() {
             </button>
             <p className="text-center text-xs text-muted pt-1">
               Already have an account?{' '}
-              <button type="button" onClick={() => reset('signin')} className="text-accent hover:underline">Sign in</button>
+              <button type="button" onClick={() => reset('signin')} className="text-accent-ink hover:underline">Sign in</button>
             </p>
           </form>
         )}

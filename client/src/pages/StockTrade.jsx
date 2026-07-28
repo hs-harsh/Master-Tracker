@@ -155,8 +155,8 @@ async function callClaude(prompt) {
   return content.map((c) => c.text || '').join('');
 }
 
-const RISK_COLOR = { Low: 'text-green-400', Medium: 'text-amber-400', High: 'text-rose' };
-const RATING_COLOR = { 'STRONG BUY': 'text-green-400', 'BUY': 'text-teal-400', 'HOLD': 'text-amber-400', 'AVOID': 'text-rose' };
+const RISK_COLOR = { Low: 'text-pos', Medium: 'text-hue-amber', High: 'text-rose' };
+const RATING_COLOR = { 'STRONG BUY': 'text-pos', 'BUY': 'text-hue-teal', 'HOLD': 'text-hue-amber', 'AVOID': 'text-rose' };
 
 function toNum(x) {
   const n = Number(x);
@@ -248,7 +248,7 @@ function StockSearchBar({ onAdd, watchlistIds }) {
                   <p className="text-muted text-xs">{stock.ticker}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className={`text-xs px-2 py-0.5 rounded font-mono ${stock.market === 'IN' ? 'bg-teal/10 text-teal' : 'bg-blue-500/10 text-blue-400'}`}>
+                  <span className={`text-xs px-2 py-0.5 rounded font-mono ${stock.market === 'IN' ? 'bg-teal/10 text-teal' : 'bg-blue-500/10 text-hue-blue'}`}>
                     {stock.market === 'IN' ? 'India' : 'US'}
                   </span>
                   {already && <span className="text-xs text-muted">Added</span>}
@@ -287,7 +287,7 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport, 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-display font-semibold text-white truncate">{instrument.name}</p>
-            <span className={`text-xs px-1.5 py-0.5 rounded font-mono shrink-0 ${instrument.market === 'IN' ? 'bg-teal/10 text-teal' : 'bg-blue-500/10 text-blue-400'}`}>
+            <span className={`text-xs px-1.5 py-0.5 rounded font-mono shrink-0 ${instrument.market === 'IN' ? 'bg-teal/10 text-teal' : 'bg-blue-500/10 text-hue-blue'}`}>
               {instrument.market === 'IN' ? 'India' : 'US'}
             </span>
           </div>
@@ -365,7 +365,7 @@ function InstrumentCard({ instrument, result, loading, onAnalyze, onViewReport, 
                   <span className={`text-xs font-medium ${RISK_COLOR[parsed.screening.riskLevel] || 'text-soft'}`}>Risk: {parsed.screening.riskLevel}</span>
                 )}
               </div>
-              <button type="button" onClick={onViewReport} className="text-accent hover:underline text-xs font-medium">
+              <button type="button" onClick={onViewReport} className="text-accent-ink hover:underline text-xs font-medium">
                 View full report →
               </button>
             </div>
@@ -474,7 +474,7 @@ export default function StockTrade() {
       {/* Search */}
       <div className="card">
         <p className="text-sm font-medium text-white mb-3 flex items-center gap-2">
-          <Search size={14} className="text-accent" /> Add to watchlist
+          <Search size={14} className="text-accent-ink" /> Add to watchlist
         </p>
         <StockSearchBar onAdd={addToWatchlist} watchlistIds={watchlistIds} />
         <p className="text-muted text-xs mt-2">
@@ -496,7 +496,7 @@ export default function StockTrade() {
       ) : (
         <div className="space-y-3">
           <h2 className="font-display font-semibold text-white text-lg flex items-center gap-2">
-            <BarChart3 size={18} className="text-accent" />
+            <BarChart3 size={18} className="text-accent-ink" />
             Watchlist <span className="text-muted text-sm font-normal">({watchlist.length})</span>
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -20,7 +20,10 @@ export default function RangeChips({ options, value, onChange, className = '' })
           key={o}
           type="button"
           onClick={() => onChange(o)}
-          className={`px-3 py-1.5 text-xs transition-colors ${
+          // 44px tall on mobile, compact from `sm` up. These are the smallest
+          // controls in the app and measured 28px — below the documented touch
+          // standard — on every page that uses them, which is most of them.
+          className={`px-3 py-1.5 text-xs transition-colors min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 ${
             value === o
               ? 'bg-card text-text font-semibold'
               : 'text-soft hover:text-text bg-hairline/[0.03] font-medium'

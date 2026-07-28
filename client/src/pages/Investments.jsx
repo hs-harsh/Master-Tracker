@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown, Briefcase } from 'lucide-react';
 import AiEntryPanel, { AiEditPanel } from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
+import { EmptyRow } from '../components/EmptyState';
 
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const SIDES = ['BUY', 'SELL'];
@@ -339,7 +340,7 @@ export default function Investments() {
           {brokers.map(b => <option key={b} value={b}>{b}</option>)}
         </select>
         {(filters.goal || filters.broker || filters.search) && (
-          <button onClick={() => setFilters({ goal: '', broker: '', search: '' })} className="text-muted hover:text-white text-xs flex items-center gap-1">
+          <button onClick={() => setFilters({ goal: '', broker: '', search: '' })} className="tap text-muted hover:text-white text-xs flex items-center gap-1">
             <X size={12} /> Clear
           </button>
         )}
@@ -357,14 +358,14 @@ export default function Investments() {
               <tr className="border-b border-border">
                 <th className="py-3 px-4 w-10">
                   <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll}
-                    className="rounded border-border bg-transparent accent-accent cursor-pointer" />
+                    className="tap rounded border-border bg-transparent accent-accent cursor-pointer" />
                 </th>
                 {(() => {
                   const SortIcon = ({ k }) => sortConfig.key === k
                     ? (sortConfig.dir === 'asc' ? <ArrowUp size={10} className="inline ml-0.5" /> : <ArrowDown size={10} className="inline ml-0.5" />)
                     : null;
-                  const sortable = "text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider cursor-pointer hover:text-white select-none whitespace-nowrap";
-                  const plain = "text-left py-3 px-4 text-muted font-display text-xs uppercase tracking-wider whitespace-nowrap";
+                  const sortable = "th th-sort py-3 px-4";
+                  const plain = "th py-3 px-4";
                   return (<>
                     <th className={sortable} onClick={() => handleSort('date')}>Date<SortIcon k="date" /></th>
                     <th className={sortable} onClick={() => handleSort('account')}>Account<SortIcon k="account" /></th>
@@ -384,7 +385,8 @@ export default function Investments() {
               {loading ? (
                 <tr><td colSpan={11} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={11} className="py-8 text-center text-muted">No investments yet</td></tr>
+                <EmptyRow colSpan={11} icon={Briefcase} title="No investments yet"
+                  hint="Record a buy or sell to start building your portfolio history." />
               ) : (
                 sorted.map(row => {
                   const isEditing = inlineEdit?.id === row.id;
@@ -394,11 +396,11 @@ export default function Investments() {
                     const setEf = patch => setInlineEdit(prev => ({ ...prev, form: { ...prev.form, ...patch } }));
                     const ic = 'input text-xs py-0.5 px-1.5 h-7 w-full';
                     return (
-                      <tr key={row.id} className="border-b border-border/40 bg-surface/60">
+                      <tr key={row.id} className="border-b border-hairline/15 bg-surface/60">
                         <td className="py-1.5 px-4">
                           <input type="checkbox" checked={selectedIds.has(row.id)}
                             onChange={() => setSelectedIds(prev => { const n = new Set(prev); n.has(row.id) ? n.delete(row.id) : n.add(row.id); return n; })}
-                            className="rounded border-border bg-transparent accent-accent cursor-pointer" />
+                            className="tap rounded border-border bg-transparent accent-accent cursor-pointer" />
                         </td>
                         <td className="py-1.5 px-2 min-w-[110px]"><input type="date" value={ef.date || ''} onChange={e => setEf({ date: e.target.value })} className={ic} /></td>
                         <td className="py-1.5 px-2 min-w-[90px]">
@@ -440,11 +442,11 @@ export default function Investments() {
                   }
 
                   return (
-                    <tr key={row.id} className={`border-b border-border/40 hover:bg-surface/50 transition-colors ${selectedIds.has(row.id) ? 'bg-accent/5' : ''}`}>
+                    <tr key={row.id} className={`border-b border-hairline/15 hover:bg-surface/50 transition-colors ${selectedIds.has(row.id) ? 'bg-accent/5' : ''}`}>
                       <td className="py-3 px-4">
                         <input type="checkbox" checked={selectedIds.has(row.id)}
                           onChange={() => setSelectedIds(prev => { const n = new Set(prev); n.has(row.id) ? n.delete(row.id) : n.add(row.id); return n; })}
-                          className="rounded border-border bg-transparent accent-accent cursor-pointer" />
+                          className="tap rounded border-border bg-transparent accent-accent cursor-pointer" />
                       </td>
                       <td className="py-3 px-4 font-mono text-xs text-soft">{fmtDate(row.date)}</td>
                       <td className="py-3 px-4 text-xs"><span className="tag">{row.account}</span></td>
@@ -461,7 +463,7 @@ export default function Investments() {
                       </td>
                       <td className="py-3 px-4">
                         {row.currency && row.currency !== 'INR'
-                          ? <span className="tag text-xs bg-blue-400/10 text-blue-400">{row.currency}</span>
+                          ? <span className="tag text-xs bg-blue-400/10 text-hue-blue">{row.currency}</span>
                           : <span className="text-muted text-xs">INR</span>}
                       </td>
                       <td className="py-3 px-4 font-mono text-soft">
@@ -470,10 +472,10 @@ export default function Investments() {
                       <td className="py-3 px-4 text-soft text-xs">{row.broker || '—'}</td>
                       <td className="py-3 px-4">
                         <div className="flex gap-2">
-                          <button onClick={() => setInlineEdit({ id: row.id, form: { ...row, date: row.date?.slice(0, 10) || '' } })} className="text-muted hover:text-accent transition-colors">
+                          <button onClick={() => setInlineEdit({ id: row.id, form: { ...row, date: row.date?.slice(0, 10) || '' } })} className="icon-btn text-muted hover:text-accent-ink transition-colors">
                             <Edit2 size={14} />
                           </button>
-                          <button onClick={() => handleDelete(row.id)} className="text-muted hover:text-rose transition-colors">
+                          <button onClick={() => handleDelete(row.id)} className="icon-btn text-muted hover:text-rose transition-colors">
                             <Trash2 size={14} />
                           </button>
                         </div>

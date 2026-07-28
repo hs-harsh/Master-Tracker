@@ -10,6 +10,7 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
 import { TT, AX, GRID, SERIES } from '../../lib/chartTheme';
+import EmptyState from '../../components/EmptyState';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
 import { parseD, todayStr, getMonday, getWeekDays, fmtWeekRange } from '../../lib/utils';
@@ -374,12 +375,12 @@ export default function WellnessWorkouts() {
       <div className="card p-4">
         <div className="flex items-center gap-2">
           <button onClick={() => shiftWeek(-1)}
-            className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+            className="icon-btn p-1.5 rounded-lg hover:bg-hairline/8 text-soft hover:text-white transition-colors">
             <ChevronLeft size={18} />
           </button>
           <p className="text-white text-sm font-semibold font-body flex-1 text-center sm:text-left">{fmtWeekRange(weekStart)}</p>
           <button onClick={() => shiftWeek(1)}
-            className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+            className="icon-btn p-1.5 rounded-lg hover:bg-hairline/8 text-soft hover:text-white transition-colors">
             <ChevronRight size={18} />
           </button>
         </div>
@@ -399,17 +400,17 @@ export default function WellnessWorkouts() {
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-1.5">
             <button onClick={() => shiftWeek(-1)} title="Previous week"
-              className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+              className="icon-btn p-1.5 rounded-lg hover:bg-hairline/8 text-soft hover:text-white transition-colors">
               <ChevronLeft size={18} />
             </button>
             <p className="text-white text-sm font-semibold font-body">{fmtWeekRange(weekStart)}</p>
             <button onClick={() => shiftWeek(1)} title="Next week"
-              className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+              className="icon-btn p-1.5 rounded-lg hover:bg-hairline/8 text-soft hover:text-white transition-colors">
               <ChevronRight size={18} />
             </button>
             {!isCurrentWeek && (
               <button onClick={() => { setWeekStart(currentWeekStart); closeDay(); }}
-                className="px-2.5 py-1 rounded-lg text-xs font-mono bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors">
+                className="px-2.5 py-1 rounded-lg text-xs font-mono bg-accent/10 text-accent-ink border border-accent/20 hover:bg-accent/20 transition-colors">
                 Today
               </button>
             )}
@@ -438,17 +439,17 @@ export default function WellnessWorkouts() {
                       // white/N tints which vanish on a white light-mode card.
                       : 'border-dashed border-border hover:bg-accent/10'
                 } ${isT && !isSel ? 'ring-1 ring-accent/30' : ''}`}>
-                <span className={`text-[9px] sm:text-[10px] font-mono uppercase tracking-wide ${isT ? 'text-accent' : 'text-muted'}`}>
+                <span className={`text-[9px] sm:text-[10px] font-mono uppercase tracking-wide ${isT ? 'text-accent-ink' : 'text-muted'}`}>
                   {DAY_LABELS[i]}
                 </span>
-                <span className={`text-lg sm:text-xl font-bold font-display leading-none ${isT ? 'text-accent' : logged ? 'text-white' : 'text-soft'}`}>
+                <span className={`text-lg sm:text-xl font-bold font-display leading-none ${isT ? 'text-accent-ink' : logged ? 'text-white' : 'text-soft'}`}>
                   {parseD(ds).getDate()}
                 </span>
                 <span className="text-[9px] text-muted font-mono leading-none">
                   {parseD(ds).toLocaleDateString('en-IN', { month: 'short' })}
                 </span>
                 {logged ? (
-                  <span className="flex items-center gap-0.5 text-[9px] font-mono text-accent leading-none mt-0.5">
+                  <span className="flex items-center gap-0.5 text-[9px] font-mono text-accent-ink leading-none mt-0.5">
                     <Check size={8} />{setCount || ''}
                   </span>
                 ) : (
@@ -471,7 +472,7 @@ export default function WellnessWorkouts() {
     return (
       <div className="space-y-3">
         {exercises.map((ex, i) => (
-          <div key={i} className="rounded-xl border border-white/8 bg-white/[0.02] p-3 space-y-2">
+          <div key={i} className="rounded-xl border border-hairline/8 bg-white/[0.02] p-3 space-y-2">
             <div className="flex items-center gap-2">
               <input
                 className="bg-transparent text-white text-sm font-semibold flex-1 min-w-0 outline-none placeholder-white/20"
@@ -488,7 +489,7 @@ export default function WellnessWorkouts() {
                 <option value="flexibility">Flexibility</option>
               </select>
               <button onClick={() => onChange(exercises.filter((_, j) => j !== i))}
-                className="text-muted hover:text-red-400 transition-colors p-1">
+                className="text-muted hover:text-neg transition-colors p-1">
                 <Trash2 size={13} />
               </button>
             </div>
@@ -500,8 +501,8 @@ export default function WellnessWorkouts() {
                     <span key={m.muscle}
                       className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-mono cursor-pointer transition-colors ${
                         m.role === 'primary'
-                          ? 'bg-accent/15 border-accent/40 text-accent'
-                          : 'border-white/15 text-soft'
+                          ? 'bg-accent/15 border-accent/40 text-accent-ink'
+                          : 'border-hairline/15 text-soft'
                       }`}
                       title={`${muscleLabel(m.muscle)} — ${m.role} (click to toggle role)`}
                       onClick={() => update(i, {
@@ -516,7 +517,7 @@ export default function WellnessWorkouts() {
                     </span>
                   ))}
                   <select
-                    className="bg-transparent border border-white/15 rounded-full text-[10px] text-muted px-2 py-0.5 outline-none cursor-pointer"
+                    className="bg-transparent border border-hairline/15 rounded-full text-[10px] text-muted px-2 py-0.5 outline-none cursor-pointer"
                     value=""
                     onChange={e => {
                       const id = e.target.value;
@@ -534,10 +535,10 @@ export default function WellnessWorkouts() {
             {ex.category === 'strength' && (
               <>
                 {/* per-set table */}
-                <div className="overflow-x-auto rounded-lg border border-white/8">
+                <div className="overflow-x-auto rounded-lg border border-hairline/8">
                   <table className="w-full text-xs min-w-[320px]">
                     <thead>
-                      <tr className="border-b border-white/5">
+                      <tr className="border-b border-hairline/5">
                         <th className="text-left px-3 py-1.5 text-muted font-mono uppercase tracking-wider text-[10px]">Set</th>
                         <th className="text-center px-2 py-1.5 text-muted font-mono uppercase tracking-wider text-[10px]">Weight (kg)</th>
                         <th className="text-center px-2 py-1.5 text-muted font-mono uppercase tracking-wider text-[10px]">Reps</th>
@@ -546,7 +547,7 @@ export default function WellnessWorkouts() {
                     </thead>
                     <tbody>
                       {ex.sets.map((s, si) => (
-                        <tr key={si} className="border-b border-white/[0.03] last:border-0">
+                        <tr key={si} className="border-b border-hairline/[0.03] last:border-0">
                           <td className="px-3 py-1 text-muted font-mono">{si + 1}</td>
                           <td className="px-2 py-1">
                             <input type="number" step="0.5"
@@ -569,7 +570,7 @@ export default function WellnessWorkouts() {
                           </td>
                           <td className="px-1">
                             <button onClick={() => update(i, { sets: ex.sets.filter((_, j) => j !== si) })}
-                              className="text-muted hover:text-red-400 transition-colors p-1">
+                              className="text-muted hover:text-neg transition-colors p-1">
                               <X size={11} />
                             </button>
                           </td>
@@ -580,7 +581,7 @@ export default function WellnessWorkouts() {
                 </div>
                 <button
                   onClick={() => update(i, { sets: [...ex.sets, { set: ex.sets.length + 1, weight_kg: null, weight_raw: null, reps: null }] })}
-                  className="text-accent hover:opacity-80 text-xs flex items-center gap-1">
+                  className="text-accent-ink hover:opacity-80 text-xs flex items-center gap-1">
                   <Plus size={11} />Add set
                 </button>
               </>
@@ -600,7 +601,7 @@ export default function WellnessWorkouts() {
         ))}
         <button
           onClick={() => onChange([...exercises, { name: '', category: 'strength', muscles: [], sets: [{ set: 1, weight_kg: null, weight_raw: null, reps: null }], duration_min: null }])}
-          className="text-accent hover:opacity-80 text-xs flex items-center gap-1.5">
+          className="text-accent-ink hover:opacity-80 text-xs flex items-center gap-1.5">
           <Plus size={12} />Add exercise
         </button>
       </div>
@@ -614,7 +615,7 @@ export default function WellnessWorkouts() {
       <div className="card border-accent/30 bg-gradient-to-br from-accent/5 to-transparent">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <Sparkles size={16} className="text-accent shrink-0" />
+            <Sparkles size={16} className="text-accent-ink shrink-0" />
             <span className="font-display font-semibold text-white text-sm truncate">
               {relog ? 'Re-log' : 'Log'} {dayIdx >= 0 ? `${DAY_LABELS[dayIdx]} · ` : ''}{fmtShort(dateStr)}
             </span>
@@ -628,7 +629,7 @@ export default function WellnessWorkouts() {
 
         <div className="mt-4 space-y-3">
             {relog && (
-              <p className="text-[11px] text-amber-300/80">
+              <p className="text-[11px] text-hue-amber/80">
                 Saving will replace the workout already logged for this day.
               </p>
             )}
@@ -642,7 +643,7 @@ export default function WellnessWorkouts() {
               />
             </div>
 
-            {aiLogError && <p className="text-xs text-red-400">{aiLogError}</p>}
+            {aiLogError && <p className="text-xs text-neg">{aiLogError}</p>}
 
             {!aiLogPreview && (
               <button onClick={parseAiLog} disabled={aiLogParsing || !aiLogPrompt.trim()}
@@ -652,7 +653,7 @@ export default function WellnessWorkouts() {
             )}
 
             {aiLogPreview && (
-              <div className="space-y-3 border-t border-white/8 pt-3">
+              <div className="space-y-3 border-t border-hairline/8 pt-3">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1 block">Title</label>
@@ -713,13 +714,13 @@ export default function WellnessWorkouts() {
 
     return (
       <div key={entry.id} className={`card overflow-hidden ${isT ? 'ring-1 ring-accent/30' : ''}`}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-accent/5">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-hairline/5 bg-accent/5">
           <div className="flex items-center gap-3 min-w-0">
             <div className="text-center min-w-[42px]">
-              <p className={`text-[10px] font-mono uppercase ${isT ? 'text-accent' : 'text-muted'}`}>
+              <p className={`text-[10px] font-mono uppercase ${isT ? 'text-accent-ink' : 'text-muted'}`}>
                 {dayIdx >= 0 ? DAY_LABELS[dayIdx] : ''}
               </p>
-              <p className={`text-2xl font-bold font-display leading-none ${isT ? 'text-accent' : 'text-white'}`}>
+              <p className={`text-2xl font-bold font-display leading-none ${isT ? 'text-accent-ink' : 'text-white'}`}>
                 {parseD(ds).getDate()}
               </p>
             </div>
@@ -739,7 +740,7 @@ export default function WellnessWorkouts() {
               </button>
             )}
             <button onClick={() => deleteEntry(entry)} title="Delete"
-              className="p-2 rounded-lg text-muted hover:text-red-400 hover:bg-white/5 transition-colors">
+              className="p-2 rounded-lg text-muted hover:text-neg hover:bg-white/5 transition-colors">
               <Trash2 size={14} />
             </button>
           </div>
@@ -768,7 +769,7 @@ export default function WellnessWorkouts() {
               exercises: editDraft.exercises,
               onChange: (exs) => setEditDraft(prev => ({ ...prev, exercises: exs })),
             })}
-            {editError && <p className="text-xs text-red-400">{editError}</p>}
+            {editError && <p className="text-xs text-neg">{editError}</p>}
             <div className="flex gap-2">
               <button onClick={() => { setEditEntryId(null); setEditDraft(null); }} className="btn-ghost text-xs px-3 py-1.5 flex-1">
                 Cancel
@@ -784,7 +785,7 @@ export default function WellnessWorkouts() {
             <div className="overflow-x-auto">
               <table className="w-full text-xs min-w-[420px]">
                 <thead>
-                  <tr className="border-b border-white/5">
+                  <tr className="border-b border-hairline/5">
                     <th className="text-left px-4 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Exercise</th>
                     <th className="text-center px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Weight</th>
                     <th className="text-center px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Sets</th>
@@ -799,7 +800,7 @@ export default function WellnessWorkouts() {
                     const cat = structured ? ex.category : null;
                     const muscles = structured && Array.isArray(ex.muscles) ? ex.muscles : [];
                     return (
-                      <tr key={j} className="border-b border-white/[0.03] last:border-0 hover:bg-white/[0.02]">
+                      <tr key={j} className="border-b border-hairline/[0.03] last:border-0 hover:bg-white/[0.02]">
                         <td className="px-4 py-2 text-soft">
                           {name}
                           {cat === 'cardio' && ex.duration_min ? <span className="text-muted font-mono"> · {ex.duration_min} min</span> : null}
@@ -807,7 +808,7 @@ export default function WellnessWorkouts() {
                         </td>
                         <td className="px-3 py-2 text-center text-soft font-mono whitespace-nowrap">{s.weight ?? '—'}</td>
                         <td className="px-3 py-2 text-center">
-                          <span className="inline-block min-w-[28px] text-center font-mono font-semibold text-accent bg-accent/10 rounded px-1.5 py-0.5">
+                          <span className="inline-block min-w-[28px] text-center font-mono font-semibold text-accent-ink bg-accent/10 rounded px-1.5 py-0.5">
                             {s.sets ?? '—'}
                           </span>
                         </td>
@@ -817,7 +818,7 @@ export default function WellnessWorkouts() {
                             {muscles.map(m => (
                               <span key={m.muscle}
                                 className={`px-1.5 py-0.5 rounded-full text-[9px] font-mono border ${
-                                  m.role === 'primary' ? 'bg-accent/10 border-accent/30 text-accent' : 'border-white/10 text-muted'
+                                  m.role === 'primary' ? 'bg-accent/10 border-accent/30 text-accent-ink' : 'border-hairline/10 text-muted'
                                 }`}>
                                 {muscleLabel(m.muscle)}
                               </span>
@@ -870,8 +871,9 @@ export default function WellnessWorkouts() {
         {!logDate && (
           sorted.length === 0
             ? (
-              <div className="card p-8 text-center text-muted text-sm">
-                Nothing logged this week — tap a day above to log a workout.
+              <div className="card">
+                <EmptyState icon={Dumbbell} title="No workouts logged this week"
+                  hint="Tap a day above to log a session." />
               </div>
             )
             : sorted.map(entry => DayCard(entry))
@@ -887,23 +889,23 @@ export default function WellnessWorkouts() {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-xs text-muted uppercase tracking-widest font-mono">Next session recommendation</p>
           <button onClick={generateRec} disabled={recLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
-              bg-purple-500/20 text-purple-300 border border-purple-500/30
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold min-h-[44px]
+              bg-purple-500/20 text-hue-purple border border-purple-500/30
               hover:bg-purple-500/30 transition-colors disabled:opacity-50">
             <Sparkles size={12} />{recLoading ? 'Thinking…' : (rec ? 'Regenerate' : 'Generate')}
           </button>
         </div>
-        {recError && <p className="text-xs text-red-400">{recError}</p>}
+        {recError && <p className="text-xs text-neg">{recError}</p>}
         {rec && (
           <div className="space-y-3">
             <div>
               <p className="text-white text-sm font-semibold font-body">{rec.focus}</p>
               <p className="text-xs text-soft leading-relaxed mt-1">{rec.rationale}</p>
             </div>
-            <div className="overflow-x-auto rounded-lg border border-white/8">
+            <div className="overflow-x-auto rounded-lg border border-hairline/8">
               <table className="w-full text-xs min-w-[420px]">
                 <thead>
-                  <tr className="border-b border-white/5">
+                  <tr className="border-b border-hairline/5">
                     <th className="text-left px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Exercise</th>
                     <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Sets</th>
                     <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Reps</th>
@@ -913,7 +915,7 @@ export default function WellnessWorkouts() {
                 </thead>
                 <tbody>
                   {rec.exercises.map((e, i) => (
-                    <tr key={i} className="border-b border-white/[0.03] last:border-0">
+                    <tr key={i} className="border-b border-hairline/[0.03] last:border-0">
                       <td className="px-3 py-2 text-soft">{e.name}</td>
                       <td className="px-2 py-2 text-center text-soft font-mono">{e.sets ?? '—'}</td>
                       <td className="px-2 py-2 text-center text-soft font-mono">{e.reps ?? '—'}</td>
@@ -921,7 +923,7 @@ export default function WellnessWorkouts() {
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-1">
                           {e.muscles.map(m => (
-                            <span key={m} className="px-1.5 py-0.5 rounded-full text-[9px] font-mono border border-white/10 text-muted">
+                            <span key={m} className="px-1.5 py-0.5 rounded-full text-[9px] font-mono border border-hairline/10 text-muted">
                               {muscleLabel(m)}
                             </span>
                           ))}
@@ -1043,7 +1045,7 @@ export default function WellnessWorkouts() {
           <div className="flex flex-wrap gap-2">
             {prs.map(e => (
               <span key={e.name}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/10 border border-accent/25 text-accent text-[11px] font-mono">
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/10 border border-accent/25 text-accent-ink text-[11px] font-mono">
                 <Award size={11} />{e.name} PR: {e.pr.weight_kg} kg · {fmtShort(e.pr.date)}
               </span>
             ))}
@@ -1111,9 +1113,10 @@ export default function WellnessWorkouts() {
     if (!weekData?.length) return (
       <div className="space-y-4 fade-up-1">
         <div className="card p-8 text-center">
-          <p className="text-muted text-sm">No workouts logged in this period yet.</p>
+          <EmptyState icon={Dumbbell} title="No workouts logged in this period"
+            hint="Log a session to see strength and load trends here." />
           <button onClick={() => setView('log')}
-            className="mt-4 text-xs text-accent underline hover:opacity-80 transition-opacity">
+            className="mt-4 text-xs text-accent-ink underline hover:opacity-80 transition-opacity">
             Go to Log →
           </button>
         </div>
@@ -1134,17 +1137,17 @@ export default function WellnessWorkouts() {
     return (
       <div className="space-y-4 fade-up-1">
         {alerts.map((msg, i) => (
-          <div key={i} className="flex items-start gap-3 px-4 py-3 rounded-xl border bg-amber-400/5 border-amber-400/20 text-amber-300 text-sm">
+          <div key={i} className="flex items-start gap-3 px-4 py-3 rounded-xl border bg-amber-400/5 border-amber-400/20 text-hue-amber text-sm">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />{msg}
           </div>
         ))}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'Total Sessions', value: totalSessions, icon: Dumbbell,    color: 'text-accent'      },
-            { label: 'Total Sets',     value: totalSets,     icon: Target,      color: 'text-blue-400'    },
-            { label: 'Avg Sets/Week',  value: avgSets,       icon: TrendingUp,  color: 'text-teal-400'    },
-            { label: 'Weeks Active',   value: weeksActive,   icon: Flame,       color: 'text-orange-400'  },
+            { label: 'Total Sessions', value: totalSessions, icon: Dumbbell,    color: 'text-accent-ink'      },
+            { label: 'Total Sets',     value: totalSets,     icon: Target,      color: 'text-hue-blue'    },
+            { label: 'Avg Sets/Week',  value: avgSets,       icon: TrendingUp,  color: 'text-hue-teal'    },
+            { label: 'Weeks Active',   value: weeksActive,   icon: Flame,       color: 'text-hue-orange'  },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="card px-4 py-3">
               <div className="flex items-center gap-1.5 mb-1">
