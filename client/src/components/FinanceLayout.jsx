@@ -24,7 +24,7 @@ export default function FinanceLayout() {
     <div className="p-4 sm:p-6 space-y-5">
       {/* Sub-tab bar */}
       <div
-        className="flex gap-1 p-1 rounded-xl flex-wrap"
+        className="flex gap-1 p-1 rounded-xl overflow-x-auto sm:flex-wrap scrollbar-none"
         style={{
           background: 'rgba(255,255,255,0.04)',
           border: '1px solid rgba(255,255,255,0.08)',
@@ -35,14 +35,15 @@ export default function FinanceLayout() {
             key={to}
             to={to}
             end={to === '/dashboard'}
+            title={label}
             className={({ isActive }) =>
-              `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-body transition-all ${
+              `flex items-center gap-2 px-2.5 sm:px-4 py-2 rounded-lg text-sm font-body transition-all shrink-0 ${
                 isActive ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'
               }`
             }
           >
             <Icon size={16} />
-            {label}
+            <span className="hidden sm:inline">{label}</span>
           </NavLink>
         ))}
       </div>
