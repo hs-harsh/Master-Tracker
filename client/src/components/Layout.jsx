@@ -608,7 +608,7 @@ export default function Layout() {
           )}
         </header>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-ink flex flex-col pb-[96px] md:pb-0">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-ink flex flex-col pb-[72px] md:pb-0">
           <PageContainer>
             <Outlet />
           </PageContainer>
@@ -626,11 +626,11 @@ export default function Layout() {
           borderRadius: '20px',
           /* surface-rgb adapts to theme: near-white in light, near-black in dark.
              At 15% opacity the blur does all the visual work in both themes. */
-          background: 'rgb(var(--surface-rgb) / 0.15)',
-          backdropFilter: 'blur(40px) saturate(200%)',
-          WebkitBackdropFilter: 'blur(40px) saturate(200%)',
-          border: '1px solid rgba(255,255,255,0.18)',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.15)',
+          background: 'rgb(var(--surface-rgb) / 0.08)',
+          backdropFilter: 'blur(48px) saturate(220%)',
+          WebkitBackdropFilter: 'blur(48px) saturate(220%)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.10)',
         }}
       >
         {[
@@ -641,16 +641,16 @@ export default function Layout() {
             key={key}
             type="button"
             onClick={() => { if (!isActive) navigate(to); }}
-            className="flex-1 flex flex-col items-center gap-0.5 py-3 min-h-[58px] transition-all"
+            className="flex-1 flex flex-col items-center gap-0.5 py-2 min-h-[44px] transition-all"
           >
             <div
-              className="flex items-center justify-center w-16 h-7 rounded-full transition-all"
+              className="flex items-center justify-center w-12 h-5 rounded-full transition-all"
               style={isActive ? { background: 'rgb(var(--accent-rgb) / 0.18)' } : {}}
             >
-              <Icon size={22} style={{ color: isActive ? 'var(--accent)' : 'rgb(var(--fg-soft-rgb))' }} />
+              <Icon size={17} style={{ color: isActive ? 'var(--accent)' : 'rgb(var(--fg-soft-rgb))' }} />
             </div>
             <span
-              className="text-[11px] font-semibold"
+              className="text-[10px] font-semibold"
               style={{ color: isActive ? 'var(--accent)' : 'rgb(var(--fg-soft-rgb))' }}
             >
               {label}
