@@ -8,7 +8,6 @@ import {
   Landmark,
 } from 'lucide-react';
 import SubTabBar from './SubTabBar';
-import MobileSectionSwitcher from './MobileSectionSwitcher';
 
 const FINANCE_TABS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -22,7 +21,6 @@ const FINANCE_TABS = [
 export default function FinanceLayout() {
   return (
     <div className="stack">
-      <MobileSectionSwitcher />
       <SubTabBar tabs={FINANCE_TABS} />
       <Outlet />
     </div>

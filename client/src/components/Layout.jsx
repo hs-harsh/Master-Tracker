@@ -5,7 +5,7 @@ import {
   LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase,
   Calculator, LineChart, LogOut, Settings, BarChart3,
   Menu, X, LogIn, Lock, Shield, Heart, ChevronDown, ChevronRight,
-  CheckSquare, Utensils, Dumbbell, Wallet, BarChart2, Landmark, Archive,
+  CheckSquare, Utensils, Dumbbell, Wallet, BarChart2, Landmark, Archive, Check,
 } from 'lucide-react';
 import InstallPrompt from './InstallPrompt';
 import PageContainer from './PageContainer';
@@ -55,6 +55,7 @@ export default function Layout() {
   const navigate   = useNavigate();
   const location  = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showProfilePicker, setShowProfilePicker] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(true);
   const [wellnessOpen, setWellnessOpen] = useState(false);
   const [tradingOpen, setTradingOpen] = useState(false);
@@ -563,17 +564,16 @@ export default function Layout() {
               InvestTrack
             </span>
           </div>
-          {isAuth && persons.length > 1 && (
-            <div className="flex gap-1 p-0.5 rounded-full"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              {persons.map(p => (
-                <button key={p} onClick={() => setActivePerson(p)}
-                  className={`px-3 py-1 rounded-full text-[11px] font-display font-bold transition-all min-h-[44px]
-                    ${activePerson === p ? 'bg-accent text-accent-fg shadow-glow-accent' : 'text-muted bg-hairline/[0.06] hover:bg-hairline/15 hover:text-text'}`}>
-                  {p}
-                </button>
-              ))}
-            </div>
+          {isAuth && activePerson && (
+            <button
+              type="button"
+              onClick={() => persons.length > 1 && setShowProfilePicker(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-display font-bold min-h-[44px] transition-all"
+              style={{ background: 'rgb(var(--accent-rgb) / 0.12)', color: 'var(--accent)' }}
+            >
+              <span>{activePerson}</span>
+              {persons.length > 1 && <ChevronDown size={14} />}
+            </button>
           )}
           {!isAuth && (
             <button
@@ -585,12 +585,85 @@ export default function Layout() {
           )}
         </header>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-ink flex flex-col">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-ink flex flex-col pb-[76px] md:pb-0">
           <PageContainer>
             <Outlet />
           </PageContainer>
         </main>
       </div>
+
+      {/* ── Profile Picker Sheet (mobile) ───────────────────────────────── */}
+      {showProfilePicker && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="md:hidden fixed inset-0 z-50 flex flex-col justify-end"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setShowProfilePicker(false)}
+        >
+          <div
+            className="rounded-t-2xl px-4 pt-3 pb-8 space-y-2 safe-area-bottom"
+            style={{ background: 'rgb(var(--surface-rgb))' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 rounded-full mx-auto mb-4" style={{ background: 'rgb(var(--hairline-rgb) / 0.25)' }} />
+            <p className="text-[11px] text-muted uppercase tracking-widest font-mono mb-3 px-1">Switch Profile</p>
+            {persons.map(p => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => { setActivePerson(p); setShowProfilePicker(false); }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all"
+                style={activePerson === p
+                  ? { background: 'var(--accent)', color: 'var(--accent-fg)' }
+                  : { background: 'rgb(var(--hairline-rgb) / 0.07)', color: 'rgb(var(--fg-body-rgb))' }
+                }
+              >
+                <span className="flex-1 text-left">{p}</span>
+                {activePerson === p && <Check size={16} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Bottom Section Tab Bar (mobile) ────────────────────────────── */}
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex safe-area-bottom"
+        style={{
+          background: 'rgb(var(--surface-rgb) / 0.94)',
+          backdropFilter: 'blur(20px)',
+          borderTop: '1px solid rgb(var(--hairline-rgb) / 0.12)',
+        }}
+      >
+        {[
+          { key: 'finance',  label: 'Finance',  icon: Wallet, to: '/dashboard',       isActive: !location.pathname.startsWith('/wellness') },
+          { key: 'wellness', label: 'Wellness', icon: Heart,  to: '/wellness/habits', isActive: location.pathname.startsWith('/wellness') },
+        ].map(({ key, label, icon: Icon, to, isActive }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => { if (!isActive) navigate(to); }}
+            className="flex-1 flex flex-col items-center gap-0.5 pt-2.5 pb-1 min-h-[56px] transition-all"
+          >
+            <div
+              className="flex items-center justify-center w-16 h-7 rounded-full transition-all"
+              style={isActive ? { background: 'rgb(var(--accent-rgb) / 0.15)' } : {}}
+            >
+              <Icon
+                size={22}
+                style={{ color: isActive ? 'var(--accent)' : 'rgb(var(--fg-soft-rgb))' }}
+              />
+            </div>
+            <span
+              className="text-[11px] font-medium"
+              style={{ color: isActive ? 'var(--accent)' : 'rgb(var(--fg-soft-rgb))' }}
+            >
+              {label}
+            </span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
