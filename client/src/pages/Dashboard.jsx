@@ -318,16 +318,11 @@ function PersonPanel({ person, cashflowData, investments, otherAssets }) {
   const prev    = cashflowData[cashflowData.length - 2];
 
   // Core numbers
-  const netAsset     = Number(latest?.net_asset || 0);
-  const corpus       = Number(latest?.corpus    || 0);
+  const corpus       = Number(latest?.corpus || 0);
   const totalInvested = (investments || []).reduce(
     (s, inv) => s + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)), 0
   );
-  const corpusGap = corpus - totalInvested; // positive = undeployed, negative = investments > corpus (returns!)
-
-  const netAssetTrend = latest && prev
-    ? ((netAsset - Number(prev.net_asset || 0)) / Math.abs(Number(prev.net_asset) || 1)) * 100
-    : 0;
+  const corpusGap = corpus - totalInvested;
 
   const latestIncome  = Number(latest?.income || 0) + Number(latest?.other_income || 0);
   const savingsRate   = latestIncome > 0
@@ -366,6 +361,7 @@ function PersonPanel({ person, cashflowData, investments, otherAssets }) {
   const illiquidValue  = oa.reduce((s, a) => s + Number(a.current_value   || 0), 0);
   const illiquidLoans  = oa.reduce((s, a) => s + Number(a.loan_outstanding || 0), 0);
   const illiquidEquity = illiquidValue - illiquidLoans;
+  const netAsset       = totalInvested + illiquidValue - illiquidLoans;
   const illiquidBreakdown = Object.values(
     oa.reduce((acc, a) => {
       const t = a.asset_type || 'Other';
@@ -396,9 +392,9 @@ function PersonPanel({ person, cashflowData, investments, otherAssets }) {
         <div className="col-span-2 sm:col-span-1">
           <HeroCard
             label="Net Asset"
-            value={latest ? fmt(netAsset) : '—'}
-            sub={`${netAssetTrend >= 0 ? '+' : ''}${netAssetTrend.toFixed(1)}% MoM`}
-            trend={netAssetTrend}
+            value={fmt(netAsset)}
+            sub={`${fmt(totalInvested)} liquid + ${fmt(illiquidEquity)} illiquid`}
+            trend={netAsset > 0 ? 1 : 0}
           />
         </div>
         <StatCard
@@ -591,15 +587,16 @@ function PersonPanel({ person, cashflowData, investments, otherAssets }) {
 }
 
 /* ── Compact view (multi-person sidebar) ──────────────────────────────────── */
-function PersonPanelCompact({ person, cashflowData, investments }) {
+function PersonPanelCompact({ person, cashflowData, investments, otherAssets }) {
   const color  = colorFor(person);
   const latest = cashflowData[cashflowData.length - 1];
-  const prev   = cashflowData[cashflowData.length - 2];
-  const netAssetTrend = latest && prev
-    ? ((Number(latest.net_asset) - Number(prev.net_asset)) / Math.abs(Number(prev.net_asset) || 1)) * 100 : 0;
   const totalInvested = (investments || []).reduce(
     (s, inv) => s + (inv.side === 'SELL' ? -Number(inv.amount) : Number(inv.amount)), 0
   );
+  const oa = otherAssets || [];
+  const netAsset = totalInvested
+    + oa.reduce((s, a) => s + Number(a.current_value   || 0), 0)
+    - oa.reduce((s, a) => s + Number(a.loan_outstanding || 0), 0);
   const cfData = cashflowData.slice(-12).map(r => ({
     month:   fmtDate(r.month),
     Income:  Number(r.income || 0) + Number(r.other_income || 0),
@@ -613,8 +610,7 @@ function PersonPanelCompact({ person, cashflowData, investments }) {
         <h2 className="font-display font-bold text-white text-sm tracking-wide">{person}</h2>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <StatCard label="Net Asset" value={latest ? fmt(latest.net_asset) : '—'}
-          sub={`${netAssetTrend >= 0 ? '+' : ''}${netAssetTrend.toFixed(1)}% MoM`} trend={netAssetTrend} />
+        <StatCard label="Net Asset" value={fmt(netAsset)} trend={netAsset > 0 ? 1 : 0} />
         <StatCard label="Invested"  value={fmt(totalInvested)} />
         <StatCard label="Income"    value={latest ? fmt(latest.income) : '—'} />
         <StatCard label="Saving"    value={latest ? fmt(latest.actual_saving) : '—'} />
