@@ -353,17 +353,6 @@ function PersonPanel({ person, cashflowData, investments, otherAssets, fxRates }
 
   return (
     <div className="space-y-5">
-      {/* Person header */}
-      <div className="flex items-center gap-3 fade-up">
-        <div className="w-1 h-10 rounded-full" style={{ backgroundColor: color }} />
-        <div>
-          <h2 className="font-display text-2xl font-bold text-white tracking-tight">{person}</h2>
-          <p className="text-muted text-xs mt-0.5 uppercase tracking-widest font-mono">
-            {latest ? fmtDate(latest.month) : 'No cashflow data'}
-          </p>
-        </div>
-      </div>
-
       {/* Alerts */}
       <AlertBar alerts={alerts} />
 
