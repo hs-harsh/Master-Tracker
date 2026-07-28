@@ -587,15 +587,14 @@ export default function Layout() {
                 ))}
               </div>
             ) : (
-              /* Collapsed — active name chip, tap to expand */
+              /* Collapsed — pure pill, no chevron */
               <button
                 type="button"
                 onClick={() => persons.length > 1 && setShowProfilePicker(true)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-display font-bold min-h-[44px] transition-all"
-                style={{ background: 'rgb(var(--accent-rgb) / 0.12)', color: 'var(--accent)' }}
+                className="px-4 py-2 rounded-full text-sm font-display font-bold min-h-[44px] transition-all"
+                style={{ background: 'rgb(var(--accent-rgb) / 0.15)', color: 'var(--accent)' }}
               >
-                <span>{activePerson}</span>
-                {persons.length > 1 && <ChevronDown size={14} />}
+                {activePerson}
               </button>
             )
           )}
@@ -617,18 +616,19 @@ export default function Layout() {
       </div>
 
       {/* ── Bottom Section Tab Bar — floating pill (mobile only) ─────── */}
+      {/* overflow-hidden must NOT be set — it kills backdrop-filter in WebKit */}
       <nav
-        className="md:hidden fixed z-30 flex overflow-hidden"
+        className="md:hidden fixed z-30 flex"
         style={{
           bottom: 'calc(14px + env(safe-area-inset-bottom, 0px))',
           left: '5%',
           right: '5%',
           borderRadius: '20px',
-          background: 'rgb(var(--surface-rgb) / 0.80)',
-          backdropFilter: 'blur(28px)',
-          WebkitBackdropFilter: 'blur(28px)',
-          border: '1px solid rgb(var(--hairline-rgb) / 0.18)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.32), 0 2px 8px rgba(0,0,0,0.18)',
+          background: 'rgba(12, 14, 20, 0.22)',
+          backdropFilter: 'blur(24px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+          border: '1px solid rgba(255,255,255,0.09)',
+          boxShadow: '0 6px 24px rgba(0,0,0,0.22), 0 1px 6px rgba(0,0,0,0.14)',
         }}
       >
         {[
