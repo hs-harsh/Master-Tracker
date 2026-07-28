@@ -611,6 +611,13 @@ export default function Layout() {
         <main className="flex-1 overflow-y-auto overflow-x-hidden bg-ink flex flex-col">
           <PageContainer>
             <Outlet />
+            {/* Clearance for the fixed bottom ribbon on mobile. Must be a flex
+                child inside PageContainer (not a sibling) so it is part of the
+                content scroll-height, not covered by PageContainer's overflow. */}
+            <div
+              className="md:hidden shrink-0"
+              style={{ height: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}
+            />
           </PageContainer>
         </main>
       </div>
