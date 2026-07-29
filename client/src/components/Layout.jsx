@@ -633,7 +633,7 @@ export default function Layout() {
           borderRadius: '20px',
           /* surface-rgb adapts to theme: near-white in light, near-black in dark.
              At 15% opacity the blur does all the visual work in both themes. */
-          background: 'rgb(var(--surface-rgb) / 0.04)',
+          background: 'rgb(var(--surface-rgb) / 0.01)',
           backdropFilter: 'blur(48px) saturate(220%)',
           WebkitBackdropFilter: 'blur(48px) saturate(220%)',
           border: '1px solid rgba(255,255,255,0.12)',
