@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown, Briefcase, ChevronDown, ChevronRight } from 'lucide-react';
@@ -118,6 +118,7 @@ export default function Investments() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' });
   const [collapsedMonths, setCollapsedMonths] = useState(new Set());
+  const initRef = useRef(false);
 
   const currentPerson = activePerson || personName;
 
@@ -136,6 +137,16 @@ export default function Investments() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPerson, filters.goal]);
+
+  useEffect(() => { initRef.current = false; setCollapsedMonths(new Set()); }, [currentPerson]);
+
+  useEffect(() => {
+    if (!data.length || initRef.current) return;
+    initRef.current = true;
+    const keys = [...new Set(data.map(r => (r.date || '').slice(0, 7)))]
+      .filter(Boolean).sort().reverse();
+    if (keys.length > 1) setCollapsedMonths(new Set(keys.slice(1)));
+  }, [data]);
 
   const handleSave = async form => {
     try {

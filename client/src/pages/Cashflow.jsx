@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   AreaChart, Area, ComposedChart, BarChart, Bar, Line, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -609,6 +609,7 @@ export default function Cashflow() {
   const setRange = (r) => { setRangeRaw(r); localStorage.setItem(FINANCE_RANGE_KEY, r); };
   const [inlineEdit, setInlineEdit] = useState({ rowKey: null, value: '' });
   const [collapsedYears, setCollapsedYears] = useState(new Set());
+  const yearInitRef = useRef(false);
   const [drillMonth, setDrillMonth] = useState(null); // YYYY-MM-01 when drilling into a month
 
   const currentPerson = activePerson || personName;
@@ -622,6 +623,16 @@ export default function Cashflow() {
   }, [currentPerson, dataVersion]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => { yearInitRef.current = false; setCollapsedYears(new Set()); }, [currentPerson]);
+
+  useEffect(() => {
+    if (!data.length || yearInitRef.current) return;
+    yearInitRef.current = true;
+    const years = [...new Set(data.map(r => (r.month || '').slice(0, 4)))]
+      .filter(Boolean).sort().reverse();
+    if (years.length > 1) setCollapsedYears(new Set(years.slice(1)));
+  }, [data]);
 
   const openAdd = () => setModal('add');
 

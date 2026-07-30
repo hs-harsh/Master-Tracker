@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate, TYPE_COLORS } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown, Receipt } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown, Receipt, ChevronDown, ChevronRight } from 'lucide-react';
 import AiEntryPanel, { AiEditPanel } from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
@@ -70,6 +70,8 @@ export default function Transactions() {
   const [filters, setFilters] = useState({ type: '', search: '' });
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' });
+  const [collapsedMonths, setCollapsedMonths] = useState(new Set());
+  const initRef = useRef(false);
 
   const handleSort = key => setSortConfig(prev => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }));
 
@@ -84,6 +86,18 @@ export default function Transactions() {
   };
 
   useEffect(() => { load(); }, [currentPerson, filters.type]);
+
+  // Reset init flag when person changes so new person's data re-initialises collapse
+  useEffect(() => { initRef.current = false; setCollapsedMonths(new Set()); }, [currentPerson]);
+
+  // On first data load: collapse all months except the most recent
+  useEffect(() => {
+    if (!data.length || initRef.current) return;
+    initRef.current = true;
+    const keys = [...new Set(data.map(r => (r.date || '').slice(0, 7)))]
+      .filter(Boolean).sort().reverse();
+    if (keys.length > 1) setCollapsedMonths(new Set(keys.slice(1)));
+  }, [data]);
 
   const handleSave = async (form) => {
     try {
@@ -294,52 +308,77 @@ export default function Transactions() {
                   hint={hasFilters
                     ? 'Widen the date range or clear a filter to see more.'
                     : 'Add a transaction to start tracking income and spending.'} />
-              ) : (
-                sorted.map(row => (
-                  <tr key={row.id} className={`border-b border-hairline/15 hover:bg-surface/50 transition-colors ${selectedIds.has(row.id) ? 'bg-accent/5' : ''}`}>
-                    <td className="py-3 px-4">
-                      <input type="checkbox" checked={selectedIds.has(row.id)}
-                        onChange={() => setSelectedIds(prev => { const n = new Set(prev); n.has(row.id) ? n.delete(row.id) : n.add(row.id); return n; })}
-                        className="tap rounded border-border bg-transparent accent-accent cursor-pointer" />
-                    </td>
-                    <td className="py-3 px-4 font-mono text-xs text-soft">{fmtDate(row.date)}</td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`tag ${
-                          row.type === 'Income'
-                            ? 'tag-income'
-                            : row.type === 'Other Income'
-                            ? 'tag-other-income'
-                            : row.type === 'Major'
-                            ? 'tag-major'
-                            : row.type === 'Non-Recurring'
-                            ? 'tag-non-recurring'
-                            : row.type === 'Regular'
-                            ? 'tag-regular'
-                            : row.type === 'EMI'
-                            ? 'tag-emi'
-                            : row.type === 'Trips'
-                            ? 'tag-trips'
-                            : 'tag-income'
-                        }`}
+              ) : (() => {
+                const groups = [];
+                const groupMap = {};
+                sorted.forEach(row => {
+                  const key = (row.date || '').slice(0, 7);
+                  if (!groupMap[key]) { groupMap[key] = []; groups.push(key); }
+                  groupMap[key].push(row);
+                });
+                const toggleMonth = key => setCollapsedMonths(prev => {
+                  const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next;
+                });
+                return groups.map(monthKey => {
+                  const rows = groupMap[monthKey];
+                  const collapsed = collapsedMonths.has(monthKey);
+                  const label = monthKey
+                    ? new Date(monthKey + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+                    : 'Unknown';
+                  return (
+                    <React.Fragment key={monthKey}>
+                      <tr
+                        className="border-b border-hairline/20 cursor-pointer select-none"
+                        style={{ background: 'rgb(var(--surface-rgb) / 0.6)' }}
+                        onClick={() => toggleMonth(monthKey)}
                       >
-                        {row.type}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`tag tag-${row.account.toLowerCase()}`}>{row.account}</span>
-                    </td>
-                    <td className="py-3 px-4 font-mono text-rose">{fmt(row.amount)}</td>
-                    <td className="py-3 px-4 text-soft max-w-xs truncate">{row.remark || '—'}</td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-2">
-                        <button onClick={() => { setEditing(row); setShowForm(false); }} className="icon-btn text-muted hover:text-accent-ink transition-colors"><Edit2 size={14} /></button>
-                        <button onClick={() => handleDelete(row.id)} className="icon-btn text-muted hover:text-rose transition-colors"><Trash2 size={14} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
+                        <td colSpan={7} className="py-2 px-4">
+                          <div className="flex items-center gap-2">
+                            {collapsed
+                              ? <ChevronRight size={13} className="text-muted shrink-0" />
+                              : <ChevronDown size={13} className="text-muted shrink-0" />}
+                            <span className="text-xs font-semibold text-soft uppercase tracking-wider">{label}</span>
+                            <span className="text-[10px] text-muted ml-1">{rows.length} entr{rows.length === 1 ? 'y' : 'ies'}</span>
+                          </div>
+                        </td>
+                      </tr>
+                      {!collapsed && rows.map(row => (
+                        <tr key={row.id} className={`border-b border-hairline/15 hover:bg-surface/50 transition-colors ${selectedIds.has(row.id) ? 'bg-accent/5' : ''}`}>
+                          <td className="py-3 px-4">
+                            <input type="checkbox" checked={selectedIds.has(row.id)}
+                              onChange={() => setSelectedIds(prev => { const n = new Set(prev); n.has(row.id) ? n.delete(row.id) : n.add(row.id); return n; })}
+                              className="tap rounded border-border bg-transparent accent-accent cursor-pointer" />
+                          </td>
+                          <td className="py-3 px-4 font-mono text-xs text-soft">{fmtDate(row.date)}</td>
+                          <td className="py-3 px-4">
+                            <span className={`tag ${
+                              row.type === 'Income' ? 'tag-income'
+                              : row.type === 'Other Income' ? 'tag-other-income'
+                              : row.type === 'Major' ? 'tag-major'
+                              : row.type === 'Non-Recurring' ? 'tag-non-recurring'
+                              : row.type === 'Regular' ? 'tag-regular'
+                              : row.type === 'EMI' ? 'tag-emi'
+                              : row.type === 'Trips' ? 'tag-trips'
+                              : 'tag-income'
+                            }`}>{row.type}</span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`tag tag-${row.account.toLowerCase()}`}>{row.account}</span>
+                          </td>
+                          <td className="py-3 px-4 font-mono text-rose">{fmt(row.amount)}</td>
+                          <td className="py-3 px-4 text-soft max-w-xs truncate">{row.remark || '—'}</td>
+                          <td className="py-3 px-4">
+                            <div className="flex gap-2">
+                              <button onClick={() => { setEditing(row); setShowForm(false); }} className="icon-btn text-muted hover:text-accent-ink transition-colors"><Edit2 size={14} /></button>
+                              <button onClick={() => handleDelete(row.id)} className="icon-btn text-muted hover:text-rose transition-colors"><Trash2 size={14} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  );
+                });
+              })()}
             </tbody>
           </table>
         </div>
