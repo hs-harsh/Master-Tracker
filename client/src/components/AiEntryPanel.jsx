@@ -432,7 +432,7 @@ export function AiEditPanel({ type, persons, onEdit }) {
 }
 
 // ── Main AiEntryPanel ─────────────────────────────────────────────────────────
-export default function AiEntryPanel({ type, persons, onAdd }) {
+export default function AiEntryPanel({ type, persons, activePerson, onAdd }) {
   const [open, setOpen]         = useState(false);
   const [mode, setMode]         = useState('text');  // 'text' | 'image' (image only for investments)
   const [prompt, setPrompt]     = useState('');
@@ -474,7 +474,7 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
       const today = new Date().toISOString().slice(0, 10);
       setStage('sending');
       thinkTimer = setTimeout(() => setStage('thinking'), 1200);
-      const r = await api.post('/ai/parse', { prompt, type, persons, today });
+      const r = await api.post('/ai/parse', { prompt, type, persons, activePerson, today });
       clearTimeout(thinkTimer);
       setStage('reading');
       setEntries(r.data.entries);
@@ -516,6 +516,7 @@ export default function AiEntryPanel({ type, persons, onAdd }) {
         images: images.map(img => ({ imageBase64: img.dataUrl.split(',')[1], mediaType: img.mediaType })),
         note:   imageNote.trim(),
         persons,
+        activePerson,
         today,
       };
       setStage('sending');

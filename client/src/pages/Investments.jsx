@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
-import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown, Briefcase } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Save, Download, ArrowUp, ArrowDown, Briefcase, ChevronDown, ChevronRight } from 'lucide-react';
 import AiEntryPanel, { AiEditPanel } from '../components/AiEntryPanel';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
@@ -117,6 +117,7 @@ export default function Investments() {
   });
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' });
+  const [collapsedMonths, setCollapsedMonths] = useState(new Set());
 
   const currentPerson = activePerson || personName;
 
@@ -307,7 +308,7 @@ export default function Investments() {
         </>}
       />
 
-      <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} onAdd={handleAiAdd} />
+      <AiEntryPanel type="investments" persons={persons.length ? persons : [personName]} activePerson={currentPerson} onAdd={handleAiAdd} />
       <AiEditPanel type="investments" persons={persons.length ? persons : [personName]} onEdit={handleAiEdit} />
 
       {showForm && (
@@ -387,8 +388,44 @@ export default function Investments() {
               ) : filtered.length === 0 ? (
                 <EmptyRow colSpan={11} icon={Briefcase} title="No investments yet"
                   hint="Record a buy or sell to start building your portfolio history." />
-              ) : (
-                sorted.map(row => {
+              ) : (() => {
+                // Group by YYYY-MM
+                const groups = [];
+                const groupMap = {};
+                sorted.forEach(row => {
+                  const key = (row.date || '').slice(0, 7);
+                  if (!groupMap[key]) { groupMap[key] = []; groups.push(key); }
+                  groupMap[key].push(row);
+                });
+                const toggleMonth = key => setCollapsedMonths(prev => {
+                  const next = new Set(prev);
+                  next.has(key) ? next.delete(key) : next.add(key);
+                  return next;
+                });
+                return groups.map(monthKey => {
+                  const rows = groupMap[monthKey];
+                  const collapsed = collapsedMonths.has(monthKey);
+                  const label = monthKey
+                    ? new Date(monthKey + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+                    : 'Unknown';
+                  return (
+                    <React.Fragment key={monthKey}>
+                      <tr
+                        className="border-b border-hairline/20 cursor-pointer select-none"
+                        style={{ background: 'rgb(var(--surface-rgb) / 0.6)' }}
+                        onClick={() => toggleMonth(monthKey)}
+                      >
+                        <td colSpan={11} className="py-2 px-4">
+                          <div className="flex items-center gap-2">
+                            {collapsed
+                              ? <ChevronRight size={13} className="text-muted shrink-0" />
+                              : <ChevronDown size={13} className="text-muted shrink-0" />}
+                            <span className="text-xs font-semibold text-soft uppercase tracking-wider">{label}</span>
+                            <span className="text-[10px] text-muted ml-1">{rows.length} entr{rows.length === 1 ? 'y' : 'ies'}</span>
+                          </div>
+                        </td>
+                      </tr>
+                      {!collapsed && rows.map(row => {
                   const isEditing = inlineEdit?.id === row.id;
                   const ef = inlineEdit?.form || {};
 
@@ -482,8 +519,11 @@ export default function Investments() {
                       </td>
                     </tr>
                   );
-                })
-              )}
+                })}
+              </React.Fragment>
+            );
+          });
+        })()}
             </tbody>
           </table>
         </div>

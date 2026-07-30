@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   AreaChart, Area, ComposedChart, BarChart, Bar, Line, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { Plus, Pencil, Trash2, X, Save, Target, Check, ArrowLeft, Receipt, TrendingUp } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Target, Check, ArrowLeft, Receipt, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
 import api from '../lib/api';
 import { fmt, fmtDate } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
@@ -608,6 +608,7 @@ export default function Cashflow() {
   const [range, setRangeRaw]      = useState(() => localStorage.getItem(FINANCE_RANGE_KEY) || 'ALL');
   const setRange = (r) => { setRangeRaw(r); localStorage.setItem(FINANCE_RANGE_KEY, r); };
   const [inlineEdit, setInlineEdit] = useState({ rowKey: null, value: '' });
+  const [collapsedYears, setCollapsedYears] = useState(new Set());
   const [drillMonth, setDrillMonth] = useState(null); // YYYY-MM-01 when drilling into a month
 
   const currentPerson = activePerson || personName;
@@ -743,62 +744,100 @@ export default function Cashflow() {
                 </tr>
               </thead>
               <tbody>
-                {[...data].reverse().map(row => {
-                  const rowKey = row.id || `${row.person}-${row.month}`;
-                  const isEditingRow = inlineEdit.rowKey === rowKey;
-                  const ok = Number(row.actual_saving) >= Number(row.target_saving || row.target);
-                  return (
-                    <tr key={rowKey}
-                      className="border-b border-hairline/15 hover:bg-surface/50 transition-colors group">
-                      <td className="py-3 px-3 font-mono text-xs text-soft whitespace-nowrap">{fmtDate(row.month)}</td>
-                      <td className="py-3 px-3 font-mono text-accent-ink">{fmt(row.income)}</td>
-                      <td className="py-3 px-3 font-mono text-accent-ink">{fmt(row.other_income)}</td>
-                      <td className="py-3 px-3 font-mono text-rose">{fmt(row.major_expense)}</td>
-                      <td className="py-3 px-3 font-mono text-rose">{fmt(row.non_recurring_expense)}</td>
-                      <td className="py-3 px-3 font-mono text-soft">{fmt(row.regular_expense)}</td>
-                      <td className="py-3 px-3 font-mono text-rose">{fmt(row.emi)}</td>
-                      <td className="py-3 px-3 font-mono text-rose">{fmt(row.trips_expense)}</td>
-                      <td className="py-3 px-3 font-mono text-rose">{fmt(row.net_expense)}</td>
-                      <td className="py-2 px-3">
-                        {isEditingRow ? (
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              className="input py-1 px-2 w-24 text-xs font-mono"
-                              value={inlineEdit.value}
-                              autoFocus
-                              onChange={e => setInlineEdit(s => ({ ...s, value: e.target.value }))}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') handleInlineSave(row);
-                                if (e.key === 'Escape') cancelInlineEdit();
-                              }}
-                            />
-                            <button onClick={() => handleInlineSave(row)} className="p-1 rounded hover:bg-teal/10 text-teal" title="Save">
-                              <Check size={13} />
-                            </button>
-                            <button onClick={cancelInlineEdit} className="p-1 rounded hover:bg-surface text-muted hover:text-white" title="Cancel">
-                              <X size={13} />
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="font-mono text-muted">{fmt(row.target_saving || row.target)}</span>
-                        )}
-                      </td>
-                      <td className={`py-3 px-3 font-mono ${ok ? 'text-teal' : 'text-rose'}`}>{fmt(row.actual_saving)}</td>
-                      <td className="py-3 px-3 font-mono text-white">{fmt(row.corpus)}</td>
-                      <td className="py-3 px-3">
-                        <div className="tap flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => startInlineEdit(row)} className="p-1.5 rounded hover:bg-surface text-muted hover:text-white" title="Edit target saving">
-                            <Pencil size={13} />
-                          </button>
-                          <button onClick={() => handleDelete(row)} className="p-1.5 rounded hover:bg-rose/10 text-muted hover:text-rose" title="Delete">
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {(() => {
+                  const reversed = [...data].reverse();
+                  const yearGroups = [];
+                  const yearMap = {};
+                  reversed.forEach(row => {
+                    const year = (row.month || '').slice(0, 4) || 'Unknown';
+                    if (!yearMap[year]) { yearMap[year] = []; yearGroups.push(year); }
+                    yearMap[year].push(row);
+                  });
+                  const toggleYear = yr => setCollapsedYears(prev => {
+                    const next = new Set(prev);
+                    next.has(yr) ? next.delete(yr) : next.add(yr);
+                    return next;
+                  });
+                  return yearGroups.map(year => {
+                    const rows = yearMap[year];
+                    const collapsed = collapsedYears.has(year);
+                    return (
+                      <React.Fragment key={year}>
+                        <tr
+                          className="border-b border-hairline/20 cursor-pointer select-none"
+                          style={{ background: 'rgb(var(--surface-rgb) / 0.6)' }}
+                          onClick={() => toggleYear(year)}
+                        >
+                          <td colSpan={13} className="py-2 px-3">
+                            <div className="flex items-center gap-2">
+                              {collapsed
+                                ? <ChevronRight size={13} className="text-muted shrink-0" />
+                                : <ChevronDown size={13} className="text-muted shrink-0" />}
+                              <span className="text-xs font-semibold text-soft uppercase tracking-wider">{year}</span>
+                              <span className="text-[10px] text-muted ml-1">{rows.length} month{rows.length !== 1 ? 's' : ''}</span>
+                            </div>
+                          </td>
+                        </tr>
+                        {!collapsed && rows.map(row => {
+                          const rowKey = row.id || `${row.person}-${row.month}`;
+                          const isEditingRow = inlineEdit.rowKey === rowKey;
+                          const ok = Number(row.actual_saving) >= Number(row.target_saving || row.target);
+                          return (
+                            <tr key={rowKey}
+                              className="border-b border-hairline/15 hover:bg-surface/50 transition-colors group">
+                              <td className="py-3 px-3 font-mono text-xs text-soft whitespace-nowrap">{fmtDate(row.month)}</td>
+                              <td className="py-3 px-3 font-mono text-accent-ink">{fmt(row.income)}</td>
+                              <td className="py-3 px-3 font-mono text-accent-ink">{fmt(row.other_income)}</td>
+                              <td className="py-3 px-3 font-mono text-rose">{fmt(row.major_expense)}</td>
+                              <td className="py-3 px-3 font-mono text-rose">{fmt(row.non_recurring_expense)}</td>
+                              <td className="py-3 px-3 font-mono text-soft">{fmt(row.regular_expense)}</td>
+                              <td className="py-3 px-3 font-mono text-rose">{fmt(row.emi)}</td>
+                              <td className="py-3 px-3 font-mono text-rose">{fmt(row.trips_expense)}</td>
+                              <td className="py-3 px-3 font-mono text-rose">{fmt(row.net_expense)}</td>
+                              <td className="py-2 px-3">
+                                {isEditingRow ? (
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="number"
+                                      className="input py-1 px-2 w-24 text-xs font-mono"
+                                      value={inlineEdit.value}
+                                      autoFocus
+                                      onChange={e => setInlineEdit(s => ({ ...s, value: e.target.value }))}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') handleInlineSave(row);
+                                        if (e.key === 'Escape') cancelInlineEdit();
+                                      }}
+                                    />
+                                    <button onClick={() => handleInlineSave(row)} className="p-1 rounded hover:bg-teal/10 text-teal" title="Save">
+                                      <Check size={13} />
+                                    </button>
+                                    <button onClick={cancelInlineEdit} className="p-1 rounded hover:bg-surface text-muted hover:text-white" title="Cancel">
+                                      <X size={13} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="font-mono text-muted">{fmt(row.target_saving || row.target)}</span>
+                                )}
+                              </td>
+                              <td className={`py-3 px-3 font-mono ${ok ? 'text-teal' : 'text-rose'}`}>{fmt(row.actual_saving)}</td>
+                              <td className="py-3 px-3 font-mono text-white">{fmt(row.corpus)}</td>
+                              <td className="py-3 px-3">
+                                <div className="tap flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => startInlineEdit(row)} className="p-1.5 rounded hover:bg-surface text-muted hover:text-white" title="Edit target saving">
+                                    <Pencil size={13} />
+                                  </button>
+                                  <button onClick={() => handleDelete(row)} className="p-1.5 rounded hover:bg-rose/10 text-muted hover:text-rose" title="Delete">
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           </div>

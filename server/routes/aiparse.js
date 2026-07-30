@@ -8,9 +8,10 @@ const TX_TYPES    = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regula
 const INV_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const INV_SIDES   = ['BUY', 'SELL'];
 
-// Snap an AI-returned account name to the closest real person, or fallback to persons[0].
-// Prevents "Account does not belong to your profile" 403s.
-function resolveAccount(account, persons) {
+// Snap an AI-returned account name to the closest real person.
+// activePerson is used as the fallback so entries always land on the currently
+// selected profile, not just whichever person happens to be first in the list.
+function resolveAccount(account, persons, activePerson) {
   if (!persons?.length) return account;
   const val = (account || '').trim();
   // 1. exact match
@@ -24,8 +25,8 @@ function resolveAccount(account, persons) {
     lower.includes(p.toLowerCase()) || p.toLowerCase().includes(lower)
   );
   if (partial) return partial;
-  // 4. fallback to first person
-  return persons[0];
+  // 4. fallback to active profile, then first person
+  return activePerson || persons[0];
 }
 
 function buildTxPrompt(userText, persons, today) {
@@ -285,7 +286,7 @@ router.post('/edit', auth, async (req, res) => {
 router.post('/parse', auth, async (req, res) => {
   const t0 = Date.now();
   const tag = '[AI parse]';
-  const { prompt, type, persons = [], today } = req.body;
+  const { prompt, type, persons = [], activePerson, today } = req.body;
   console.log(`${tag} REQUEST received — type=${type} prompt="${prompt?.slice(0,60)}"`);
 
   if (!prompt?.trim()) return res.status(400).json({ error: 'Prompt is required' });
@@ -363,7 +364,7 @@ router.post('/parse', auth, async (req, res) => {
     // Snap account names to real persons so the save never 403s
     // For investments: round amounts to integers (BIGINT column — no decimals)
     entries = entries.map(e => {
-      const base = { ...e, account: persons.length ? resolveAccount(e.account, persons) : e.account };
+      const base = { ...e, account: persons.length ? resolveAccount(e.account, persons, activePerson) : e.account };
       if (type === 'investments') {
         const amount = +Number(e.amount || 0).toFixed(2);
         const rawCurr = (e.currency || 'INR').toUpperCase().trim();
@@ -385,7 +386,7 @@ router.post('/parse', auth, async (req, res) => {
 router.post('/parse-image', auth, async (req, res) => {
   const t0  = Date.now();
   const tag = '[AI parse-image]';
-  const { imageBase64, mediaType = 'image/png', images, note = '', persons = [], today } = req.body;
+  const { imageBase64, mediaType = 'image/png', images, note = '', persons = [], activePerson, today } = req.body;
 
   // Support both legacy single-image and new multi-image format
   const imageList = Array.isArray(images) && images.length
@@ -521,7 +522,7 @@ OTHER RULES:
         currency,
         qty: qty ? +Number(qty).toFixed(4) : null,
         avg_price: avg_price ? +Number(avg_price).toFixed(4) : null,
-        account: persons.length ? resolveAccount(e.account, persons) : e.account,
+        account: persons.length ? resolveAccount(e.account, persons, activePerson) : e.account,
       };
     });
 

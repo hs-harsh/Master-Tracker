@@ -331,14 +331,6 @@ export default function Portfolio() {
         </div>
       )}
 
-      <TradeFeedbackCard
-        key={`portfolio-${goalFilter}-${enriched.filter(r => r.net > 0).length}`}
-        defaultPortfolioContext={enriched.length > 0
-          ? `Current: ${enriched.filter(r => r.net > 0).slice(0, 12).map(r => `${r.instrument} ₹${fmt(r.net)}`).join(', ')}${enriched.filter(r => r.net > 0).length > 12 ? '…' : ''}. Goal: ${goalFilter || 'Balanced'}`
-          : ''}
-        holdings={enriched}
-      />
-
       {/* Charts row 1 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Risk pie */}
@@ -651,6 +643,14 @@ export default function Portfolio() {
           </>
         );
       })()}
+
+      <TradeFeedbackCard
+        key={`portfolio-${goalFilter}-${enriched.filter(r => r.net > 0).length}`}
+        defaultPortfolioContext={enriched.length > 0
+          ? `Current: ${enriched.filter(r => r.net > 0).slice(0, 12).map(r => `${r.instrument} ₹${fmt(r.net)}`).join(', ')}${enriched.filter(r => r.net > 0).length > 12 ? '…' : ''}. Goal: ${goalFilter || 'Balanced'}`
+          : ''}
+        holdings={enriched}
+      />
     </div>
   );
 }
