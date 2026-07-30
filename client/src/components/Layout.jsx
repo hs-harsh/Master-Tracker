@@ -2,10 +2,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import {
-  LayoutDashboard, TrendingUp, Receipt, PieChart, Briefcase,
-  Calculator, LineChart, LogOut, Settings, BarChart3,
+  TrendingUp, LineChart, LogOut, Settings, BarChart3,
   Menu, X, LogIn, Lock, Shield, Heart, ChevronDown, ChevronRight,
-  CheckSquare, Utensils, Dumbbell, Wallet, BarChart2, Landmark, Archive,
+  Wallet, BarChart2,
 } from 'lucide-react';
 import InstallPrompt from './InstallPrompt';
 import PageContainer from './PageContainer';
@@ -13,31 +12,11 @@ import api from '../lib/api';
 import { applyTheme } from '../lib/theme';
 import { setCurrencySymbol } from '../lib/utils';
 
-const PUBLIC_NAV = [
-  { to: '/trade',       icon: LineChart,  label: 'Trade Ideas' },
-  { to: '/stock-trade', icon: BarChart3,  label: 'Stock Trade' },
-];
-
-const FINANCE_NAV = [
-  { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard',           end: true },
-  { to: '/portfolio',    icon: PieChart,        label: 'Portfolio' },
-  { to: '/investments',  icon: Briefcase,       label: 'Investments' },
-  { to: '/other-assets', icon: Landmark,        label: 'Illiquid Investments' },
-  { to: '/cashflow',     icon: TrendingUp,      label: 'Cashflow' },
-  { to: '/transactions', icon: Receipt,         label: 'Transactions' },
-];
-
-const ARCHIVE_NAV = [
-  { to: '/expense-analyser', icon: Calculator, label: 'Expense Analyser' },
-];
-
-const WELLNESS_NAV = [
-  { to: '/wellness/habits',   icon: CheckSquare, label: 'Habits' },
-  { to: '/wellness/meals',    icon: Utensils,    label: 'Meals' },
-  { to: '/wellness/workouts', icon: Dumbbell,    label: 'Workouts' },
-];
+const FINANCE_ROUTES = ['/dashboard', '/portfolio', '/investments', '/other-assets', '/cashflow', '/transactions'];
 
 const TRADING_NAV = [
+  { to: '/trade',                   icon: LineChart,  label: 'Trade Ideas' },
+  { to: '/stock-trade',             icon: BarChart3,  label: 'Stock Trade' },
   { to: '/live-trading/backtest',   icon: TrendingUp, label: 'Backtest' },
   { to: '/live-trading/post-trade', icon: BarChart2,  label: 'Post-Trade' },
 ];
@@ -56,26 +35,14 @@ export default function Layout() {
   const location  = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showProfilePicker, setShowProfilePicker] = useState(false);
-  const [financeOpen, setFinanceOpen] = useState(true);
-  const [wellnessOpen, setWellnessOpen] = useState(false);
   const [tradingOpen, setTradingOpen] = useState(false);
-  const [archiveOpen, setArchiveOpen] = useState(false);
   const [sidebarFinanceEnabled, setSidebarFinanceEnabled] = useState(true);
   const [sidebarWellnessEnabled, setSidebarWellnessEnabled] = useState(true);
-  const [sidebarLiveTradingEnabled, setSidebarLiveTradingEnabled] = useState(true);
 
-  const isFinanceRoute = ['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/other-assets'].includes(location.pathname);
+  const isFinanceRoute = FINANCE_ROUTES.includes(location.pathname);
   useEffect(() => {
-    if (['/dashboard', '/portfolio', '/investments', '/cashflow', '/transactions', '/other-assets'].includes(location.pathname))
-      setFinanceOpen(true);
-    if (['/expense-analyser'].includes(location.pathname))
-      setArchiveOpen(true);
-  }, [location.pathname]);
-  useEffect(() => {
-    if (location.pathname.startsWith('/wellness')) setWellnessOpen(true);
-  }, [location.pathname]);
-  useEffect(() => {
-    if (location.pathname.startsWith('/live-trading')) setTradingOpen(true);
+    if (location.pathname.startsWith('/live-trading') || ['/trade', '/stock-trade'].includes(location.pathname))
+      setTradingOpen(true);
   }, [location.pathname]);
 
   const refreshSettings = useCallback(() => {
@@ -86,7 +53,6 @@ export default function Layout() {
       if (d?.currencyDisplay) setCurrencySymbol(d.currencyDisplay);
       setSidebarFinanceEnabled(d?.sidebarFinanceEnabled !== false);
       setSidebarWellnessEnabled(d?.sidebarWellnessEnabled !== false);
-      setSidebarLiveTradingEnabled(d?.sidebarLiveTradingEnabled !== false);
     }).catch(() => {});
   }, [isAuth]);
 
@@ -94,7 +60,6 @@ export default function Layout() {
     if (!isAuth) {
       setSidebarFinanceEnabled(true);
       setSidebarWellnessEnabled(true);
-      setSidebarLiveTradingEnabled(true);
       return;
     }
     refreshSettings();
@@ -198,231 +163,52 @@ export default function Layout() {
         )}
 
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {/* Public tabs */}
-          {PUBLIC_NAV.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) => navClass(isActive)}
-              onClick={closeSidebar}
-            >
-              {({ isActive }) => (
-                <>
-                  {/* Active accent bar */}
-                  {isActive && (
-                    <span
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
-                      style={{ background: 'var(--accent, #f0c040)' }}
-                    />
-                  )}
-                  <Icon size={16} className="shrink-0" />
-                  <span>{label}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
-
-          {/* Divider */}
-          <div className="py-2">
-            <div style={{ height: 1, background: 'rgb(var(--hairline-rgb) / 0.08)' }} />
-          </div>
-
-          {/* Finance (collapsible) */}
+          {/* Finance — single link; sub-tabs live in the top ribbon */}
           {sidebarFinanceEnabled && (
-          <div className="space-y-0.5">
             <button
               type="button"
-              onClick={() => {
-                if (!financeOpen) {
-                  setFinanceOpen(true);
-                  navigate('/');
-                } else {
-                  setFinanceOpen(false);
-                }
-              }}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[44px] w-full text-left ${
-                isFinanceRoute
-                  ? 'text-accent-ink bg-accent/8'
-                  : 'text-soft hover:text-white hover:bg-hairline/[0.06]'
+              onClick={() => { navigate('/dashboard'); closeSidebar(); }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[44px] w-full text-left relative ${
+                isFinanceRoute ? 'text-accent-ink bg-accent/8' : 'text-soft hover:text-white hover:bg-hairline/[0.06]'
               }`}
             >
+              {isFinanceRoute && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full" style={{ background: 'var(--accent, #f0c040)' }} />}
               <Wallet size={16} className="shrink-0" />
-              <span className="flex-1">Finance</span>
-              {financeOpen ? (
-                <ChevronDown size={14} className="text-muted shrink-0" />
-              ) : (
-                <ChevronRight size={14} className="text-muted shrink-0" />
-              )}
+              <span>Finance</span>
             </button>
-            {financeOpen && (
-              <div className="pl-4 space-y-0.5">
-                {FINANCE_NAV.map(({ to, icon: Icon, label, end }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    end={end}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[44px] relative ${
-                        isActive ? 'text-accent-ink bg-accent/8' : 'text-muted hover:text-soft hover:bg-hairline/[0.05]'
-                      }`
-                    }
-                    onClick={closeSidebar}
-                  >
-                    {({ isActive }) => (
-                      <>
-                        {isActive && (
-                          <span
-                            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full"
-                            style={{ background: 'var(--accent, #f0c040)' }}
-                          />
-                        )}
-                        <Icon size={14} className="shrink-0" />
-                        <span>{label}</span>
-                        {!isAuth && <Lock size={11} className="text-muted/40 shrink-0 ml-auto" />}
-                      </>
-                    )}
-                  </NavLink>
-                ))}
-              </div>
-            )}
-          </div>
           )}
 
-          {/* Wellness (collapsible) — visible when logged out; sub-items show lock */}
+          {/* Wellness — single link; sub-tabs live in the top ribbon */}
           {sidebarWellnessEnabled && (
-          <div className="space-y-0.5">
             <button
               type="button"
-              onClick={() => {
-                if (!wellnessOpen) {
-                  setWellnessOpen(true);
-                  navigate('/wellness/habits');
-                } else {
-                  setWellnessOpen(false);
-                }
-              }}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[44px] w-full text-left ${
-                location.pathname.startsWith('/wellness')
-                  ? 'text-accent-ink bg-accent/8'
-                  : 'text-soft hover:text-white hover:bg-hairline/[0.06]'
+              onClick={() => { navigate('/wellness/habits'); closeSidebar(); }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[44px] w-full text-left relative ${
+                location.pathname.startsWith('/wellness') ? 'text-accent-ink bg-accent/8' : 'text-soft hover:text-white hover:bg-hairline/[0.06]'
               }`}
             >
+              {location.pathname.startsWith('/wellness') && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full" style={{ background: 'var(--accent, #f0c040)' }} />}
               <Heart size={16} className="shrink-0" />
-              <span className="flex-1">Wellness</span>
-              {wellnessOpen ? (
-                <ChevronDown size={14} className="text-muted shrink-0" />
-              ) : (
-                <ChevronRight size={14} className="text-muted shrink-0" />
-              )}
+              <span>Wellness</span>
             </button>
-            {wellnessOpen && (
-              <div className="pl-4 space-y-0.5">
-                {WELLNESS_NAV.map(({ to, icon: Icon, label }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[44px] relative ${
-                        isActive ? 'text-accent-ink bg-accent/8' : !isAuth ? 'text-muted/50 hover:text-muted hover:bg-hairline/[0.05]' : 'text-muted hover:text-soft hover:bg-hairline/[0.05]'
-                      }`
-                    }
-                    onClick={closeSidebar}
-                  >
-                    {({ isActive }) => (
-                      <>
-                        {isActive && (
-                          <span
-                            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full"
-                            style={{ background: 'var(--accent, #f0c040)' }}
-                          />
-                        )}
-                        <Icon size={14} className="shrink-0" />
-                        <span>{label}</span>
-                        {!isAuth && <Lock size={11} className="text-muted/40 shrink-0 ml-auto" />}
-                      </>
-                    )}
-                  </NavLink>
-                ))}
-              </div>
-            )}
-          </div>
           )}
 
-          {/* Archive (collapsible) */}
+          {/* Trading (collapsible) — Trade Ideas, Stock Trade, Backtest, Post-Trade */}
           <div className="space-y-0.5">
             <button
               type="button"
               onClick={() => {
-                if (!archiveOpen) {
-                  setArchiveOpen(true);
-                  navigate('/expense-analyser');
-                } else {
-                  setArchiveOpen(false);
-                }
-              }}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[44px] w-full text-left ${
-                location.pathname === '/expense-analyser'
-                  ? 'text-accent-ink bg-accent/8'
-                  : 'text-soft hover:text-white hover:bg-hairline/[0.06]'
-              }`}
-            >
-              <Archive size={16} className="shrink-0" />
-              <span className="flex-1">Archive</span>
-              {archiveOpen ? (
-                <ChevronDown size={14} className="text-muted shrink-0" />
-              ) : (
-                <ChevronRight size={14} className="text-muted shrink-0" />
-              )}
-            </button>
-            {archiveOpen && (
-              <div className="pl-4 space-y-0.5">
-                {ARCHIVE_NAV.map(({ to, icon: Icon, label }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    className={({ isActive }) =>
-                      `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-all min-h-[44px] relative ${
-                        isActive ? 'text-accent-ink bg-accent/8' : 'text-muted hover:text-soft hover:bg-hairline/[0.05]'
-                      }`
-                    }
-                    onClick={closeSidebar}
-                  >
-                    {({ isActive }) => (
-                      <>
-                        {isActive && (
-                          <span
-                            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full"
-                            style={{ background: 'var(--accent, #f0c040)' }}
-                          />
-                        )}
-                        <Icon size={14} className="shrink-0" />
-                        <span>{label}</span>
-                        {!isAuth && <Lock size={11} className="text-muted/40 shrink-0 ml-auto" />}
-                      </>
-                    )}
-                  </NavLink>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Live Trading (collapsible) */}
-          {isAuth && sidebarLiveTradingEnabled && (
-          <div className="space-y-0.5">
-            <button
-              type="button"
-              onClick={() => {
-                if (!tradingOpen) { setTradingOpen(true); navigate('/live-trading/backtest'); }
+                if (!tradingOpen) { setTradingOpen(true); navigate('/trade'); }
                 else { setTradingOpen(false); }
               }}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-body transition-all min-h-[44px] w-full text-left ${
-                location.pathname.startsWith('/live-trading')
+                ['/trade', '/stock-trade'].includes(location.pathname) || location.pathname.startsWith('/live-trading')
                   ? 'text-accent-ink bg-accent/8'
                   : 'text-soft hover:text-white hover:bg-hairline/[0.06]'
               }`}
             >
               <BarChart3 size={16} className="shrink-0" />
-              <span className="flex-1">Live Trading</span>
+              <span className="flex-1">Trading</span>
               {tradingOpen ? <ChevronDown size={14} className="text-muted shrink-0" /> : <ChevronRight size={14} className="text-muted shrink-0" />}
             </button>
             {tradingOpen && (
@@ -448,7 +234,6 @@ export default function Layout() {
               </div>
             )}
           </div>
-          )}
 
           {/* Settings */}
           <NavLink
