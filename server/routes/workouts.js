@@ -613,4 +613,116 @@ Recommend my next session.`;
   }
 });
 
+// ─── POST /api/workouts/training-feedback ─────────────────────────────────────
+router.post('/training-feedback', async (req, res) => {
+  try {
+    const person = req.body?.person || '';
+    const today = todayStr();
+    const cutoff = (() => {
+      const d = new Date(today + 'T12:00:00');
+      d.setDate(d.getDate() - 28);
+      return d.toISOString().slice(0, 10);
+    })();
+
+    const { rows } = await pool.query(
+      `SELECT wel.exercise_name, wel.category, wel.muscles, wel.sets,
+              we.entry_date::text AS entry_date
+       FROM workout_exercise_logs wel
+       JOIN workout_entries we ON we.id = wel.workout_entry_id
+       JOIN workout_plans   wp ON wp.id = we.workout_plan_id
+       WHERE wel.user_id=$1 AND wp.person_name=$2 AND we.entry_date >= $3
+       ORDER BY we.entry_date DESC`,
+      [req.user.id, person, cutoff]
+    );
+
+    const daysAgo = (d) => Math.round((new Date(today + 'T12:00:00') - new Date(d + 'T12:00:00')) / 86400000);
+    const muscleStats = {};
+    for (const id of MUSCLE_IDS) muscleStats[id] = { last_trained: null, sets_7d: 0, sets_14d: 0 };
+    const lastWeight = {};
+    const prevWeight = {};
+    const sessionDates = new Set();
+
+    for (const r of rows) {
+      const sets = Array.isArray(r.sets) ? r.sets : [];
+      if (r.category === 'strength') {
+        sessionDates.add(r.entry_date);
+        if (sets.length) {
+          for (const m of (Array.isArray(r.muscles) ? r.muscles : [])) {
+            const st = muscleStats[m.muscle];
+            if (!st) continue;
+            if (!st.last_trained || r.entry_date > st.last_trained) st.last_trained = r.entry_date;
+            const load = m.role === 'primary' ? sets.length : SECONDARY_WEIGHT * sets.length;
+            const age = daysAgo(r.entry_date);
+            if (age <= 7)  st.sets_7d  += Math.round(load * 100) / 100;
+            if (age <= 14) st.sets_14d += Math.round(load * 100) / 100;
+          }
+          const maxW = Math.max(...sets.map(s => s.weight_kg != null ? Number(s.weight_kg) : -1));
+          if (maxW >= 0) {
+            const cur = lastWeight[r.exercise_name];
+            if (!cur || r.entry_date > cur.date) {
+              if (cur) prevWeight[r.exercise_name] = cur;
+              lastWeight[r.exercise_name] = { weight_kg: maxW, date: r.entry_date };
+            } else if (!prevWeight[r.exercise_name]) {
+              prevWeight[r.exercise_name] = { weight_kg: maxW, date: r.entry_date };
+            }
+          }
+        }
+      }
+    }
+
+    const sessions7d  = [...sessionDates].filter(d => daysAgo(d) <= 7).length;
+    const sessions14d = [...sessionDates].filter(d => daysAgo(d) <= 14).length;
+
+    const summaryLines = MUSCLE_IDS.map(id => {
+      const st = muscleStats[id];
+      return `${muscleLabel(id)} (${id}): ${st.last_trained ? `last ${st.last_trained} (${daysAgo(st.last_trained)}d ago)` : 'never'}, 7d sets=${st.sets_7d}, 14d sets=${st.sets_14d}`;
+    }).join('\n');
+
+    const weightLines = Object.entries(lastWeight).map(([name, w]) => {
+      const prev = prevWeight[name];
+      const trend = prev && w.weight_kg > prev.weight_kg ? `+${(w.weight_kg - prev.weight_kg).toFixed(1)}kg`
+        : prev && w.weight_kg < prev.weight_kg ? `-${(prev.weight_kg - w.weight_kg).toFixed(1)}kg` : 'stable';
+      return `${name}: ${w.weight_kg}kg on ${w.date}${prev ? ` (was ${prev.weight_kg}kg, ${trend})` : ''}`;
+    }).join('\n') || 'No strength weights logged.';
+
+    const systemPrompt = `You are a personal trainer giving feedback on someone's recent training. Be direct and specific.
+Return ONLY a valid JSON object with no explanation, no markdown, no code fences:
+{
+  "summary": "2-3 sentence overall assessment of their training this past week",
+  "volume_notes": ["one note per muscle group worth calling out — undertrained or well trained, max 5"],
+  "loading_notes": ["one note per exercise with interesting progression or regression, max 4"],
+  "improvements": ["3-4 concrete, actionable things to do differently next week"]
+}
+Rules:
+- volume_notes: flag muscles with 0 sets in 14d as undertrained; flag 10+ sets in 7d as well trained
+- loading_notes: note weight increases (good) or decreases, or exercises with high volume worth mentioning
+- improvements: specific actions like "add a hamstring day", "aim for 4 sessions this week", "increase squat frequency"
+- If no data: summary = "No workout data found for the last 28 days. Start logging to get feedback!"`;
+
+    const userMessage = `Today is ${today}.
+Strength sessions last 7 days: ${sessions7d}, last 14 days: ${sessions14d}.
+
+Per-muscle volume (last 28 days):
+${summaryLines}
+
+Loading history per exercise:
+${weightLines}
+
+Give me feedback on my training.`;
+
+    const ai = await callClaude(systemPrompt, userMessage, 1024);
+    if (ai.error) return res.status(ai.status).json({ error: ai.error });
+
+    res.json({
+      summary:       String(ai.parsed.summary || ''),
+      volume_notes:  Array.isArray(ai.parsed.volume_notes)  ? ai.parsed.volume_notes.map(String)  : [],
+      loading_notes: Array.isArray(ai.parsed.loading_notes) ? ai.parsed.loading_notes.map(String) : [],
+      improvements:  Array.isArray(ai.parsed.improvements)  ? ai.parsed.improvements.map(String)  : [],
+    });
+  } catch (e) {
+    console.error('POST /workouts/training-feedback', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

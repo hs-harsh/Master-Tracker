@@ -9,8 +9,8 @@ import SubTabBar from './SubTabBar';
  */
 const WELLNESS_TABS = [
   { to: '/wellness/habits',   label: 'Habits',   icon: CheckSquare },
-  { to: '/wellness/meals',    label: 'Meals',    icon: Utensils    },
   { to: '/wellness/workouts', label: 'Workouts', icon: Dumbbell    },
+  { to: '/wellness/meals',    label: 'Meals',    icon: Utensils    },
 ];
 
 export default function WellnessLayout() {

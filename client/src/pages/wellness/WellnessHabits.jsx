@@ -20,7 +20,7 @@ import RangeChips from '../../components/RangeChips';
 import { parseD, todayStr, getMonday, getWeekDays, fmtWeekRange } from '../../lib/utils';
 
 const HABIT_VIEWS = [
-  { key: 'planner',   label: 'Plan Week' },
+  { key: 'planner',   label: 'Log' },
   { key: 'analytics', label: 'Analytics' },
 ];
 

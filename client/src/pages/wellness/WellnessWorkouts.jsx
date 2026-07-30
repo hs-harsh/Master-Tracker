@@ -131,9 +131,9 @@ export default function WellnessWorkouts() {
   const [muscleData,     setMuscleData]     = useState(null);
   const [mLoading,       setMLoading]       = useState(false);
   const [selectedMuscle, setSelectedMuscle] = useState(null);
-  const [rec,        setRec]        = useState(null);
-  const [recLoading, setRecLoading] = useState(false);
-  const [recError,   setRecError]   = useState('');
+  const [feedback,        setFeedback]        = useState(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackError,   setFeedbackError]   = useState('');
 
   // Analytics view
   const [period, setPeriodRaw] = useState(() => localStorage.getItem(WELLNESS_PERIOD_KEY) || '1M');
@@ -339,34 +339,17 @@ export default function WellnessWorkouts() {
     }
   }
 
-  // ── recommendation (F3) ────────────────────────────────────────────────────
-  async function generateRec() {
-    setRecLoading(true); setRecError('');
+  // ── training feedback (F3) ─────────────────────────────────────────────────
+  async function generateFeedback() {
+    setFeedbackLoading(true); setFeedbackError('');
     try {
-      const { data } = await api.post('/workouts/recommend-next', { person: currentPerson || '' });
-      setRec(data);
+      const { data } = await api.post('/workouts/training-feedback', { person: currentPerson || '' });
+      setFeedback(data);
     } catch (err) {
-      setRecError(err.response?.data?.error || 'Recommendation failed. Check your API key in Settings.');
+      setFeedbackError(err.response?.data?.error || 'Feedback failed. Check your API key in Settings.');
     } finally {
-      setRecLoading(false);
+      setFeedbackLoading(false);
     }
-  }
-
-  function useRecInLog() {
-    if (!rec) return;
-    const text = `${rec.focus}: ` + rec.exercises.map(e => {
-      const parts = [e.name];
-      if (e.sets) parts.push(`${e.sets} sets`);
-      if (e.reps) parts.push(`x ${e.reps}`);
-      if (e.suggested_weight) parts.push(`@ ${e.suggested_weight}`);
-      return parts.join(' ');
-    }).join(', ');
-    setLogDate(weekDays.includes(today) ? today : weekDays[0]);
-    setRelogOpen(true);
-    setAiLogPrompt(text);
-    setAiLogPreview(null);
-    setAiLogError('');
-    setView('log');
   }
 
   // ── shared week header ─────────────────────────────────────────────────────
@@ -883,64 +866,66 @@ export default function WellnessWorkouts() {
   }
 
   // ── Muscles view ───────────────────────────────────────────────────────────
-  function RecommendCard() {
+  function FeedbackCard() {
     return (
       <div className="card p-4 space-y-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-xs text-muted uppercase tracking-widest font-mono">Next session recommendation</p>
-          <button onClick={generateRec} disabled={recLoading}
+          <p className="text-xs text-muted uppercase tracking-widest font-mono">Training Feedback</p>
+          <button onClick={generateFeedback} disabled={feedbackLoading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold min-h-[44px]
               bg-purple-500/20 text-hue-purple border border-purple-500/30
               hover:bg-purple-500/30 transition-colors disabled:opacity-50">
-            <Sparkles size={12} />{recLoading ? 'Thinking…' : (rec ? 'Regenerate' : 'Generate')}
+            <Sparkles size={12} />{feedbackLoading ? 'Analysing…' : (feedback ? 'Refresh' : 'Get Feedback')}
           </button>
         </div>
-        {recError && <p className="text-xs text-neg">{recError}</p>}
-        {rec && (
-          <div className="space-y-3">
-            <div>
-              <p className="text-white text-sm font-semibold font-body">{rec.focus}</p>
-              <p className="text-xs text-soft leading-relaxed mt-1">{rec.rationale}</p>
-            </div>
-            <div className="overflow-x-auto rounded-lg border border-hairline/8">
-              <table className="w-full text-xs min-w-[420px]">
-                <thead>
-                  <tr className="border-b border-hairline/5">
-                    <th className="text-left px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Exercise</th>
-                    <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Sets</th>
-                    <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Reps</th>
-                    <th className="text-center px-2 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Weight</th>
-                    <th className="text-left px-3 py-2 text-muted font-mono uppercase tracking-wider text-[10px]">Muscles</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rec.exercises.map((e, i) => (
-                    <tr key={i} className="border-b border-hairline/[0.03] last:border-0">
-                      <td className="px-3 py-2 text-soft">{e.name}</td>
-                      <td className="px-2 py-2 text-center text-soft font-mono">{e.sets ?? '—'}</td>
-                      <td className="px-2 py-2 text-center text-soft font-mono">{e.reps ?? '—'}</td>
-                      <td className="px-2 py-2 text-center text-soft font-mono whitespace-nowrap">{e.suggested_weight ?? '—'}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-1">
-                          {e.muscles.map(m => (
-                            <span key={m} className="px-1.5 py-0.5 rounded-full text-[9px] font-mono border border-hairline/10 text-muted">
-                              {muscleLabel(m)}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <button onClick={useRecInLog} className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5">
-              <Dumbbell size={13} />Use in log
-            </button>
+        {feedbackError && <p className="text-xs text-neg">{feedbackError}</p>}
+        {feedback && (
+          <div className="space-y-4">
+            <p className="text-soft text-sm leading-relaxed">{feedback.summary}</p>
+
+            {feedback.volume_notes?.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-muted uppercase tracking-widest font-mono flex items-center gap-1.5">
+                  <Flame size={11} />Volume
+                </p>
+                {feedback.volume_notes.map((note, i) => (
+                  <div key={i} className="flex items-start gap-2 text-xs text-soft">
+                    <span className="text-muted mt-0.5 shrink-0">•</span>{note}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {feedback.loading_notes?.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-muted uppercase tracking-widest font-mono flex items-center gap-1.5">
+                  <TrendingUp size={11} />Loading
+                </p>
+                {feedback.loading_notes.map((note, i) => (
+                  <div key={i} className="flex items-start gap-2 text-xs text-soft">
+                    <span className="text-muted mt-0.5 shrink-0">•</span>{note}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {feedback.improvements?.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] text-muted uppercase tracking-widest font-mono flex items-center gap-1.5">
+                  <Target size={11} />Improvements
+                </p>
+                {feedback.improvements.map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 text-xs">
+                    <span className="text-accent mt-0.5 shrink-0 font-mono">{i + 1}.</span>
+                    <span className="text-soft">{item}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
-        {!rec && !recError && !recLoading && (
-          <p className="text-xs text-muted/70">Generate a recommendation for your next gym session based on what you've trained recently.</p>
+        {!feedback && !feedbackError && !feedbackLoading && (
+          <p className="text-xs text-muted/70">Get AI feedback on your sets, loading progression, and what to improve next.</p>
         )}
       </div>
     );
@@ -950,7 +935,7 @@ export default function WellnessWorkouts() {
     return (
       <div className="space-y-4 fade-up-1">
         {WeekHeader()}
-        {RecommendCard()}
+        {FeedbackCard()}
         {mLoading
           ? <div className="card h-72 animate-pulse bg-white/[0.03]" />
           : <MuscleBodyMap muscles={muscleData} selected={selectedMuscle} onSelect={(id) => setSelectedMuscle(prev => prev === id ? null : id)} />}
