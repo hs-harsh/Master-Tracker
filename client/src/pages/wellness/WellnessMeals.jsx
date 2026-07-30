@@ -18,8 +18,8 @@ import { useAuth } from '../../hooks/useAuth';
 // ─── nav ──────────────────────────────────────────────────────────────────────
 const SUB_TABS = [
   { to: '/wellness/habits',   label: 'Habits',   icon: CheckSquare },
-  { to: '/wellness/meals',    label: 'Meals',    icon: Utensils    },
   { to: '/wellness/workouts', label: 'Workouts', icon: Dumbbell    },
+  { to: '/wellness/meals',    label: 'Meals',    icon: Utensils    },
 ];
 
 // ─── meal types ───────────────────────────────────────────────────────────────

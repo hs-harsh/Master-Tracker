@@ -17,8 +17,8 @@ import { useAuth } from '../../hooks/useAuth';
 // ─── nav ──────────────────────────────────────────────────────────────────────
 const SUB_TABS = [
   { to: '/wellness/habits',   label: 'Habits',   icon: CheckSquare },
-  { to: '/wellness/meals',    label: 'Meals',    icon: Utensils    },
   { to: '/wellness/workouts', label: 'Workouts', icon: Dumbbell    },
+  { to: '/wellness/meals',    label: 'Meals',    icon: Utensils    },
 ];
 
 // ─── icon map ─────────────────────────────────────────────────────────────────
@@ -754,7 +754,7 @@ export default function WellnessHabits() {
           )}
           <div className="flex gap-1 p-1 rounded-xl"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            {[{ key: 'planner', label: 'Plan Week' }, { key: 'analytics', label: 'Analytics' }].map(({ key, label }) => (
+            {[{ key: 'planner', label: 'Log' }, { key: 'analytics', label: 'Analytics' }].map(({ key, label }) => (
               <button key={key} onClick={() => setView(key)}
                 className={`px-4 py-2 rounded-lg text-sm font-body transition-all ${
                   view === key ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'

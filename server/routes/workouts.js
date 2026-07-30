@@ -368,4 +368,113 @@ Requirements:
   }
 });
 
+// ─── POST /api/workouts/training-feedback ─────────────────────────────────────
+router.post('/training-feedback', async (req, res) => {
+  try {
+    const person = req.body?.person || '';
+    const today = todayStr();
+    const cutoff = (() => {
+      const d = new Date(today + 'T12:00:00');
+      d.setDate(d.getDate() - 28);
+      return d.toISOString().slice(0, 10);
+    })();
+
+    const { rows } = await pool.query(
+      `SELECT we.entry_date::text AS entry_date, we.workout_type, we.title, we.notes
+       FROM workout_entries we
+       JOIN workout_plans wp ON wp.id = we.workout_plan_id
+       WHERE we.user_id=$1 AND wp.person_name=$2 AND wp.status='accepted'
+         AND we.entry_date >= $3 AND we.workout_type='strength'
+       ORDER BY we.entry_date DESC`,
+      [req.user.id, person, cutoff]
+    );
+
+    const daysAgo = (d) => Math.round((new Date(today + 'T12:00:00') - new Date(d + 'T12:00:00')) / 86400000);
+
+    const exerciseMap = {};
+    const sessionDates = new Set();
+
+    for (const r of rows) {
+      sessionDates.add(r.entry_date);
+      let exercises = [];
+      try { exercises = JSON.parse(r.notes) || []; } catch {}
+      for (const ex of (Array.isArray(exercises) ? exercises : [])) {
+        if (!ex?.name) continue;
+        const key = ex.name;
+        if (!exerciseMap[key]) exerciseMap[key] = { appearances: [], sets_total: 0, last_date: null };
+        const sets = parseInt(ex.sets, 10) || 0;
+        exerciseMap[key].appearances.push({ date: r.entry_date, sets, reps: ex.reps });
+        exerciseMap[key].sets_total += sets;
+        if (!exerciseMap[key].last_date || r.entry_date > exerciseMap[key].last_date) {
+          exerciseMap[key].last_date = r.entry_date;
+        }
+      }
+    }
+
+    const sessions7d  = [...sessionDates].filter(d => daysAgo(d) <= 7).length;
+    const sessions14d = [...sessionDates].filter(d => daysAgo(d) <= 14).length;
+
+    const exerciseLines = Object.entries(exerciseMap).map(([name, data]) => {
+      const recent = data.appearances.slice(0, 3).map(a => `${a.date}(${a.sets}×${a.reps})`).join(', ');
+      return `${name}: ${data.sets_total} total sets in 28d, last on ${data.last_date} (${daysAgo(data.last_date)}d ago). Recent: ${recent}`;
+    }).join('\n') || 'No exercises logged in last 28 days.';
+
+    const systemPrompt = `You are a personal trainer giving feedback on someone's recent workout history. Be direct and specific.
+Return ONLY a valid JSON object with no explanation, no markdown, no code fences:
+{
+  "summary": "2-3 sentence overall assessment covering workout frequency and consistency",
+  "volume_notes": ["one note per exercise worth calling out — high frequency, low frequency, or good consistency, max 5"],
+  "loading_notes": ["notes on progression patterns if visible from the data, max 4"],
+  "improvements": ["3-4 concrete actionable things to do differently next week"]
+}
+Rules:
+- volume_notes: flag exercises done only once as potentially inconsistent; exercises done 3+ times as good
+- loading_notes: if an exercise appears multiple times with same sets, suggest progressive overload; if frequency dropped, note it
+- improvements: specific actions like "increase squat frequency to twice weekly", "add more shoulder work", "aim for 4 sessions this week"
+- If no data: summary = "No completed workout data found for the last 28 days. Accept a weekly plan to start tracking!"`;
+
+    const userMessage = `Today is ${today}.
+Completed strength sessions last 7 days: ${sessions7d}, last 14 days: ${sessions14d}.
+
+Exercise history (last 28 days):
+${exerciseLines}
+
+Give me feedback on my training.`;
+
+    const apiKey = await getAnthropicApiKey();
+    if (!apiKey) return res.status(500).json({ error: 'Anthropic API key not configured in Settings' });
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
+
+    const aiData = await aiRes.json();
+    if (!aiRes.ok) return res.status(aiRes.status).json({ error: aiData?.error?.message || 'AI error' });
+
+    let parsed = {};
+    try { parsed = JSON.parse(aiData.content?.[0]?.text || '{}'); } catch {}
+
+    res.json({
+      summary:       String(parsed.summary || ''),
+      volume_notes:  Array.isArray(parsed.volume_notes)  ? parsed.volume_notes.map(String)  : [],
+      loading_notes: Array.isArray(parsed.loading_notes) ? parsed.loading_notes.map(String) : [],
+      improvements:  Array.isArray(parsed.improvements)  ? parsed.improvements.map(String)  : [],
+    });
+  } catch (e) {
+    console.error('POST /workouts/training-feedback', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

@@ -17,8 +17,8 @@ import { useAuth } from '../../hooks/useAuth';
 // ─── nav ──────────────────────────────────────────────────────────────────────
 const SUB_TABS = [
   { to: '/wellness/habits',   label: 'Habits',   icon: CheckSquare },
-  { to: '/wellness/meals',    label: 'Meals',    icon: Utensils    },
   { to: '/wellness/workouts', label: 'Workouts', icon: Dumbbell    },
+  { to: '/wellness/meals',    label: 'Meals',    icon: Utensils    },
 ];
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -121,6 +121,10 @@ export default function WellnessWorkouts() {
   const setPeriod = (p) => { setPeriodRaw(p); localStorage.setItem(WELLNESS_PERIOD_KEY, p); };
   const [analytics, setAnalytics] = useState(null);
   const [aLoading,  setALoading]  = useState(false);
+
+  const [feedback,        setFeedback]        = useState(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackError,   setFeedbackError]   = useState('');
 
   const today    = todayStr();
   const weekDays = getWeekDays(weekStart);
@@ -297,6 +301,18 @@ export default function WellnessWorkouts() {
     const d = new Date(weekStart + 'T12:00:00');
     d.setDate(d.getDate() + dir * 7);
     setWeekStart(d.toISOString().slice(0, 10));
+  }
+
+  async function generateFeedback() {
+    setFeedbackLoading(true); setFeedbackError('');
+    try {
+      const { data } = await api.post('/workouts/training-feedback', { person: currentPerson || '' });
+      setFeedback(data);
+    } catch (err) {
+      setFeedbackError(err.response?.data?.error || 'Feedback failed. Check your API key in Settings.');
+    } finally {
+      setFeedbackLoading(false);
+    }
   }
 
   // ── plan stats ─────────────────────────────────────────────────────────────
@@ -681,6 +697,73 @@ export default function WellnessWorkouts() {
   }
 
   // ── analytics view ─────────────────────────────────────────────────────────
+  function FeedbackView() {
+    return (
+      <div className="space-y-4 fade-up-1">
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-xs text-muted uppercase tracking-widest font-mono">Training Feedback</p>
+            <button onClick={generateFeedback} disabled={feedbackLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold min-h-[44px]
+                bg-purple-500/20 text-purple-300 border border-purple-500/30
+                hover:bg-purple-500/30 transition-colors disabled:opacity-50">
+              <Sparkles size={12} />{feedbackLoading ? 'Analysing…' : (feedback ? 'Refresh' : 'Get Feedback')}
+            </button>
+          </div>
+          {feedbackError && <p className="text-xs text-red-400">{feedbackError}</p>}
+          {feedback && (
+            <div className="space-y-4">
+              <p className="text-soft text-sm leading-relaxed">{feedback.summary}</p>
+
+              {feedback.volume_notes?.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-muted uppercase tracking-widest font-mono flex items-center gap-1.5">
+                    <Flame size={11} />Volume
+                  </p>
+                  {feedback.volume_notes.map((note, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs text-soft">
+                      <span className="text-muted mt-0.5 shrink-0">•</span>{note}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {feedback.loading_notes?.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-muted uppercase tracking-widest font-mono flex items-center gap-1.5">
+                    <TrendingUp size={11} />Loading
+                  </p>
+                  {feedback.loading_notes.map((note, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs text-soft">
+                      <span className="text-muted mt-0.5 shrink-0">•</span>{note}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {feedback.improvements?.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-muted uppercase tracking-widest font-mono flex items-center gap-1.5">
+                    <Target size={11} />Improvements
+                  </p>
+                  {feedback.improvements.map((item, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs">
+                      <span className="text-yellow-400 mt-0.5 shrink-0 font-mono">{i + 1}.</span>
+                      <span className="text-soft">{item}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {!feedback && !feedbackError && !feedbackLoading && (
+            <p className="text-xs text-muted/70">Get AI feedback on your sets, loading progression, and what to improve next.</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   function Analytics() {
     if (aLoading) return (
       <div className="space-y-3 fade-up-1">
@@ -811,7 +894,7 @@ export default function WellnessWorkouts() {
           )}
           <div className="flex gap-1 p-1 rounded-xl"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            {[{ key: 'planner', label: 'Plan Week' }, { key: 'analytics', label: 'Analytics' }].map(({ key, label }) => (
+            {[{ key: 'planner', label: 'Plan Week' }, { key: 'feedback', label: 'Feedback' }, { key: 'analytics', label: 'Analytics' }].map(({ key, label }) => (
               <button key={key} onClick={() => setView(key)}
                 className={`px-4 py-2 rounded-lg text-sm font-body transition-all ${
                   view === key ? 'bg-accent text-ink font-semibold' : 'text-soft hover:text-white'
@@ -832,6 +915,7 @@ export default function WellnessWorkouts() {
       )}
 
       {!loading && view === 'planner'  && Planner()}
+      {           view === 'feedback'  && FeedbackView()}
       {           view === 'analytics' && Analytics()}
     </div>
   );
