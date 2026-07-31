@@ -602,6 +602,9 @@ CREATE INDEX IF NOT EXISTS idx_other_asset_history_asset ON other_asset_history(
 ALTER TABLE other_assets ADD COLUMN IF NOT EXISTS loan_start_date     DATE;
 ALTER TABLE other_assets ADD COLUMN IF NOT EXISTS loan_tenure_months  INT;
 
+-- Drop the hardcoded asset_type CHECK to allow user-defined custom types
+ALTER TABLE other_assets DROP CONSTRAINT IF EXISTS other_assets_asset_type_check;
+
 -- User-defined asset categories
 CREATE TABLE IF NOT EXISTS user_asset_types (
   id         SERIAL PRIMARY KEY,
