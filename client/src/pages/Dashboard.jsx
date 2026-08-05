@@ -494,7 +494,7 @@ function PersonPanel({ person, cashflowData, investments, otherAssets, fxRates }
 
 /* ── Dashboard page ──────────────────────────────────────────────────────── */
 export default function Dashboard() {
-  const { personName, persons, activePerson, setActivePerson, token } = useAuth();
+  const { personName, persons, personsLoaded, activePerson, setActivePerson, token } = useAuth();
   const [cashflowMap, setCashflowMap]       = useState({});
   const [investmentsMap, setInvestmentsMap] = useState({});
   const [otherAssetsMap, setOtherAssetsMap] = useState({});
@@ -504,7 +504,11 @@ export default function Dashboard() {
   const currentPerson = activePerson || personName;
 
   useEffect(() => {
-    if (!persons.length) return;
+    if (!personsLoaded) return;
+    if (!persons.length) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     Promise.all(
       persons.map(p =>
@@ -527,7 +531,7 @@ export default function Dashboard() {
         setOtherAssetsMap(oaMap);
       })
       .finally(() => setLoading(false));
-  }, [persons]);
+  }, [persons, personsLoaded]);
 
   // Live USD/GBP → INR rates, so "Total Invested" sums all currencies correctly.
   useEffect(() => {
@@ -537,10 +541,19 @@ export default function Dashboard() {
       .catch(() => {});
   }, [token]);
 
-  if (loading) {
+  if (loading || !personsLoaded) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-muted font-mono text-sm animate-pulse tracking-widest uppercase text-xs">Loading…</div>
+      </div>
+    );
+  }
+
+  if (!persons.length) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+        <p className="text-soft text-sm">No profiles loaded. Your session may have expired.</p>
+        <p className="text-muted text-xs">Hard-refresh the page or sign in again from Settings.</p>
       </div>
     );
   }

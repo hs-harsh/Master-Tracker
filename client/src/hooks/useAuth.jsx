@@ -11,6 +11,7 @@ function parseJwt(token) {
 export function AuthProvider({ children }) {
   const [token, setToken]                       = useState(() => localStorage.getItem('token'));
   const [persons, setPersons]                   = useState([]);
+  const [personsLoaded, setPersonsLoaded]       = useState(false);
   // null = not yet checked; true/false = known
   const [onboardingCompleted, setOnboardingCompleted] = useState(null);
   // Global person selection shared across all tabs
@@ -24,11 +25,14 @@ export function AuthProvider({ children }) {
   const isAdmin    = !!decoded.isAdmin;
 
   const fetchPersons = useCallback(async () => {
+    setPersonsLoaded(false);
     try {
       const { data } = await api.get('/persons');
       setPersons(data);
     } catch {
       setPersons([]);
+    } finally {
+      setPersonsLoaded(true);
     }
   }, []);
 
@@ -49,10 +53,23 @@ export function AuthProvider({ children }) {
       checkOnboarding();
     } else {
       setPersons([]);
+      setPersonsLoaded(false);
       setActivePerson('');
       setOnboardingCompleted(null);
     }
   }, [token, fetchPersons, checkOnboarding]);
+
+  // Keep React auth in sync when any API call gets 401 (see api.js interceptor)
+  useEffect(() => {
+    const onUnauthorized = () => {
+      setToken(null);
+      setPersons([]);
+      setPersonsLoaded(false);
+      setActivePerson('');
+    };
+    window.addEventListener('auth:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', onUnauthorized);
+  }, []);
 
   // Auto-select first person when persons list loads
   useEffect(() => {
@@ -103,7 +120,7 @@ export function AuthProvider({ children }) {
     <AuthCtx.Provider value={{
       token, login, register, sendOtp, verifyOtp, logout,
       isAuth: !!token, personName, isAdmin,
-      persons, fetchPersons,
+      persons, personsLoaded, fetchPersons,
       activePerson, setActivePerson,
       dataVersion, bumpDataVersion,
       onboardingCompleted, completeOnboarding,

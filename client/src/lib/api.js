@@ -14,9 +14,10 @@ api.interceptors.request.use(cfg => {
 api.interceptors.response.use(
   r => r,
   err => {
-    if (err.response?.status === 401) {
-      // Clear the token so useAuth re-evaluates and shows the inline login prompt
+    if (err.response?.status === 401 && localStorage.getItem('token')) {
+      // Session expired or invalid — sync React auth state via useAuth listener
       localStorage.removeItem('token');
+      window.dispatchEvent(new Event('auth:unauthorized'));
     }
     return Promise.reject(err);
   }
