@@ -14,6 +14,17 @@ const yf = new YahooFinance({ suppressNotices: ['ripHistorical'] });
 
 router.use(auth);
 
+// `date_from`/`date_to` are DATE columns — cast to text on every SELECT/RETURNING
+// path so the API always emits a plain YYYY-MM-DD. GET /strategies used to cast
+// but GET /strategies/:id (SELECT *) didn't, so the list and detail views
+// disagreed on the same strategy's dates. Route every path through this list.
+const BT_STRATEGY_COLUMNS = `
+  id, user_id, name, instruments, frequency,
+  date_from::text AS date_from, date_to::text AS date_to,
+  data_prompt, strategy_prompt, entry_prompt, exit_prompt, rules,
+  capital, status, results, error_msg, created_at, updated_at
+`;
+
 function normalizeOhlcvRows(rows) {
   if (!Array.isArray(rows)) return [];
   return rows
@@ -233,7 +244,7 @@ router.get('/strategies', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT id, name, instruments, frequency,
-              date_from::text, date_to::text,
+              date_from::text AS date_from, date_to::text AS date_to,
               status, capital, data_prompt, strategy_prompt,
               entry_prompt, exit_prompt, rules,
               results->'stats' AS stats,
@@ -254,7 +265,7 @@ router.get('/strategies', async (req, res) => {
 router.get('/strategies/:id', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM bt_strategies WHERE id=$1 AND user_id=$2`,
+      `SELECT ${BT_STRATEGY_COLUMNS} FROM bt_strategies WHERE id=$1 AND user_id=$2`,
       [req.params.id, req.user.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
@@ -272,7 +283,7 @@ router.post('/strategies', async (req, res) => {
     const twoYrsAgo = new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const { rows } = await pool.query(
       `INSERT INTO bt_strategies (user_id, name, instruments, frequency, date_from, date_to, capital)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING ${BT_STRATEGY_COLUMNS}`,
       [
         req.user.id,
         name        || 'Untitled Strategy',
@@ -314,7 +325,7 @@ router.patch('/strategies/:id', async (req, res) => {
          status           = CASE WHEN $13 IS NOT NULL AND status='done' THEN 'draft' ELSE status END,
          updated_at       = NOW()
        WHERE id=$1 AND user_id=$2
-       RETURNING *`,
+       RETURNING ${BT_STRATEGY_COLUMNS}`,
       [
         id, req.user.id, name, instruments, frequency, date_from, date_to, capital,
         data_prompt, strategy_prompt, entry_prompt, exit_prompt,
@@ -475,7 +486,7 @@ router.post('/strategies/:id/run', async (req, res) => {
     // Mark running
     const { rows: stratRows } = await pool.query(
       `UPDATE bt_strategies SET status='running', error_msg=NULL, updated_at=NOW()
-       WHERE id=$1 AND user_id=$2 RETURNING *`,
+       WHERE id=$1 AND user_id=$2 RETURNING ${BT_STRATEGY_COLUMNS}`,
       [id, req.user.id]
     );
     if (!stratRows[0]) return res.status(404).json({ error: 'Strategy not found' });
@@ -553,7 +564,7 @@ router.post('/strategies/:id/run', async (req, res) => {
     // Store results
     const { rows } = await pool.query(
       `UPDATE bt_strategies SET status='done', results=$1, error_msg=NULL, updated_at=NOW()
-       WHERE id=$2 AND user_id=$3 RETURNING *`,
+       WHERE id=$2 AND user_id=$3 RETURNING ${BT_STRATEGY_COLUMNS}`,
       [JSON.stringify(results), id, req.user.id]
     );
 

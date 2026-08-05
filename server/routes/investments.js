@@ -5,6 +5,13 @@ const { getYf } = require('../services/prices');
 
 const VALID_CURRENCIES = ['INR', 'USD', 'GBP'];
 
+// `date` is a DATE column — cast to text on every SELECT/RETURNING path so the
+// API always emits a plain YYYY-MM-DD instead of a UTC-shifted ISO timestamp.
+const INVESTMENT_COLUMNS = `
+  id, date::text AS date, account, goal, asset_class, instrument, side, amount,
+  avg_price, qty, ticker, broker, currency, created_at, user_id
+`;
+
 /** When qty or avg_price is missing, derive from amount and the other field (AI parse often omits qty). */
 function normalizeInvestmentAmounts(body) {
   const amount = +Number(body.amount || 0).toFixed(2);
@@ -71,7 +78,7 @@ router.get('/fx-rates', auth, async (req, res) => {
 router.get('/export', auth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT date, account, goal, asset_class, instrument, side, amount, currency, avg_price, qty, ticker, broker FROM investments
+      `SELECT date::text AS date, account, goal, asset_class, instrument, side, amount, currency, avg_price, qty, ticker, broker FROM investments
        WHERE user_id = $1
        ORDER BY date DESC, id DESC`,
       [req.user.id]
@@ -91,7 +98,7 @@ router.get('/export', auth, async (req, res) => {
 router.get('/', auth, async (req, res) => {
   try {
     const { account, goal, asset_class, side, from, to } = req.query;
-    let q = `SELECT * FROM investments WHERE user_id = $1`;
+    let q = `SELECT ${INVESTMENT_COLUMNS} FROM investments WHERE user_id = $1`;
     const params = [req.user.id];
     let i = 2;
 
@@ -125,7 +132,7 @@ router.post('/', auth, async (req, res) => {
     }
     const { rows } = await pool.query(
       `INSERT INTO investments (date, account, goal, asset_class, instrument, side, amount, avg_price, qty, ticker, broker, currency, user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING ${INVESTMENT_COLUMNS}`,
       [date, account, goal, asset_class, instrument, side, amount, avg_price, qty, ticker || null, broker, currency, req.user.id]
     );
     res.status(201).json(rows[0]);
@@ -150,10 +157,11 @@ router.put('/:id', auth, async (req, res) => {
       `UPDATE investments
        SET date=$1, account=$2, goal=$3, asset_class=$4, instrument=$5, side=$6, amount=$7,
            avg_price=$8, qty=$9, ticker=$10, broker=$11, currency=$12
-       WHERE id=$13 AND user_id=$14 RETURNING *`,
+       WHERE id=$13 AND user_id=$14 RETURNING ${INVESTMENT_COLUMNS}`,
       [date, account, goal, asset_class, instrument, side, amount, avg_price, qty, ticker || null, broker, currency, req.params.id, req.user.id]
     );
-    res.json(rows[0] || null);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -173,10 +181,11 @@ router.delete('/clear-all', auth, async (req, res) => {
 
 router.delete('/:id', auth, async (req, res) => {
   try {
-    await pool.query(
-      `DELETE FROM investments WHERE id = $1 AND user_id = $2`,
+    const { rows } = await pool.query(
+      `DELETE FROM investments WHERE id = $1 AND user_id = $2 RETURNING id`,
       [req.params.id, req.user.id]
     );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -5,6 +5,16 @@ const { sendEmail } = require('../utils/email');
 
 const DEFAULT_TYPES = ['Property', 'Vehicle', 'Gold', 'PPF', 'NPS'];
 
+// `as_of_date` and `loan_start_date` are DATE columns — cast to text on every
+// SELECT/RETURNING path so the API always emits a plain YYYY-MM-DD instead of
+// a UTC-shifted ISO timestamp.
+const OTHER_ASSET_COLUMNS = `
+  id, user_id, account, asset_type, name, purchase_value, current_value,
+  loan_outstanding, loan_emi, loan_interest_rate,
+  loan_start_date::text AS loan_start_date, loan_tenure_months,
+  quantity, currency, notes, as_of_date::text AS as_of_date, created_at
+`;
+
 async function checkAccountOwnership(userId, account) {
   const { rows } = await pool.query(
     'SELECT 1 FROM user_persons WHERE user_id = $1 AND person_name = $2',
@@ -40,7 +50,7 @@ async function autoSnapshot(userId, today) {
 router.get('/', auth, async (req, res) => {
   try {
     const { account } = req.query;
-    let query = `SELECT * FROM other_assets WHERE user_id = $1`;
+    let query = `SELECT ${OTHER_ASSET_COLUMNS} FROM other_assets WHERE user_id = $1`;
     const params = [req.user.id];
     if (account) {
       query += ` AND account = $2`;
@@ -149,7 +159,7 @@ router.post('/', auth, async (req, res) => {
           loan_start_date, loan_tenure_months,
           quantity, currency, notes, as_of_date)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       RETURNING *`,
+       RETURNING ${OTHER_ASSET_COLUMNS}`,
       [
         req.user.id, account, asset_type, name,
         purchase_value || null,
@@ -213,7 +223,7 @@ router.put('/:id', auth, async (req, res) => {
          notes               = $15,
          as_of_date          = $16
        WHERE id = $1 AND user_id = $2
-       RETURNING *`,
+       RETURNING ${OTHER_ASSET_COLUMNS}`,
       [
         req.params.id, req.user.id,
         account, asset_type, name,

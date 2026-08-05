@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { Plus, Pencil, Trash2, X, Save, Target, Check, ArrowLeft, Receipt, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
 import api from '../lib/api';
-import { fmt, fmtDate } from '../lib/utils';
+import { fmt, fmtDate, sliceByCalendarMonths } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
@@ -16,6 +16,35 @@ import { TT, AX, GRID, HUE, identityPalette } from '../lib/chartTheme';
 // ── Shared chart helpers ───────────────────────────────────────────────────────
 // Tooltip / axis / grid chrome comes from lib/chartTheme.js — see AC-4.1.
 const money = (v, name) => [fmt(v), name];
+
+// ── Ledger-derived cell marker ─────────────────────────────────────────────────
+// Row-COUNT-per-category source precedence (server): a category shows the
+// transactions-ledger total whenever it has ANY transaction rows that month
+// (even ones netting to zero); otherwise it falls back to the manually
+// entered monthly_cashflow figure. Surfaced per-cell here — not just as
+// internal bookkeeping in the API response — via a dotted underline + tooltip.
+function SourceCell({ value, source, className }) {
+  const fromLedger = source === 'transactions';
+  return (
+    <td className={`py-3 px-3 font-mono ${className || ''}`}>
+      <span
+        className={fromLedger ? 'border-b border-dotted border-current/50 cursor-help' : ''}
+        title={fromLedger ? 'From transaction ledger' : 'Manually entered'}
+      >
+        {fmt(value)}
+      </span>
+    </td>
+  );
+}
+
+function SourceLegend() {
+  return (
+    <div className="flex items-center gap-2 text-[11px] text-muted">
+      <span className="border-b border-dotted border-current/50">example</span>
+      <span>= from transaction ledger · plain = manually entered</span>
+    </div>
+  );
+}
 
 function Leg({ items }) {
   return (
@@ -50,9 +79,16 @@ function MonthDrillDown({ month, person, onBack }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const from = month.slice(0, 7) + '-01';
-    const d    = new Date(from);
-    const to   = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+    // Compute the month's [from, to] bound entirely from the string — no Date
+    // object round-trip. The previous version built `to` via
+    // `new Date(y, m+1, 0).toISOString().slice(0,10)`, which converts a LOCAL
+    // date back to UTC before slicing; in IST that rolls the last day of the
+    // month back by one (e.g. "2026-04-30" → "2026-04-29"), silently dropping
+    // any transaction dated the 30th from the drill-down.
+    const [y, m] = month.slice(0, 7).split('-').map(Number);
+    const from = `${y}-${String(m).padStart(2, '0')}-01`;
+    const lastDay = new Date(y, m, 0).getDate(); // days in month m (1-indexed), local-safe — only reads the day count
+    const to = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
     setLoading(true);
     api.get(`/transactions?from=${from}&to=${to}&account=${encodeURIComponent(person)}`)
       .then(r => setTxs(r.data))
@@ -145,10 +181,14 @@ function RangeBar({ range, setRange }) {
   return <RangeChips options={RANGES} value={range} onChange={setRange} />;
 }
 
+const RANGE_MONTHS = { '3M': 3, '6M': 6, '1Y': 12, '2Y': 24, '3Y': 36, '5Y': 60 };
+// Gap-tolerant: slices by calendar months present, not row count — a gap in
+// cashflow history no longer makes "3M" mean "the last 3 rows however far
+// back they go."
 function sliceByRange(data, range) {
   if (range === 'ALL') return data;
-  const months = { '3M': 3, '6M': 6, '1Y': 12, '2Y': 24, '3Y': 36, '5Y': 60 }[range] || 12;
-  return data.slice(-months);
+  const months = RANGE_MONTHS[range] || 12;
+  return sliceByCalendarMonths(data, months);
 }
 
 // ── Chart 1: Corpus + Cumulative Income ───────────────────────────────────────
@@ -745,6 +785,9 @@ export default function Cashflow() {
       {/* Table */}
       {!loading && data.length > 0 && activeTab === 'table' && (
         <div className="card overflow-hidden">
+          <div className="flex justify-end px-4 pt-3">
+            <SourceLegend />
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -797,13 +840,13 @@ export default function Cashflow() {
                             <tr key={rowKey}
                               className="border-b border-hairline/15 hover:bg-surface/50 transition-colors group">
                               <td className="py-3 px-3 font-mono text-xs text-soft whitespace-nowrap">{fmtDate(row.month)}</td>
-                              <td className="py-3 px-3 font-mono text-accent-ink">{fmt(row.income)}</td>
-                              <td className="py-3 px-3 font-mono text-accent-ink">{fmt(row.other_income)}</td>
-                              <td className="py-3 px-3 font-mono text-rose">{fmt(row.major_expense)}</td>
-                              <td className="py-3 px-3 font-mono text-rose">{fmt(row.non_recurring_expense)}</td>
-                              <td className="py-3 px-3 font-mono text-soft">{fmt(row.regular_expense)}</td>
-                              <td className="py-3 px-3 font-mono text-rose">{fmt(row.emi)}</td>
-                              <td className="py-3 px-3 font-mono text-rose">{fmt(row.trips_expense)}</td>
+                              <SourceCell value={row.income}                 source={row.sources?.income}                className="text-accent-ink" />
+                              <SourceCell value={row.other_income}           source={row.sources?.other_income}          className="text-accent-ink" />
+                              <SourceCell value={row.major_expense}          source={row.sources?.major_expense}         className="text-rose" />
+                              <SourceCell value={row.non_recurring_expense}  source={row.sources?.non_recurring_expense} className="text-rose" />
+                              <SourceCell value={row.regular_expense}        source={row.sources?.regular_expense}       className="text-soft" />
+                              <SourceCell value={row.emi}                    source={row.sources?.emi}                   className="text-rose" />
+                              <SourceCell value={row.trips_expense}          source={row.sources?.trips_expense}         className="text-rose" />
                               <td className="py-3 px-3 font-mono text-rose">{fmt(row.net_expense)}</td>
                               <td className="py-2 px-3">
                                 {isEditingRow ? (

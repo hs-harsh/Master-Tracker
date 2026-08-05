@@ -9,7 +9,7 @@ import {
   CartesianGrid, ReferenceLine,
 } from 'recharts';
 import api from '../lib/api';
-import { fmt, fmtDate, colorFor, ASSET_COLORS } from '../lib/utils';
+import { fmt, fmtDate, colorFor, ASSET_COLORS, sliceByCalendarMonths, aggregateSavingsRate } from '../lib/utils';
 import { TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle2, Info, ArrowRight, Download } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
@@ -105,11 +105,13 @@ function Leg({ items }) {
 // ── Range helpers ─────────────────────────────────────────────────────────────
 const RANGES = ['3M', '6M', '1Y', 'All'];
 const FINANCE_RANGE_KEY = 'finance_chart_range';
+const RANGE_MONTHS = { '3M': 3, '6M': 6, '1Y': 12 };
+// Gap-tolerant: slices by calendar months present, not row count — a gap in
+// cashflow history no longer makes "3M" mean "the last 3 rows however far
+// back they go."
 function sliceByRange(data, range) {
-  if (range === '3M')  return data.slice(-3);
-  if (range === '6M')  return data.slice(-6);
-  if (range === '1Y')  return data.slice(-12);
-  return data;
+  const months = RANGE_MONTHS[range];
+  return months ? sliceByCalendarMonths(data, months) : data;
 }
 
 // ── Build alerts ──────────────────────────────────────────────────────────────
@@ -148,16 +150,13 @@ function buildAlerts(cashflowData, investments, corpusGap) {
     }
   }
 
-  // 3. Savings rate declining (compare 3m avg vs previous 3m avg)
+  // 3. Savings rate declining (compare 3m avg vs previous 3m avg).
+  // Uses the same aggregateSavingsRate (Σsaving/Σincome) as the Dashboard
+  // chart caption — they must not be able to disagree on what "the savings
+  // rate" is for the same window.
   if (cashflowData.length >= 6) {
-    const rate = r => {
-      const inc = Number(r.income || 0) + Number(r.other_income || 0);
-      return inc > 0 ? (Number(r.actual_saving || 0) / inc) * 100 : 0;
-    };
-    const last3 = cashflowData.slice(-3).map(rate);
-    const prev3 = cashflowData.slice(-6, -3).map(rate);
-    const avgLast = last3.reduce((s, v) => s + v, 0) / 3;
-    const avgPrev = prev3.reduce((s, v) => s + v, 0) / 3;
+    const avgLast = aggregateSavingsRate(cashflowData.slice(-3));
+    const avgPrev = aggregateSavingsRate(cashflowData.slice(-6, -3));
     if (avgPrev > 0 && avgLast < avgPrev - 5) {
       alerts.push({
         level:   'warning',
@@ -183,6 +182,32 @@ function buildAlerts(cashflowData, investments, corpusGap) {
   }
 
   return alerts;
+}
+
+// ── Saved vs Deployed wording ──────────────────────────────────────────────────
+// `corpus` is a running sum of monthly savings starting at zero from the first
+// tracked cashflow month; `totalInvested` is all-time investment principal.
+// These are two different denominators (savings vs. deployed capital) — the
+// difference between them is NOT a return figure, so it must never be
+// labelled "(returns!)". The card and the chart caption share this exact
+// wording/guard logic so they can't contradict each other.
+function savedVsDeployedCopy(corpus, totalInvested, firstMonth) {
+  const gap   = corpus - totalInvested;
+  const since = firstMonth ? fmtDate(firstMonth) : null;
+  if (totalInvested === 0) {
+    return {
+      diffValue: Math.abs(gap),
+      diffSub:   'nothing deployed yet',
+      tone:      'neutral',
+      since,
+    };
+  }
+  return {
+    diffValue: Math.abs(gap),
+    diffSub:   gap >= 0 ? 'saved beyond deployment' : 'deployed beyond savings',
+    tone:      gap >= 0 ? 'positive' : 'warning',
+    since,
+  };
 }
 
 // ── Corpus vs Invested chart ──────────────────────────────────────────────────
@@ -215,19 +240,31 @@ function CorpusVsInvestedChart({ cashflowData, investments, allCashflowData, fxR
     };
   });
 
-  const latest = data[data.length - 1];
-  const gap    = latest ? latest.Corpus - latest.Invested : 0;
+  // Unclamped raw values — must match PersonPanel's stat-card numbers exactly
+  // (the chart's own Corpus/Invested series are floored at 0 purely so the
+  // area chart doesn't dip below the axis; the caption below uses the real
+  // numbers so the two can't disagree).
+  const rawFirst    = cashflowData[0];
+  const rawLast      = cashflowData[cashflowData.length - 1];
+  const rawCorpus    = Number(rawLast?.corpus || 0);
+  const rawInvested  = cumByMonth[rawLast?.month?.slice(0, 7) || ''] || 0;
+  const firstMonth   = (allCashflowData || cashflowData)[0]?.month || rawFirst?.month;
+  const copy = savedVsDeployedCopy(rawCorpus, rawInvested, firstMonth);
+  const toneClass = copy.tone === 'warning' ? 'text-hue-amber' : copy.tone === 'positive' ? 'text-teal' : 'text-muted';
 
   return (
     <div className="card">
       <div className="flex items-start justify-between mb-1">
         <div>
-          <p className="stat-label mb-0.5">Corpus vs Deployed</p>
+          <p className="stat-label mb-0.5">Saved vs Deployed</p>
           <p className="text-xs text-muted">
-            Gap (uninvested cash):
-            <span className={`font-mono ml-1 ${gap > 0 ? 'text-hue-amber' : 'text-teal'}`}>
-              {gap > 0 ? '+' : ''}{fmt(gap)}
-            </span>
+            CORPUS <span className="font-mono text-white">{fmt(rawCorpus)}</span> — saved since {copy.since ? copy.since : '—'}
+          </p>
+          <p className="text-xs text-muted">
+            DEPLOYED <span className="font-mono text-white">{fmt(rawInvested)}</span> — invested since {copy.since ? copy.since : '—'}
+          </p>
+          <p className="text-xs text-muted">
+            SAVED VS DEPLOYED <span className={`font-mono ${toneClass}`}>{fmt(copy.diffValue)}</span> — {copy.diffSub}
           </p>
         </div>
       </div>
@@ -253,16 +290,33 @@ function CorpusVsInvestedChart({ cashflowData, investments, allCashflowData, fxR
 }
 
 // ── Savings Rate chart ────────────────────────────────────────────────────────
-function SavingsRateChart({ cashflowData }) {
+const RANGE_LABEL = { '3M': '3-month', '6M': '6-month', '1Y': '12-month', 'All': 'All-time' };
+const RATE_DOMAIN_FLOOR = -100;
+
+function SavingsRateChart({ cashflowData, range }) {
   const data = cashflowData.map(r => {
     const inc  = Number(r.income || 0) + Number(r.other_income || 0);
-    const rate = inc > 0 ? Math.max(0, (Number(r.actual_saving || 0) / inc) * 100) : 0;
+    // No clamp — a real negative-saving month must show as negative, not get
+    // flattened to 0 (that inflates any average computed from this series).
+    // `null` (not 0) for zero-income months so the line breaks cleanly there
+    // instead of implying a real 0% rate.
+    const rate = inc > 0 ? (Number(r.actual_saving || 0) / inc) * 100 : null;
     const tgt  = inc > 0 && Number(r.target_saving || 0) > 0
       ? (Number(r.target_saving || 0) / inc) * 100 : null;
-    return { month: fmtDate(r.month), 'Savings %': parseFloat(rate.toFixed(1)), 'Target %': tgt };
+    return {
+      month:        fmtDate(r.month),
+      'Savings %':  rate != null ? parseFloat(rate.toFixed(1)) : null,
+      'Target %':   tgt,
+      offScale:     rate != null && rate < RATE_DOMAIN_FLOOR,
+    };
   });
 
-  const avg = data.reduce((s, d) => s + d['Savings %'], 0) / (data.length || 1);
+  // Σsaving/Σincome over the window — same aggregateSavingsRate() used by
+  // buildAlerts, so the caption and the alert bar can't disagree. Label
+  // follows the selected chip instead of being hardcoded to "12m".
+  const avg = aggregateSavingsRate(cashflowData);
+  const label = RANGE_LABEL[range] || `${cashflowData.length}-month`;
+  const offScaleMonths = data.filter(d => d.offScale);
 
   return (
     <div className="card">
@@ -270,7 +324,12 @@ function SavingsRateChart({ cashflowData }) {
         <div>
           <p className="stat-label mb-0.5">Savings Rate</p>
           <p className="text-xs text-muted">
-            12m avg: <span className="font-mono text-white">{avg.toFixed(1)}%</span>
+            {label} avg: <span className="font-mono text-white">{avg.toFixed(1)}%</span>
+            {offScaleMonths.length > 0 && (
+              <span className="text-hue-amber ml-2">
+                · {offScaleMonths.length} month{offScaleMonths.length > 1 ? 's' : ''} off-scale (below {RATE_DOMAIN_FLOOR}%, chart floor)
+              </span>
+            )}
           </p>
         </div>
       </div>
@@ -284,11 +343,12 @@ function SavingsRateChart({ cashflowData }) {
           </defs>
           <CartesianGrid {...GRID} />
           <XAxis dataKey="month" {...AX} />
-          <YAxis {...AX} tickFormatter={v => `${v}%`} width={40} domain={[0, 'auto']} />
+          <YAxis {...AX} tickFormatter={v => `${v}%`} width={44} domain={[RATE_DOMAIN_FLOOR, 'auto']} allowDataOverflow />
           <Tooltip {...TT} formatter={(v, name) => [v != null ? `${Number(v).toFixed(1)}%` : '—', name]} />
+          <ReferenceLine y={0}   stroke={CHROME.hairline(0.2)} />
           <ReferenceLine y={avg} stroke={CHROME.hairline(0.12)} strokeDasharray="4 2" />
-          <Area  type="monotone" dataKey="Savings %" stroke="#6366f1" strokeWidth={2} fill="url(#gRate)" dot={{ r: 3, fill: '#6366f1' }} />
-          <Line  type="monotone" dataKey="Target %"  stroke="#f0c040" strokeWidth={1.5} dot={false} strokeDasharray="5 3" />
+          <Area  type="monotone" dataKey="Savings %" stroke="#6366f1" strokeWidth={2} fill="url(#gRate)" dot={{ r: 3, fill: '#6366f1' }} connectNulls />
+          <Line  type="monotone" dataKey="Target %"  stroke="#f0c040" strokeWidth={1.5} dot={false} strokeDasharray="5 3" connectNulls />
         </ComposedChart>
       </ResponsiveContainer>
       <Leg items={[['Savings Rate %', '#6366f1'], ['Target Rate %', '#f0c040', true]]} />
@@ -319,6 +379,7 @@ function PersonPanel({ person, cashflowData, investments, otherAssets, fxRates }
 
   const corpus    = Number(latest?.corpus || 0);
   const corpusGap = corpus - totalInvested;
+  const svdCopy   = savedVsDeployedCopy(corpus, totalInvested, cashflowData[0]?.month);
 
   const latestIncome  = Number(latest?.income || 0) + Number(latest?.other_income || 0);
   const savingsRate   = latestIncome > 0
@@ -337,13 +398,20 @@ function PersonPanel({ person, cashflowData, investments, otherAssets, fxRates }
     Saving:  Number(r.actual_saving || 0),
   }));
 
+  // Every slice that feeds total_asset must be represented — debt_ppf and
+  // equity_smallcase were previously omitted from both the slice list and
+  // the Equity roll-up, so Recharts (which normalizes to the sum of slices
+  // it's given, not to total_asset) overstated every remaining slice's
+  // share. `key` is the underlying column name so ASSET_COLORS lookups
+  // can't reshuffle when a slice is added or a category is empty.
   const assetBreakdown = latest ? [
-    { name: 'Cash',        value: Number(latest.cash) },
-    { name: 'Gold/Silver', value: Number(latest.gold_silver) },
-    { name: 'PF',          value: Number(latest.debt_pf) },
-    { name: 'MF',          value: Number(latest.debt_mf) },
-    { name: 'Equity',      value: Number(latest.equity_indian) + Number(latest.equity_intl) + Number(latest.equity_nps) + Number(latest.equity_trading) },
-    { name: 'Real Estate', value: Number(latest.real_estate) },
+    { key: 'cash',        name: 'Cash',        value: Number(latest.cash) },
+    { key: 'gold_silver', name: 'Gold/Silver', value: Number(latest.gold_silver) },
+    { key: 'debt_pf',     name: 'PF',          value: Number(latest.debt_pf) },
+    { key: 'debt_ppf',    name: 'PPF',         value: Number(latest.debt_ppf) },
+    { key: 'debt_mf',     name: 'MF',          value: Number(latest.debt_mf) },
+    { key: 'equity_indian',    name: 'Equity', value: Number(latest.equity_indian) + Number(latest.equity_intl) + Number(latest.equity_nps) + Number(latest.equity_trading) + Number(latest.equity_smallcase) },
+    { key: 'real_estate', name: 'Real Estate', value: Number(latest.real_estate) },
   ].filter(d => d.value > 0) : [];
 
   const riskData = latest ? [
@@ -398,11 +466,11 @@ function PersonPanel({ person, cashflowData, investments, otherAssets, fxRates }
           trend={0}
         />
         <StatCard
-          label="Uninvested Gap"
-          value={fmt(Math.abs(corpusGap))}
-          sub={corpusGap > 0 ? 'cash not yet deployed' : 'investments > corpus (returns!)'}
-          trend={corpusGap > 0 ? -1 : 1}
-          accent={corpusGap > 0 ? 'text-hue-amber' : 'text-teal'}
+          label="Saved vs Deployed"
+          value={fmt(svdCopy.diffValue)}
+          sub={svdCopy.diffSub}
+          trend={svdCopy.tone === 'warning' ? -1 : svdCopy.tone === 'positive' ? 1 : 0}
+          accent={svdCopy.tone === 'warning' ? 'text-hue-amber' : svdCopy.tone === 'positive' ? 'text-teal' : 'text-muted'}
         />
         <StatCard
           label="Savings Rate"
@@ -421,7 +489,7 @@ function PersonPanel({ person, cashflowData, investments, otherAssets, fxRates }
       {/* Corpus vs Invested + Savings Rate */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 fade-up">
         <CorpusVsInvestedChart cashflowData={slicedCashflow} investments={investments} allCashflowData={cashflowData} fxRates={fxRates} />
-        <SavingsRateChart cashflowData={slicedCashflow} />
+        <SavingsRateChart cashflowData={slicedCashflow} range={range} />
       </div>
 
       {/* Cashflow trend */}
@@ -451,15 +519,15 @@ function PersonPanel({ person, cashflowData, investments, otherAssets, fxRates }
               <ResponsiveContainer width="100%" height={130}>
                 <PieChart>
                   <Pie data={assetBreakdown} cx="50%" cy="50%" innerRadius={32} outerRadius={52} dataKey="value" strokeWidth={0}>
-                    {assetBreakdown.map((_, i) => <Cell key={i} fill={Object.values(ASSET_COLORS)[i % 10]} />)}
+                    {assetBreakdown.map((d) => <Cell key={d.key} fill={ASSET_COLORS[d.key]} />)}
                   </Pie>
                   <Tooltip {...TT} formatter={money} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
-                {assetBreakdown.map((d, i) => (
+                {assetBreakdown.map((d) => (
                   <span key={d.name} className="text-xs text-muted flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full inline-block" style={{ background: Object.values(ASSET_COLORS)[i % 10] }} />
+                    <span className="w-2 h-2 rounded-full inline-block" style={{ background: ASSET_COLORS[d.key] }} />
                     {d.name}
                   </span>
                 ))}

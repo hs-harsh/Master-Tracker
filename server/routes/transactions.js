@@ -2,6 +2,10 @@ const router = require('express').Router();
 const pool = require('../db');
 const auth = require('../middleware/auth');
 
+// `date` is a DATE column — cast to text on every SELECT/RETURNING path so the
+// API always emits a plain YYYY-MM-DD instead of a UTC-shifted ISO timestamp.
+const TRANSACTION_COLUMNS = `id, date::text AS date, type, account, amount, remark, created_at, user_id`;
+
 const CSV_HEADER = 'date,type,account,amount,remark';
 function escapeCsvField(v) {
   const s = String(v ?? '');
@@ -11,7 +15,7 @@ function escapeCsvField(v) {
 router.get('/export', auth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT date, type, account, amount, remark FROM transactions
+      `SELECT date::text AS date, type, account, amount, remark FROM transactions
        WHERE user_id = $1
        ORDER BY date DESC, id DESC`,
       [req.user.id]
@@ -28,7 +32,7 @@ router.get('/export', auth, async (req, res) => {
 router.get('/', auth, async (req, res) => {
   try {
     const { account, type, from, to } = req.query;
-    let q = `SELECT * FROM transactions WHERE user_id = $1`;
+    let q = `SELECT ${TRANSACTION_COLUMNS} FROM transactions WHERE user_id = $1`;
     const params = [req.user.id];
     let i = 2;
     if (account) { q += ` AND account = $${i++}`; params.push(account); }
@@ -55,7 +59,7 @@ router.post('/', auth, async (req, res) => {
       return res.status(403).json({ error: 'Account does not belong to your profile' });
     }
     const { rows } = await pool.query(
-      'INSERT INTO transactions (date, type, account, amount, remark, user_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      `INSERT INTO transactions (date, type, account, amount, remark, user_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING ${TRANSACTION_COLUMNS}`,
       [date, type, account, amount, remark, req.user.id]
     );
     res.status(201).json(rows[0]);
@@ -77,7 +81,7 @@ router.put('/:id', auth, async (req, res) => {
     }
     const { rows } = await pool.query(
       `UPDATE transactions SET date=$1, type=$2, account=$3, amount=$4, remark=$5
-       WHERE id=$6 AND user_id=$7 RETURNING *`,
+       WHERE id=$6 AND user_id=$7 RETURNING ${TRANSACTION_COLUMNS}`,
       [date, type, account, amount, remark, req.params.id, req.user.id]
     );
     res.json(rows[0] || null);

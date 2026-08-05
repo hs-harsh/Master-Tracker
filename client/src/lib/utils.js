@@ -28,16 +28,55 @@ export const fmtPct = (n) => {
   return `${(Number(n) * 100).toFixed(1)}%`;
 };
 
+// The API now emits plain YYYY-MM-DD (see server DATE-casting sweep). Parsing
+// that with `new Date(isoString)` reads it as UTC midnight, which in any
+// timezone west of Greenwich rolls it back to the previous local day — for a
+// month value like "2026-07-01" that flips the displayed month entirely.
+// Slice-then-local-noon avoids the UTC boundary altogether.
 export const fmtDate = (d) => {
   if (!d) return '—';
-  const date = new Date(d);
+  const date = new Date(String(d).slice(0, 10) + 'T12:00:00');
   return date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
 };
 
 export const fmtMonthKey = (d) => {
   if (!d) return '';
-  return new Date(d).toISOString().slice(0, 7);
+  return String(d).slice(0, 7);
 };
+
+// Slice a month-ascending array (each row has a `month` field like
+// "2026-07-01") down to the last N *calendar* months, not the last N *rows*.
+// Plain `data.slice(-n)` silently means something different when there's a
+// gap in cashflow history — e.g. history stops for two months and resumes —
+// "3M" would return the last 3 available rows however far back they go
+// instead of the last 3 calendar months. Missing months just aren't in the
+// result (there's no row to synthesize), but the cutoff itself is always
+// calendar-correct.
+export function sliceByCalendarMonths(data, monthsBack, monthField = 'month') {
+  if (!data?.length || !monthsBack) return data;
+  const last = data[data.length - 1];
+  const [ly, lm] = String(last[monthField]).slice(0, 7).split('-').map(Number);
+  let cy = ly, cm = lm - (monthsBack - 1);
+  while (cm <= 0) { cm += 12; cy -= 1; }
+  const cutoffKey = `${cy}-${String(cm).padStart(2, '0')}`;
+  return data.filter(r => String(r[monthField]).slice(0, 7) >= cutoffKey);
+}
+
+// Σsaving ÷ Σincome — NOT the average of already-rounded monthly percentages.
+// Averaging per-month percentages over-weights low-income months (a ₹100
+// saving on ₹200 income is "50%" the same as ₹50,000 on ₹100,000), and a
+// naive `Math.max(0, ...)` clamp on the way in silently inflates the result
+// by discarding real negative-saving months instead of counting them.
+// Dashboard's chart caption and buildAlerts() both call this so the two
+// can't disagree about what the savings rate is.
+export function aggregateSavingsRate(rows) {
+  let saving = 0, income = 0;
+  for (const r of rows || []) {
+    saving += Number(r.actual_saving || 0);
+    income += Number(r.income || 0) + Number(r.other_income || 0);
+  }
+  return income > 0 ? (saving / income) * 100 : 0;
+}
 
 // ── Week-based date helpers (shared by the wellness planner pages) ───────────
 export function parseD(d) {

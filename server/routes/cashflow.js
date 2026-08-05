@@ -2,6 +2,21 @@ const router = require('express').Router();
 const pool   = require('../db');
 const auth   = require('../middleware/auth');
 
+// `month` is a DATE column — pg returns a JS Date and Express serializes it to a
+// UTC ISO timestamp, which shifts the calendar date in any timezone west of UTC
+// (e.g. IST: "2026-07-01" becomes "2026-06-30T18:30:00.000Z"). Cast to text on
+// every SELECT/RETURNING path so the API always emits a plain YYYY-MM-DD.
+const CASHFLOW_COLUMNS = `
+  id, month::text AS month, person, user_id,
+  income, other_income, major_expense, non_recurring_expense,
+  regular_expense, emi, trips_expense, net_expense, target_saving, actual_saving,
+  target, corpus, cash, gold_silver, debt_pf, debt_ppf, debt_mf,
+  equity_indian, equity_intl, equity_nps, equity_trading, equity_smallcase,
+  real_estate, home_loan, personal_loan, owed_friends, net_total,
+  total_asset, liability, net_asset, low_risk_pct, medium_risk_pct, high_risk_pct,
+  created_at, updated_at
+`;
+
 // ── GET /api/cashflow  ────────────────────────────────────────────────────────
 // Income, Regular Expense, and EMI come exclusively from transaction rows.
 // Ideal saving comes from the cashflow row (manually entered).
@@ -17,12 +32,19 @@ router.get('/', auth, async (req, res) => {
           date_trunc('month', date)::date AS month,
           account AS person,
           SUM(CASE WHEN type = 'Income'        THEN amount ELSE 0 END) AS income,
+          COUNT(*) FILTER (WHERE type = 'Income')        AS income_cnt,
           SUM(CASE WHEN type = 'Other Income'  THEN amount ELSE 0 END) AS other_income,
+          COUNT(*) FILTER (WHERE type = 'Other Income')  AS other_income_cnt,
           SUM(CASE WHEN type = 'Major'         THEN amount ELSE 0 END) AS major_expense,
+          COUNT(*) FILTER (WHERE type = 'Major')         AS major_expense_cnt,
           SUM(CASE WHEN type = 'Non-Recurring' THEN amount ELSE 0 END) AS non_recurring_expense,
+          COUNT(*) FILTER (WHERE type = 'Non-Recurring') AS non_recurring_expense_cnt,
           SUM(CASE WHEN type = 'Regular'       THEN amount ELSE 0 END) AS regular_expense,
+          COUNT(*) FILTER (WHERE type = 'Regular')       AS regular_expense_cnt,
           SUM(CASE WHEN type = 'EMI'           THEN amount ELSE 0 END) AS emi,
-          SUM(CASE WHEN type = 'Trips'         THEN amount ELSE 0 END) AS trips_expense
+          COUNT(*) FILTER (WHERE type = 'EMI')           AS emi_cnt,
+          SUM(CASE WHEN type = 'Trips'         THEN amount ELSE 0 END) AS trips_expense,
+          COUNT(*) FILTER (WHERE type = 'Trips')         AS trips_expense_cnt
         FROM transactions
         WHERE user_id = $1
         GROUP BY 1, 2
@@ -30,24 +52,35 @@ router.get('/', auth, async (req, res) => {
       base AS (
         SELECT
           m.id,
-          COALESCE(m.month, t.month)   AS month,
+          COALESCE(m.month, t.month)::text AS month,
           COALESCE(m.person, t.person) AS person,
 
-          -- Income: transactions first → cashflow row → 0
-          COALESCE(NULLIF(t.income, 0), NULLIF(m.income, 0), 0) AS income,
+          -- Row-COUNT-per-category precedence: if this category has ANY
+          -- transaction rows for the month (even ones that net to zero), the
+          -- ledger wins for that category; only zero rows falls back to the
+          -- manual monthly_cashflow figure. Evaluated independently per
+          -- category, never per-month — one month can be part-ledger,
+          -- part-manual across its 7 categories.
+          CASE WHEN COALESCE(t.income_cnt, 0) > 0 THEN COALESCE(t.income, 0) ELSE COALESCE(m.income, 0) END AS income,
+          CASE WHEN COALESCE(t.income_cnt, 0) > 0 THEN 'transactions' ELSE 'manual' END AS income_source,
 
-          -- Other income: transactions first → cashflow row → 0
-          COALESCE(NULLIF(t.other_income, 0), NULLIF(m.other_income, 0), 0) AS other_income,
+          CASE WHEN COALESCE(t.other_income_cnt, 0) > 0 THEN COALESCE(t.other_income, 0) ELSE COALESCE(m.other_income, 0) END AS other_income,
+          CASE WHEN COALESCE(t.other_income_cnt, 0) > 0 THEN 'transactions' ELSE 'manual' END AS other_income_source,
 
-          -- Major/non-recurring/trips: transactions first → cashflow row → 0
-          COALESCE(NULLIF(t.major_expense, 0),         NULLIF(m.major_expense, 0),         0) AS major_expense,
-          COALESCE(NULLIF(t.non_recurring_expense, 0), NULLIF(m.non_recurring_expense, 0), 0) AS non_recurring_expense,
+          CASE WHEN COALESCE(t.major_expense_cnt, 0) > 0 THEN COALESCE(t.major_expense, 0) ELSE COALESCE(m.major_expense, 0) END AS major_expense,
+          CASE WHEN COALESCE(t.major_expense_cnt, 0) > 0 THEN 'transactions' ELSE 'manual' END AS major_expense_source,
 
-          -- Regular / EMI: transactions first → cashflow row → 0
-          COALESCE(NULLIF(t.regular_expense, 0), NULLIF(m.regular_expense, 0), 0) AS regular_expense,
-          COALESCE(NULLIF(t.emi, 0),             NULLIF(m.emi, 0),             0) AS emi,
+          CASE WHEN COALESCE(t.non_recurring_expense_cnt, 0) > 0 THEN COALESCE(t.non_recurring_expense, 0) ELSE COALESCE(m.non_recurring_expense, 0) END AS non_recurring_expense,
+          CASE WHEN COALESCE(t.non_recurring_expense_cnt, 0) > 0 THEN 'transactions' ELSE 'manual' END AS non_recurring_expense_source,
 
-          COALESCE(NULLIF(t.trips_expense, 0), NULLIF(m.trips_expense, 0), 0) AS trips_expense,
+          CASE WHEN COALESCE(t.regular_expense_cnt, 0) > 0 THEN COALESCE(t.regular_expense, 0) ELSE COALESCE(m.regular_expense, 0) END AS regular_expense,
+          CASE WHEN COALESCE(t.regular_expense_cnt, 0) > 0 THEN 'transactions' ELSE 'manual' END AS regular_expense_source,
+
+          CASE WHEN COALESCE(t.emi_cnt, 0) > 0 THEN COALESCE(t.emi, 0) ELSE COALESCE(m.emi, 0) END AS emi,
+          CASE WHEN COALESCE(t.emi_cnt, 0) > 0 THEN 'transactions' ELSE 'manual' END AS emi_source,
+
+          CASE WHEN COALESCE(t.trips_expense_cnt, 0) > 0 THEN COALESCE(t.trips_expense, 0) ELSE COALESCE(m.trips_expense, 0) END AS trips_expense,
+          CASE WHEN COALESCE(t.trips_expense_cnt, 0) > 0 THEN 'transactions' ELSE 'manual' END AS trips_expense_source,
 
           -- Ideal saving: cashflow row only → 0
           COALESCE(NULLIF(m.target_saving, 0), 0) AS target_saving,
@@ -87,11 +120,27 @@ router.get('/', auth, async (req, res) => {
           (income + other_income)
           - (major_expense + non_recurring_expense + regular_expense + emi + trips_expense) AS net_expense_inv,
           major_expense + non_recurring_expense + regular_expense + emi + trips_expense AS net_expense,
-          target_saving AS target
+          target_saving AS target,
+          json_build_object(
+            'income',                 income_source,
+            'other_income',           other_income_source,
+            'major_expense',          major_expense_source,
+            'non_recurring_expense',  non_recurring_expense_source,
+            'regular_expense',        regular_expense_source,
+            'emi',                    emi_source,
+            'trips_expense',          trips_expense_source
+          ) AS sources
         FROM base
       )
       SELECT
-        with_net.*,
+        id, month, person,
+        income, other_income, major_expense, non_recurring_expense,
+        regular_expense, emi, trips_expense, target_saving,
+        cash, gold_silver, debt_pf, debt_ppf, debt_mf,
+        equity_indian, equity_intl, equity_nps, equity_trading, equity_smallcase,
+        real_estate, home_loan, personal_loan, owed_friends, net_total,
+        total_asset, liability, net_asset, low_risk_pct, medium_risk_pct, high_risk_pct,
+        actual_saving, net_expense_inv, net_expense, target, sources,
         SUM(actual_saving) OVER (PARTITION BY person ORDER BY month) AS corpus
       FROM with_net
       ORDER BY month ASC, person ASC
@@ -107,7 +156,7 @@ router.get('/', auth, async (req, res) => {
 router.get('/:month/:person', auth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM monthly_cashflow WHERE month = $1 AND person = $2 AND user_id = $3`,
+      `SELECT ${CASHFLOW_COLUMNS} FROM monthly_cashflow WHERE month = $1 AND person = $2 AND user_id = $3`,
       [req.params.month, req.params.person, req.user.id]
     );
     res.json(rows[0] || null);
@@ -130,18 +179,23 @@ router.post('/', auth, async (req, res) => {
                         + regularExp + emi + (Number(d.trips_expense)||0);
     const actualSaving  = (income + (Number(d.other_income)||0)) - netExpense;
 
+    // NOTE: `corpus` is intentionally NOT written here — GET /api/cashflow always
+    // returns a computed running sum (window function) and nothing in the client
+    // reads the stored column. The column stays in schema.sql (dropping it is a
+    // separate, destructive change) but this route stops populating it so the
+    // stored value can't silently drift from the computed one.
     const { rows } = await pool.query(`
       INSERT INTO monthly_cashflow (
         month, person, user_id,
         income, other_income, major_expense, non_recurring_expense,
         regular_expense, emi, trips_expense, net_expense, target_saving, actual_saving,
-        target, corpus, cash, gold_silver, debt_pf, debt_ppf, debt_mf,
+        target, cash, gold_silver, debt_pf, debt_ppf, debt_mf,
         equity_indian, equity_intl, equity_nps, equity_trading, equity_smallcase,
         real_estate, home_loan, personal_loan, owed_friends, net_total,
         total_asset, liability, net_asset, low_risk_pct, medium_risk_pct, high_risk_pct
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+        $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34
       )
       ON CONFLICT (user_id, month, person) DO UPDATE SET
         income              = EXCLUDED.income,
@@ -156,13 +210,13 @@ router.post('/', auth, async (req, res) => {
         actual_saving       = EXCLUDED.actual_saving,
         target              = EXCLUDED.target,
         updated_at          = NOW()
-      RETURNING *
+      RETURNING ${CASHFLOW_COLUMNS}
     `, [
       d.month, d.person, uid,
       income, Number(d.other_income)||0, Number(d.major_expense)||0,
       Number(d.non_recurring_expense)||0, regularExp, emi,
       Number(d.trips_expense)||0, netExpense, targetSaving, actualSaving, targetSaving,
-      Number(d.corpus)||0, Number(d.cash)||0, Number(d.gold_silver)||0,
+      Number(d.cash)||0, Number(d.gold_silver)||0,
       Number(d.debt_pf)||0, Number(d.debt_ppf)||0, Number(d.debt_mf)||0,
       Number(d.equity_indian)||0, Number(d.equity_intl)||0, Number(d.equity_nps)||0,
       Number(d.equity_trading)||0, Number(d.equity_smallcase)||0,
@@ -196,7 +250,7 @@ router.put('/:id', auth, async (req, res) => {
         owed_friends=$24, net_total=$25, total_asset=$26, liability=$27,
         net_asset=$28, low_risk_pct=$29, medium_risk_pct=$30, high_risk_pct=$31,
         updated_at=NOW()
-      WHERE id=$32 AND user_id=$33 RETURNING *
+      WHERE id=$32 AND user_id=$33 RETURNING ${CASHFLOW_COLUMNS}
     `, [
       Number(d.income)||0, Number(d.other_income)||0, Number(d.major_expense)||0,
       Number(d.non_recurring_expense)||0, Number(d.regular_expense)||0, Number(d.emi)||0,
@@ -212,6 +266,7 @@ router.put('/:id', auth, async (req, res) => {
       Number(d.low_risk_pct)||0, Number(d.medium_risk_pct)||0, Number(d.high_risk_pct)||0,
       req.params.id, req.user.id
     ]);
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -233,7 +288,7 @@ router.patch('/target-saving', auth, async (req, res) => {
         target_saving = EXCLUDED.target_saving,
         target       = EXCLUDED.target,
         updated_at   = NOW()
-      RETURNING id, month, person, target_saving
+      RETURNING id, month::text AS month, person, target_saving
     `, [month, person, req.user.id, amount]);
     res.json(rows[0]);
   } catch (err) {
@@ -244,10 +299,11 @@ router.patch('/target-saving', auth, async (req, res) => {
 // ── DELETE /api/cashflow/:id  ─────────────────────────────────────────────────
 router.delete('/:id', auth, async (req, res) => {
   try {
-    await pool.query(
-      `DELETE FROM monthly_cashflow WHERE id = $1 AND user_id = $2`,
+    const { rows } = await pool.query(
+      `DELETE FROM monthly_cashflow WHERE id = $1 AND user_id = $2 RETURNING id`,
       [req.params.id, req.user.id]
     );
+    if (!rows.length) return res.status(404).json({ error: 'Not found' });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -323,7 +323,7 @@ export default function Transactions() {
                   const rows = groupMap[monthKey];
                   const collapsed = collapsedMonths.has(monthKey);
                   const label = monthKey
-                    ? new Date(monthKey + '-01').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+                    ? new Date(monthKey + '-01T12:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
                     : 'Unknown';
                   return (
                     <React.Fragment key={monthKey}>
