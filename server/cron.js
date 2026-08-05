@@ -13,6 +13,7 @@ try {
 
 const pool = require('./db');
 const { sendEmail } = require('./utils/email');
+const { sendFinanceExport } = require('./utils/financeExport');
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -278,6 +279,35 @@ function buildCronReminderHtml(personName, staleAssets) {
 </body></html>`;
 }
 
+// ── Monthly finance export ────────────────────────────────────────────────────
+// Sends the combined PDF + per-person xlsx workbook to every user who has
+// enabled 'finance_export_recurring_enabled' AND saved a recipient email in
+// Settings. A user with the toggle on but no saved email is skipped (logged),
+// never thrown — one broken user must not stop the rest of the batch.
+async function sendMonthlyFinanceExports() {
+  console.log('cron: sending monthly finance exports…');
+  const { rows: users } = await pool.query(
+    `SELECT user_id, MAX(value) FILTER (WHERE key = 'finance_export_recurring_email') AS email
+     FROM user_settings
+     WHERE key IN ('finance_export_recurring_enabled', 'finance_export_recurring_email')
+     GROUP BY user_id
+     HAVING BOOL_OR(key = 'finance_export_recurring_enabled' AND value = '1')`
+  );
+
+  for (const { user_id, email } of users) {
+    if (!email || !email.trim()) {
+      console.log(`cron: finance export skipped for user ${user_id} — recurring export enabled but no recipient email saved`);
+      continue;
+    }
+    try {
+      await sendFinanceExport(user_id, email.trim());
+      console.log(`cron: finance export sent to ${email} (user ${user_id})`);
+    } catch (err) {
+      console.error(`cron: finance export failed for user ${user_id}:`, err.message);
+    }
+  }
+}
+
 // ── Start all cron jobs ───────────────────────────────────────────────────────
 function startCronJobs() {
   // These jobs send REAL email to real profiles. Never start them in local
@@ -305,7 +335,12 @@ function startCronJobs() {
     sendAssetUpdateReminders().catch(err => console.error('cron: asset reminder error:', err.message));
   }, { timezone: 'Asia/Kolkata' });
 
-  console.log('✅ Cron jobs started: habits (every 2 days), meal plan (Sundays), asset reminder (1st of month)');
+  // Finance export: 1st of every month at 8:00 AM (asset reminder runs 9:00 AM same day)
+  cron.schedule('0 8 1 * *', () => {
+    sendMonthlyFinanceExports().catch(err => console.error('cron: finance export error:', err.message));
+  }, { timezone: 'Asia/Kolkata' });
+
+  console.log('✅ Cron jobs started: habits (every 2 days), meal plan (Sundays), asset reminder (1st of month), finance export (1st of month)');
 }
 
-module.exports = { startCronJobs };
+module.exports = { startCronJobs, sendMonthlyFinanceExports };

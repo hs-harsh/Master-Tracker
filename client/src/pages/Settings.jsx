@@ -45,6 +45,11 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(null);
 
+  // ── Monthly finance export ─────────────────────────────────────────────────
+  const [financeExportEnabled, setFinanceExportEnabled] = useState(false);
+  const [financeExportEmail,   setFinanceExportEmail]   = useState('');
+  const [savingFinanceExport,  setSavingFinanceExport]  = useState(false);
+
   // ── Load global settings ────────────────────────────────────────────────────
   const load = () => {
     api.get('/settings').then(r => {
@@ -61,6 +66,8 @@ export default function Settings() {
       setExpenseAnalyserSlotsPerProfile(
         typeof d.expenseAnalyserSlotsPerProfile === 'number' ? d.expenseAnalyserSlotsPerProfile : 3
       );
+      setFinanceExportEnabled(!!d.financeExportRecurringEnabled);
+      setFinanceExportEmail(d.financeExportRecurringEmail || '');
       applyTheme(d.themeMode || 'dark', d.accent || 'gold');
     }).catch(() => {});
   };
@@ -110,6 +117,20 @@ export default function Settings() {
       alert(err.response?.data?.error || 'Failed to save email');
     } finally {
       setSavingEmail(s => ({ ...s, [personName]: false }));
+    }
+  };
+
+  const handleSaveFinanceExport = async () => {
+    setSavingFinanceExport(true);
+    try {
+      await api.put('/settings', {
+        financeExportRecurringEnabled: financeExportEnabled,
+        financeExportRecurringEmail: financeExportEmail.trim(),
+      });
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to save monthly export settings');
+    } finally {
+      setSavingFinanceExport(false);
     }
   };
 
@@ -245,6 +266,51 @@ export default function Settings() {
             }}
           />
         </div>
+      </div>
+
+      {/* ── 1b. Monthly Finance Export ── */}
+      <div className="card max-w-2xl">
+        <div className="flex items-center gap-2 mb-4">
+          <Mail size={18} className="text-soft" />
+          <h2 className="font-display font-bold text-white">Monthly Finance Export</h2>
+        </div>
+        <p className="text-sm text-soft mb-4">
+          On the 1st of every month, email a combined PDF report and Excel workbook covering every profile
+          (net worth, portfolio, investments, illiquid assets, cashflow and transactions).
+        </p>
+        <label className="flex items-center justify-between gap-4 cursor-pointer mb-4">
+          <span className="text-sm text-white">Enable monthly export</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={financeExportEnabled}
+            onClick={() => setFinanceExportEnabled(v => !v)}
+            className={`tap relative w-11 h-6 rounded-full transition-colors shrink-0 ${financeExportEnabled ? 'bg-accent' : 'bg-muted/40'}`}
+          >
+            <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-accent-fg transition-transform ${financeExportEnabled ? 'translate-x-5' : ''}`} />
+          </button>
+        </label>
+        <div className="flex gap-2 items-center">
+          <Mail size={13} className="text-muted shrink-0" />
+          <input
+            className="input flex-1 text-sm"
+            type="email"
+            placeholder="you@example.com"
+            value={financeExportEmail}
+            onChange={e => setFinanceExportEmail(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSaveFinanceExport()}
+          />
+          <button
+            onClick={handleSaveFinanceExport}
+            disabled={savingFinanceExport}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold min-h-[44px]
+              bg-hairline/5 text-soft border border-hairline/15 hover:text-text hover:border-hairline/25 transition-colors disabled:opacity-50">
+            <Save size={12} />{savingFinanceExport ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+        {financeExportEnabled && !financeExportEmail.trim() && (
+          <p className="text-[11px] text-hue-amber mt-2">Enabled but no recipient email saved yet — the monthly export will be skipped until one is set.</p>
+        )}
       </div>
 
       {/* ── 2. Preferences ── */}

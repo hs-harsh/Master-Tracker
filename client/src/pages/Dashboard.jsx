@@ -10,10 +10,11 @@ import {
 } from 'recharts';
 import api from '../lib/api';
 import { fmt, fmtDate, colorFor, ASSET_COLORS } from '../lib/utils';
-import { TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle2, Info, ArrowRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle2, Info, ArrowRight, Download } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
 import RangeChips from '../components/RangeChips';
+import ExportModal from '../components/ExportModal';
 import { TT, AX, GRID, CHROME, identityPalette } from '../lib/chartTheme';
 import { useNavigate } from 'react-router-dom';
 
@@ -500,6 +501,7 @@ export default function Dashboard() {
   const [otherAssetsMap, setOtherAssetsMap] = useState({});
   const [loading, setLoading]               = useState(true);
   const [fxRates, setFxRates]               = useState({ INR: 1 });
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const currentPerson = activePerson || personName;
 
@@ -560,7 +562,16 @@ export default function Dashboard() {
 
   return (
     <div className="stack">
-      <PageHeader className="fade-up" title={currentPerson ? `${currentPerson}'s Dashboard` : 'Dashboard'} eyebrow="Financial health overview" />
+      <PageHeader
+        className="fade-up"
+        title={currentPerson ? `${currentPerson}'s Dashboard` : 'Dashboard'}
+        eyebrow="Financial health overview"
+        actions={
+          <button type="button" onClick={() => setExportModalOpen(true)} className="btn-ghost flex items-center gap-2">
+            <Download size={14} /> Export &amp; Email
+          </button>
+        }
+      />
 
       <PersonPanel
         person={currentPerson}
@@ -569,6 +580,8 @@ export default function Dashboard() {
         otherAssets={otherAssetsMap[currentPerson] || []}
         fxRates={fxRates}
       />
+
+      {exportModalOpen && <ExportModal onClose={() => setExportModalOpen(false)} />}
     </div>
   );
 }

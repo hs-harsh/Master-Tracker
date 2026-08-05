@@ -494,4 +494,4 @@ async function sendMealPlanEmail(toEmail, personName, { weekStart, entries, groc
   });
 }
 
-module.exports = { sendAdminOtp, sendLoginOtp, sendMealPlanEmail, sendWorkoutPlanEmail, sendEmail };
+module.exports = { sendAdminOtp, sendLoginOtp, sendMealPlanEmail, sendWorkoutPlanEmail, sendEmail, sendMail };

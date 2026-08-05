@@ -45,6 +45,7 @@ app.use('/api/meals',    require('./routes/meals'));
 app.use('/api/workouts', require('./routes/workouts'));
 app.use('/api/backtest', require('./routes/backtest'));
 app.use('/api/other-assets', require('./routes/otherAssets'));
+app.use('/api/export', require('./routes/export'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));

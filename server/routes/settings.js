@@ -15,6 +15,7 @@ const USER_KEYS = [
   'onboarding_completed',
   'sidebar_finance_enabled', 'sidebar_wellness_enabled', 'sidebar_live_trading_enabled',
   'expense_analyser_slots_per_profile',
+  'finance_export_recurring_enabled', 'finance_export_recurring_email',
 ];
 
 async function getUserSetting(userId, key) {
@@ -68,6 +69,7 @@ async function buildSettingsResponse(userId) {
     onboardingCompleted,
     sidebarFinanceEnabled, sidebarWellnessEnabled, sidebarLiveTradingEnabled,
     expenseAnalyserSlotsPerProfile,
+    financeExportRecurringEnabled, financeExportRecurringEmail,
   ] = await Promise.all(USER_KEYS.map(get));
   const anthropicApiKey = await getGlobalSetting('anthropic_api_key');
   const effectiveTheme = themeMode || 'dark';
@@ -88,6 +90,8 @@ async function buildSettingsResponse(userId) {
     sidebarWellnessEnabled: sidebarWellnessEnabled !== '0',
     sidebarLiveTradingEnabled: sidebarLiveTradingEnabled !== '0',
     expenseAnalyserSlotsPerProfile: Math.min(10, Math.max(1, parseInt(expenseAnalyserSlotsPerProfile || '3', 10) || 3)),
+    financeExportRecurringEnabled: financeExportRecurringEnabled === '1',
+    financeExportRecurringEmail: financeExportRecurringEmail || '',
   };
 }
 
@@ -157,6 +161,12 @@ router.put('/', auth, async (req, res) => {
       const n = parseInt(body.expenseAnalyserSlotsPerProfile, 10);
       const v = Number.isFinite(n) ? Math.min(10, Math.max(1, n)) : 3;
       await setUserSetting(uid, 'expense_analyser_slots_per_profile', String(v));
+    }
+    if (body.financeExportRecurringEnabled !== undefined) {
+      await setUserSetting(uid, 'finance_export_recurring_enabled', body.financeExportRecurringEnabled ? '1' : '0');
+    }
+    if (body.financeExportRecurringEmail !== undefined) {
+      await setUserSetting(uid, 'finance_export_recurring_email', typeof body.financeExportRecurringEmail === 'string' ? body.financeExportRecurringEmail.trim() : '');
     }
 
     res.json(await buildSettingsResponse(uid));
