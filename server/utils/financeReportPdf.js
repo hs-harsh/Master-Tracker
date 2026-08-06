@@ -572,18 +572,15 @@ function buildFinanceReportPdf(data) {
       doc.moveDown(0.5);
 
       // — Transactions ——————————————————————————————————————————————
+      // Full history, not a recent window — the report is meant to be
+      // complete on its own, not a teaser pointing at the Excel workbook.
       ensureSpace(60);
-      const monthsBack = 6;
-      const cutoff = new Date();
-      cutoff.setMonth(cutoff.getMonth() - monthsBack);
-      const allTx = pd.transactions || [];
-      const recentTx = allTx.filter((t) => {
-        const iso = toIsoDatePrefix(t.date);
-        if (!iso) return false;
-        const d = new Date(iso + 'T12:00:00');
-        return !isNaN(d.getTime()) && d >= cutoff;
+      const allTx = (pd.transactions || []).slice().sort((a, b) => {
+        const da = toIsoDatePrefix(a.date) || '';
+        const db = toIsoDatePrefix(b.date) || '';
+        return db.localeCompare(da); // newest first, matches the rest of the report
       });
-      subTitle(doc, `Transactions — last ${monthsBack} months`, contentW, margin);
+      subTitle(doc, 'Transactions', contentW, margin);
       renderTable(
         [
           { label: 'Date', width: 70, get: (r) => fmtDateShort(r.date) },
@@ -591,17 +588,9 @@ function buildFinanceReportPdf(data) {
           { label: 'Remark', width: contentW - (70 + 90 + 85), get: (r) => r.remark || '' },
           { label: 'Amount', width: 85, align: 'right', get: (r) => fmtCompact(r.amount, 'INR') },
         ],
-        recentTx,
-        { emptyText: `No transactions in the last ${monthsBack} months.` }
+        allTx,
+        { emptyText: 'No transactions.' }
       );
-      if (allTx.length > recentTx.length) {
-        ensureSpace(14);
-        doc.font('Helvetica').fontSize(8).fillColor(C.muted).text(
-          `+ ${allTx.length - recentTx.length} more transaction${allTx.length - recentTx.length === 1 ? '' : 's'} outside this window — see attached Excel workbook for full history.`,
-          margin, doc.y, { width: contentW }
-        );
-        doc.moveDown(0.4);
-      }
     });
 
     doc.end();
