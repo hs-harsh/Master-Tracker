@@ -53,16 +53,34 @@ function fmtCompact(n, currency) {
   return `${sign}${sym} ${abs.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 }
 
+// `ds` arrives as either an ISO-ish date string (e.g. from the Excel export
+// path / hand-built test data) or a native JS Date (node-pg decodes `date`-
+// typed columns to Date objects, not strings — this is the real shape for
+// every row that comes from buildFinanceExportData). Stringifying a Date
+// with String() gives something like "Fri Aug 01 2025 00:00:00 GMT+0530
+// (India Standard Time)", whose first 10 characters are NOT an ISO date, so
+// appending "T12:00:00" to that silently produced an invalid Date — every
+// Month/As-of cell rendered blank against real DB data. Normalize to an ISO
+// "YYYY-MM-DD" prefix first, regardless of which shape came in.
+function toIsoDatePrefix(ds) {
+  if (ds instanceof Date) return isNaN(ds.getTime()) ? '' : ds.toISOString().slice(0, 10);
+  return String(ds).slice(0, 10);
+}
+
 function fmtDateShort(ds) {
   if (!ds) return '';
-  const d = new Date(String(ds).slice(0, 10) + 'T12:00:00');
+  const iso = toIsoDatePrefix(ds);
+  if (!iso) return '';
+  const d = new Date(iso + 'T12:00:00');
   if (isNaN(d.getTime())) return '';
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' });
 }
 
 function fmtMonth(ds) {
   if (!ds) return '';
-  const d = new Date(String(ds).slice(0, 10) + 'T12:00:00');
+  const iso = toIsoDatePrefix(ds);
+  if (!iso) return '';
+  const d = new Date(iso + 'T12:00:00');
   if (isNaN(d.getTime())) return '';
   return d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
 }
@@ -86,7 +104,38 @@ function sectionTitle(doc, text, contentW, marginX, opts = {}) {
 function subTitle(doc, text, contentW, marginX) {
   doc.font('Helvetica-Bold').fontSize(10.5).fillColor(C.soft).text(text, marginX, doc.y, { width: contentW });
   doc.x = marginX;
-  doc.moveDown(0.25);
+  doc.moveDown(0.3);
+}
+
+// Truncates `text` to fit within `maxLines` lines at the doc's *currently
+// set* font/fontSize (heightOfString and currentLineHeight both depend on
+// that state, so this must run after doc.font()/doc.fontSize() are set to
+// whatever will actually be used to draw the cell). Returns the text
+// unchanged when it already fits. Used as a safety net for pathologically
+// long single cells (e.g. a very long instrument name in a narrow column) —
+// the primary fix for row overlap is dynamic row height (see measureCell /
+// renderTable below), not this; this only caps the rare cell that would
+// otherwise balloon a whole row.
+function fitTextToLines(doc, text, width, maxLines) {
+  const full = text == null ? '' : String(text);
+  if (!full) return '';
+  const lineH = doc.currentLineHeight(true);
+  const capH = lineH * maxLines + 0.5;
+  if (doc.heightOfString(full, { width }) <= capH) return full;
+  let lo = 0;
+  let hi = full.length;
+  let best = full.charAt(0);
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const candidate = `${full.slice(0, mid).trimEnd()}…`;
+    if (doc.heightOfString(candidate, { width }) <= capH) {
+      best = candidate;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return best;
 }
 
 /** Simple horizontal bar chart drawn with pdfkit rects — no charting library. */
@@ -200,16 +249,28 @@ function buildFinanceReportPdf(data) {
     // columns: [{ label, width, align?, get: (row) => string }]
     // Redraws the header row after every page break so a table that spans
     // pages never loses its column labels mid-stream.
+    //
+    // Row height is computed per-row from actual wrapped text (pdfkit's
+    // doc.heightOfString at the column's width), not a fixed constant — a
+    // fixed row height meant a wrapped two-line instrument/broker name would
+    // render its second line into the space already claimed by the next
+    // row, overlapping it. Cells wrap freely up to `opts.maxLines` (default
+    // 3); anything that would still overflow that gets ellipsis-truncated
+    // via fitTextToLines as a safety net so one pathological name can't
+    // balloon a whole table.
     function renderTable(columns, rows, opts = {}) {
       const totalW = columns.reduce((s, c) => s + c.width, 0);
-      const rowH = opts.rowH || 13;
+      const minRowH = opts.rowH || 14;
+      const rowVPad = opts.rowVPad != null ? opts.rowVPad : 5;
+      const rowGap = opts.rowGap != null ? opts.rowGap : 3;
+      const maxLines = opts.maxLines || 3;
       const headerH = opts.headerH || 16;
       const fontSize = opts.fontSize || 8;
       const headerFontSize = opts.headerFontSize || 7.5;
       const startX = margin;
 
       function drawHeader() {
-        ensureSpace(headerH + rowH);
+        ensureSpace(headerH + minRowH);
         // Fix the row's y once — pdfkit's doc.text() advances doc.y after
         // every call, so re-reading doc.y per column (instead of a captured
         // constant) makes each successive column drift lower than the last.
@@ -233,20 +294,49 @@ function buildFinanceReportPdf(data) {
 
       drawHeader();
       rows.forEach((row, idx) => {
-        if (doc.y + rowH > ph - margin) {
+        doc.font('Helvetica').fontSize(fontSize).fillColor(C.text);
+
+        // Measure first (at the font this row draws with) so the row's
+        // actual height is known before anything is drawn or the page is
+        // paginated — both the ensureSpace check below and the eventual
+        // doc.y advance need the real number, not a guess.
+        const cellTexts = columns.map((col) => {
+          const raw = col.get(row, idx);
+          const str = raw == null ? '' : String(raw);
+          const w = Math.max(0, col.width - 4);
+          return fitTextToLines(doc, str, w, maxLines);
+        });
+        const cellHeights = columns.map((col, i) => {
+          const w = Math.max(0, col.width - 4);
+          return doc.heightOfString(cellTexts[i] || ' ', { width: w });
+        });
+        const contentH = Math.max(...cellHeights, doc.currentLineHeight(true));
+        const thisRowH = Math.max(minRowH, contentH + rowVPad);
+
+        if (doc.y + thisRowH > ph - margin) {
           newPage();
           doc.x = startX;
           drawHeader();
+          doc.font('Helvetica').fontSize(fontSize).fillColor(C.text);
         }
+
         const rowY = doc.y;
         let cx = startX;
         doc.font('Helvetica').fontSize(fontSize).fillColor(C.text);
-        columns.forEach((col) => {
-          const val = col.get(row, idx);
-          doc.text(val == null ? '' : String(val), cx, rowY, { width: Math.max(0, col.width - 4), lineBreak: false, align: col.align || 'left' });
+        columns.forEach((col, i) => {
+          doc.text(cellTexts[i], cx, rowY, { width: Math.max(0, col.width - 4), align: col.align || 'left' });
           cx += col.width;
         });
-        doc.y = rowY + rowH;
+        doc.y = rowY + thisRowH + rowGap;
+
+        // A hairline row separator, centered in the gap between rows — with
+        // variable row heights a table reads a lot more cleanly with
+        // something to anchor the eye per row than pure whitespace,
+        // especially where a wrapped row sits next to single-line ones.
+        if (idx < rows.length - 1) {
+          doc.moveTo(startX, doc.y - rowGap / 2).lineTo(startX + totalW, doc.y - rowGap / 2)
+            .strokeColor(C.border).lineWidth(0.4).opacity(0.6).stroke().opacity(1);
+        }
       });
       doc.x = startX;
       doc.moveDown(0.4);
@@ -290,15 +380,22 @@ function buildFinanceReportPdf(data) {
     if (persons.length === 0) {
       doc.font('Helvetica').fontSize(9).fillColor(C.muted).text('No profiles found for this account.', { width: contentW });
     } else {
-      persons.forEach((p) => {
-        ensureSpace(18);
-        const r = netWorth[p];
-        doc.font('Helvetica-Bold').fontSize(9).fillColor(C.text).text(p, margin, doc.y, { width: 100, continued: true, lineBreak: false });
-        doc.font('Helvetica').fontSize(9).fillColor(C.soft).text(
-          `  invested ${fmtInr(r.invested)}  ·  illiquid ${fmtInr(r.otherVal)}  ·  loans ${fmtInr(r.loans)}  ·  net ${fmtInr(r.nw)}`,
-          { width: contentW - 100 }
-        );
-      });
+      // A real table (via the shared renderTable, so numeric columns line up
+      // right-aligned like everywhere else) instead of one long
+      // "label + inline figures" line per person — with a long profile name
+      // or on a narrow render, that line-wrapped mid-figure (e.g. "Rs" on
+      // one line, "10.80L" on the next), which read badly.
+      renderTable(
+        [
+          { label: 'Profile', width: contentW * 0.22, get: (r) => r.label },
+          { label: 'Invested', width: contentW * 0.19, align: 'right', get: (r) => fmtInr(r.invested) },
+          { label: 'Illiquid', width: contentW * 0.19, align: 'right', get: (r) => fmtInr(r.otherVal) },
+          { label: 'Loans', width: contentW * 0.19, align: 'right', get: (r) => fmtInr(r.loans) },
+          { label: 'Net worth', width: contentW - contentW * (0.22 + 0.19 + 0.19 + 0.19), align: 'right', get: (r) => fmtInr(r.nw) },
+        ],
+        persons.map((p) => ({ label: p, ...netWorth[p] })),
+        { fontSize: 9, headerFontSize: 8 }
+      );
     }
     doc.moveDown(0.4);
     doc.font('Helvetica-Oblique').fontSize(8).fillColor(C.muted).text(
@@ -313,8 +410,8 @@ function buildFinanceReportPdf(data) {
 
       newPage();
 
-      doc.font('Helvetica-Bold').fontSize(16).fillColor(C.text).text(person, margin, doc.y, { width: contentW });
-      doc.moveDown(0.5);
+      sectionTitle(doc, person, contentW, margin, { size: 16 });
+      doc.moveDown(0.2);
 
       // — Dashboard ————————————————————————————————————————————————
       subTitle(doc, 'Dashboard', contentW, margin);
@@ -380,8 +477,8 @@ function buildFinanceReportPdf(data) {
       renderTable(
         [
           { label: 'Asset class', width: contentW * 0.4, get: (r) => r.label },
-          { label: 'Net invested (INR)', width: contentW * 0.35, get: (r) => fmtInr(r.value) },
-          { label: '% of portfolio', width: contentW * 0.25, get: (r) => fmtPct((Math.abs(r.value) / totalAbs) * 100) },
+          { label: 'Net invested (INR)', width: contentW * 0.35, align: 'right', get: (r) => fmtInr(r.value) },
+          { label: '% of portfolio', width: contentW * 0.25, align: 'right', get: (r) => fmtPct((Math.abs(r.value) / totalAbs) * 100) },
         ],
         assetBars,
         { emptyText: 'No investment positions recorded yet.' }
@@ -481,7 +578,9 @@ function buildFinanceReportPdf(data) {
       cutoff.setMonth(cutoff.getMonth() - monthsBack);
       const allTx = pd.transactions || [];
       const recentTx = allTx.filter((t) => {
-        const d = new Date(String(t.date).slice(0, 10) + 'T12:00:00');
+        const iso = toIsoDatePrefix(t.date);
+        if (!iso) return false;
+        const d = new Date(iso + 'T12:00:00');
         return !isNaN(d.getTime()) && d >= cutoff;
       });
       subTitle(doc, `Transactions — last ${monthsBack} months`, contentW, margin);

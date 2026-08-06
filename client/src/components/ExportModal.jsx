@@ -1,108 +1,78 @@
-import { useState } from 'react';
-import { X, Mail, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import api from '../lib/api';
 
 /**
- * "Export & Email" modal — Dashboard button opens this. Single recipient
- * email field (no scope selector: the export always covers every person on
- * the account, aggregated per-person). Shell/overlay style matches
- * ReportModal.jsx.
+ * "Export & Email" trigger — mounted by Dashboard.jsx when the "Export &
+ * Email" button is clicked (Dashboard owns an `exportModalOpen` boolean and
+ * renders `{exportModalOpen && <ExportModal onClose={...} />}`; that wiring
+ * is unchanged).
+ *
+ * This used to be a centered modal asking for a recipient email. The
+ * recipient is now always the account owner's own address — the server
+ * defaults `toEmail` from the JWT when it's omitted (see
+ * server/routes/export.js) — so there's nothing left to type. On mount this
+ * fires the send immediately with no body and renders as a small anchored
+ * status card (no backdrop, no dialog, nothing to click through): a brief
+ * loading state, then success or error, then it closes itself via onClose()
+ * so the Dashboard button reverts to normal on its own.
  */
 export default function ExportModal({ onClose }) {
-  const [email, setEmail] = useState('');
-  const [status, setStatus] = useState('idle'); // idle | sending | success | error
+  const [status, setStatus] = useState('sending'); // sending | success | error
   const [error, setError] = useState('');
+  const firedRef = useRef(false);
 
-  const handleSend = async () => {
-    const trimmed = email.trim();
-    if (!trimmed) { setError('Enter a recipient email address'); return; }
-    setStatus('sending');
-    setError('');
-    try {
-      await api.post('/export/email', { toEmail: trimmed });
-      setStatus('success');
-    } catch (err) {
-      setStatus('error');
-      setError(err.response?.data?.error || 'Failed to send export');
-    }
-  };
+  useEffect(() => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    let closeTimer;
+    api.post('/export/email', {})
+      .then(() => {
+        setStatus('success');
+        closeTimer = setTimeout(() => onClose(), 2200);
+      })
+      .catch((err) => {
+        setStatus('error');
+        setError(err.response?.data?.error || 'Failed to send export');
+        closeTimer = setTimeout(() => onClose(), 4500);
+      });
+    return () => clearTimeout(closeTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center overflow-y-auto bg-black/70 p-0 sm:p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-ink border border-border rounded-t-xl sm:rounded-xl shadow-xl max-w-md w-full sm:my-8"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-5 sm:px-6 pt-5 pb-3 flex items-center justify-between border-b border-border safe-area-top">
-          <div className="min-w-0 pr-8">
-            <h2 className="font-display text-lg font-bold text-white">Export &amp; Email</h2>
-            <p className="text-muted text-xs mt-0.5">Combined PDF + Excel workbook, all profiles</p>
-          </div>
-          <button type="button" onClick={onClose} className="text-muted hover:text-white p-1 shrink-0">
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="p-5 sm:p-6 space-y-4">
-          {status === 'success' ? (
-            <div className="flex flex-col items-center text-center gap-3 py-4">
-              <CheckCircle2 size={36} className="text-pos" />
-              <p className="text-sm text-white font-semibold">Export sent</p>
-              <p className="text-xs text-soft">
-                A combined PDF report and Excel workbook were emailed to <span className="font-mono text-text">{email.trim()}</span>.
-              </p>
-              <button onClick={onClose} className="btn-primary mt-2">Done</button>
+    <div className="fixed top-4 inset-x-4 sm:inset-x-auto sm:right-4 sm:w-80 z-50 safe-area-top">
+      <div className="bg-ink border border-border rounded-xl shadow-xl px-4 py-3 flex items-start gap-3">
+        {status === 'sending' && (
+          <>
+            <Loader2 size={16} className="text-accent animate-spin shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm text-white font-semibold">Sending…</p>
+              <p className="text-xs text-muted mt-0.5">Emailing your finance report to yourself.</p>
             </div>
-          ) : (
-            <>
-              <div>
-                <label className="label mb-1.5 block">Recipient email</label>
-                <div className="flex items-center gap-2">
-                  <Mail size={14} className="text-muted shrink-0" />
-                  <input
-                    type="email"
-                    className="input flex-1"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                    autoFocus
-                  />
-                </div>
-                <p className="text-[11px] text-muted mt-1.5">
-                  Covers every profile on this account — net worth, portfolio, investments, illiquid assets, cashflow and transactions.
-                </p>
-              </div>
-
-              {status === 'error' && (
-                <div className="flex items-start gap-2 rounded-lg bg-rose/10 border border-rose/30 px-3 py-2">
-                  <AlertTriangle size={14} className="text-rose shrink-0 mt-0.5" />
-                  <p className="text-xs text-rose">{error}</p>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-1">
-                <button onClick={onClose} className="btn-ghost">Cancel</button>
-                <button
-                  onClick={handleSend}
-                  disabled={status === 'sending' || !email.trim()}
-                  className="btn-primary flex items-center gap-2"
-                >
-                  {status === 'sending' ? (
-                    <><Loader2 size={14} className="animate-spin" /> Sending…</>
-                  ) : (
-                    <><Mail size={14} /> Send</>
-                  )}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+          </>
+        )}
+        {status === 'success' && (
+          <>
+            <CheckCircle2 size={16} className="text-pos shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm text-white font-semibold">Email sent</p>
+              <p className="text-xs text-muted mt-0.5">Check your inbox for the PDF + Excel report.</p>
+            </div>
+          </>
+        )}
+        {status === 'error' && (
+          <>
+            <AlertTriangle size={16} className="text-rose shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-white font-semibold">Couldn&rsquo;t send export</p>
+              <p className="text-xs text-rose mt-0.5">{error}</p>
+            </div>
+            <button type="button" onClick={onClose} className="text-muted hover:text-white p-1 shrink-0">
+              <X size={16} />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

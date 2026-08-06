@@ -26,11 +26,18 @@ function isRateLimited(userId) {
 }
 
 // POST /api/export/email — on-demand Finance export (Dashboard button).
-// Body: { toEmail }. No scope field — always aggregates every person on the
-// account, per-person (not combined-then-summed).
+// Body: { toEmail } — optional. In practice the recipient is always the
+// account owner's own address, so when omitted this defaults to
+// req.user.username (that's the column login email lives in — see
+// server/routes/auth.js, which signs the JWT with { username: <login email> }
+// and looks users up via `WHERE username = $1`). An explicit toEmail in the
+// body still overrides the default, in case that's useful later.
+// No scope field — always aggregates every person on the account, per-person
+// (not combined-then-summed).
 router.post('/email', auth, async (req, res) => {
   try {
-    const toEmail = typeof req.body?.toEmail === 'string' ? req.body.toEmail.trim() : '';
+    const bodyEmail = typeof req.body?.toEmail === 'string' ? req.body.toEmail.trim() : '';
+    const toEmail = bodyEmail || req.user.username || '';
     if (!toEmail) return res.status(400).json({ error: 'toEmail is required' });
 
     if (isRateLimited(req.user.id)) {
