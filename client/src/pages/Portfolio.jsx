@@ -3,13 +3,13 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, Legend,
 } from 'recharts';
-import { PieChart as PieIcon, Target, Wallet, Loader2, ChevronDown, ChevronRight, ArrowUp, ArrowDown, TrendingUp } from 'lucide-react';
+import { PieChart as PieIcon, Target, Wallet, Loader2, ChevronDown, ChevronRight, TrendingUp } from 'lucide-react';
 import api from '../lib/api';
 import { fmt } from '../lib/utils';
 import TradeFeedbackCard from '../components/TradeFeedbackCard';
 import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/PageHeader';
-import EmptyState, { EmptyRow } from '../components/EmptyState';
+import EmptyState from '../components/EmptyState';
 import DataRow from '../components/DataRow';
 import { TT, AX, HUE, identityPalette } from '../lib/chartTheme';
 
@@ -50,8 +50,6 @@ export default function Portfolio() {
   const [fxFetching, setFxFetching] = useState(false);
   const [expandedAssets, setExpandedAssets] = useState(new Set());
   const [expandedInstruments, setExpandedInstruments] = useState(new Set());
-  const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' });
-  const handleSort = key => setSortConfig(prev => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }));
   const [otherAssetsData, setOtherAssetsData] = useState([]);
 
   const toggleAsset = (assetClass) => setExpandedAssets(prev => {
@@ -222,15 +220,6 @@ export default function Portfolio() {
   const goldVal   = Math.max(0, assetBuckets.Gold || 0) + Math.max(0, assetBuckets['Real Estate'] || 0);
   const cashVal   = Math.max(0, assetBuckets.Cash || 0);
   const totalAbs  = equityVal + debtVal + goldVal + cashVal || 1;
-
-  const sortedHoldings = sortConfig.key
-    ? [...enriched].sort((a, b) => {
-        let av = a[sortConfig.key], bv = b[sortConfig.key];
-        if (sortConfig.key === 'net') { av = Number(av ?? 0); bv = Number(bv ?? 0); }
-        else { av = String(av ?? '').toLowerCase(); bv = String(bv ?? '').toLowerCase(); }
-        return (av < bv ? -1 : av > bv ? 1 : 0) * (sortConfig.dir === 'asc' ? 1 : -1);
-      })
-    : enriched;
 
   return (
     <div className="stack">
@@ -467,53 +456,6 @@ export default function Portfolio() {
           })}
         </div>
       )}
-
-      {/* Full holdings table */}
-      <div className="card overflow-hidden">
-        <p className="text-muted text-xs mb-3">All positions — net (BUY − SELL)</p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                {(() => {
-                  const SortIcon = ({ k }) => sortConfig.key === k
-                    ? (sortConfig.dir === 'asc' ? <ArrowUp size={10} className="inline ml-0.5" /> : <ArrowDown size={10} className="inline ml-0.5" />)
-                    : null;
-                  const sortable = "th th-sort py-3 px-4";
-                  return (<>
-                    <th className={sortable} onClick={() => handleSort('goal')}>Goal<SortIcon k="goal" /></th>
-                    <th className={sortable} onClick={() => handleSort('instrument')}>Instrument<SortIcon k="instrument" /></th>
-                    <th className={sortable} onClick={() => handleSort('asset_class')}>Asset<SortIcon k="asset_class" /></th>
-                    <th className={sortable} onClick={() => handleSort('net')}>Net Invested<SortIcon k="net" /></th>
-                    <th className={sortable} onClick={() => handleSort('broker')}>Broker<SortIcon k="broker" /></th>
-                  </>);
-                })()}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={5} className="py-8 text-center text-muted font-mono text-sm animate-pulse">Loading…</td></tr>
-              ) : sortedHoldings.length === 0 ? (
-                goalFilter || brokerFilter
-                  ? <EmptyRow colSpan={5} icon={PieIcon} title="No positions match these filters"
-                      hint="Clear the goal or broker filter to see the rest of your holdings." />
-                  : <EmptyRow colSpan={5} icon={PieIcon} title="No investments yet"
-                      hint="Add investments to see your positions broken down here." />
-              ) : (
-                sortedHoldings.map((row, i) => (
-                  <tr key={i} className="border-b border-hairline/15 hover:bg-surface/40 transition-colors">
-                    <td className="py-3 px-4 text-xs text-soft">{row.goal}</td>
-                    <td className="py-3 px-4 text-xs text-soft max-w-[160px] truncate">{row.instrument}</td>
-                    <td className="py-3 px-4 text-xs"><span className="tag bg-card/60">{row.asset_class}</span></td>
-                    <td className="py-3 px-4 font-mono text-soft">{row.net >= 0 ? '' : '−'}{fmt(Math.abs(row.net))}</td>
-                    <td className="py-3 px-4 text-xs text-muted">{row.broker}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
       {/* ── Illiquid Investments Section ──────────────────────────────────── */}
       {hasOtherAssets && (() => {
