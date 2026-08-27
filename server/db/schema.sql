@@ -586,6 +586,29 @@ CREATE TABLE IF NOT EXISTS net_worth_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_net_worth_snapshots_user_date ON net_worth_snapshots(user_id, snapshot_date);
 
+-- Scope net_worth_snapshots per profile — the old UNIQUE(user_id, snapshot_date)
+-- let one profile's snapshot (auto or manual "Record Snapshot") silently
+-- overwrite another profile's row for the same day, corrupting the Net Worth
+-- Trend chart for every profile on that account. Existing rows keep account
+-- NULL (their per-profile split can't be reconstructed) and simply stop
+-- appearing in the per-profile trend once routes filter by account.
+ALTER TABLE net_worth_snapshots ADD COLUMN IF NOT EXISTS account VARCHAR(50);
+DO $$
+DECLARE
+  cname TEXT;
+BEGIN
+  SELECT conname INTO cname FROM pg_constraint
+    WHERE conrelid = 'net_worth_snapshots'::regclass AND contype = 'u'
+      AND conname != 'uq_net_worth_snapshots_user_account_date';
+  IF cname IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE net_worth_snapshots DROP CONSTRAINT ' || quote_ident(cname);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_net_worth_snapshots_user_account_date') THEN
+    ALTER TABLE net_worth_snapshots ADD CONSTRAINT uq_net_worth_snapshots_user_account_date UNIQUE (user_id, account, snapshot_date);
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_net_worth_snapshots_user_account_date ON net_worth_snapshots(user_id, account, snapshot_date);
+
 -- Per-asset value/loan history (recorded on each update)
 CREATE TABLE IF NOT EXISTS other_asset_history (
   id               SERIAL PRIMARY KEY,

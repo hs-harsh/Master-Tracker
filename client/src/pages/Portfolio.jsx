@@ -87,8 +87,9 @@ export default function Portfolio() {
 
   useEffect(() => {
     if (!token) return;
-    api.get('/other-assets').then(r => setOtherAssetsData(r.data || [])).catch(() => {});
-  }, [token]);
+    const param = currentPerson ? `?account=${encodeURIComponent(currentPerson)}` : '';
+    api.get(`/other-assets${param}`).then(r => setOtherAssetsData(r.data || [])).catch(() => {});
+  }, [token, currentPerson]);
 
   const goals   = useMemo(() => Array.from(new Set(data.map(d => d.goal))).sort(), [data]);
   const brokers = useMemo(() => Array.from(new Set(data.map(d => d.broker || '').filter(Boolean))).sort(), [data]);

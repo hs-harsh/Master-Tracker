@@ -362,19 +362,23 @@ async function seedOtherAssets(userId) {
     }
   }
 
-  // Quarterly net-worth snapshots for the trend chart.
-  let nw = 9200000;
-  for (let q = 11; q >= 0; q--) {
-    nw = nw * rand(1.02, 1.06);
-    await pool.query(
-      `INSERT INTO net_worth_snapshots
-         (user_id, snapshot_date, investments_cost, investments_mkt,
-          other_assets_value, other_loans, net_worth)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
-       ON CONFLICT (user_id, snapshot_date) DO NOTHING`,
-      [userId, daysAgo(q * 91), Math.round(nw * 0.55), Math.round(nw * 0.62),
-       Math.round(nw * 0.45), Math.round(nw * 0.18), Math.round(nw)]
-    );
+  // Quarterly net-worth snapshots for the trend chart — one series per
+  // account, so switching profiles shows each person's own trend rather
+  // than a combined figure bleeding across profiles.
+  for (const acct of ['Harsh', 'Kirti']) {
+    let nw = acct === 'Harsh' ? 9200000 : 3400000;
+    for (let q = 11; q >= 0; q--) {
+      nw = nw * rand(1.02, 1.06);
+      await pool.query(
+        `INSERT INTO net_worth_snapshots
+           (user_id, account, snapshot_date, investments_cost, investments_mkt,
+            other_assets_value, other_loans, net_worth)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (user_id, account, snapshot_date) DO NOTHING`,
+        [userId, acct, daysAgo(q * 91), Math.round(nw * 0.55), Math.round(nw * 0.62),
+         Math.round(nw * 0.45), Math.round(nw * 0.18), Math.round(nw)]
+      );
+    }
   }
 
   // A couple of user-defined categories so the type editor is non-empty.
@@ -847,7 +851,7 @@ async function seedFullUser() {
   console.log(`   transactions   ${txns} across all 7 types × 3 accounts`);
   console.log(`   cashflow       ${cashflow} rows (24 months × 2 profiles)`);
   console.log(`   investments    ${inv} rows in INR, USD and GBP`);
-  console.log(`   other assets   ${A_OTHER_ASSETS.length} + ${hist} history points + 12 net-worth snapshots`);
+  console.log(`   other assets   ${A_OTHER_ASSETS.length} + ${hist} history points + 24 net-worth snapshots (2 profiles × 12)`);
   console.log(`   habits         ${habits} day-entries over 8 weeks (with gaps)`);
   console.log(`   meals          ${meals} entries across 4 weekly plans`);
   console.log(`   workouts       ${workouts} exercise logs over 8 weeks`);

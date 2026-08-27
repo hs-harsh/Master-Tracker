@@ -23,26 +23,26 @@ async function checkAccountOwnership(userId, account) {
   return rows.length > 0;
 }
 
-async function autoSnapshot(userId, today) {
+async function autoSnapshot(userId, account, today) {
   const { rows } = await pool.query(
     `SELECT
        COALESCE(SUM(current_value), 0)    AS other_assets_value,
        COALESCE(SUM(loan_outstanding), 0) AS other_loans
-     FROM other_assets WHERE user_id = $1`,
-    [userId]
+     FROM other_assets WHERE user_id = $1 AND account = $2`,
+    [userId, account]
   );
   const otherVal = parseFloat(rows[0].other_assets_value);
   const otherLoan = parseFloat(rows[0].other_loans);
   const netWorth = otherVal - otherLoan;
   await pool.query(
     `INSERT INTO net_worth_snapshots
-       (user_id, snapshot_date, other_assets_value, other_loans, net_worth)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (user_id, snapshot_date) DO UPDATE
+       (user_id, account, snapshot_date, other_assets_value, other_loans, net_worth)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (user_id, account, snapshot_date) DO UPDATE
        SET other_assets_value = EXCLUDED.other_assets_value,
            other_loans        = EXCLUDED.other_loans,
            net_worth          = EXCLUDED.net_worth`,
-    [userId, today, otherVal, otherLoan, netWorth]
+    [userId, account, today, otherVal, otherLoan, netWorth]
   );
 }
 
@@ -64,17 +64,20 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// GET /snapshots — net worth history
+// GET /snapshots — net worth history; optional ?account= filter (per-profile trend)
 router.get('/snapshots', auth, async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT snapshot_date::text AS date, investments_cost, investments_mkt,
+    const { account } = req.query;
+    let query = `SELECT snapshot_date::text AS date, investments_cost, investments_mkt,
               other_assets_value, other_loans, net_worth
-       FROM net_worth_snapshots
-       WHERE user_id = $1
-       ORDER BY snapshot_date ASC`,
-      [req.user.id]
-    );
+       FROM net_worth_snapshots WHERE user_id = $1`;
+    const params = [req.user.id];
+    if (account) {
+      query += ` AND account = $2`;
+      params.push(account);
+    }
+    query += ` ORDER BY snapshot_date ASC`;
+    const { rows } = await pool.query(query, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -250,7 +253,7 @@ router.put('/:id', auth, async (req, res) => {
     );
 
     const today = new Date().toISOString().slice(0, 10);
-    await autoSnapshot(req.user.id, today);
+    await autoSnapshot(req.user.id, rows[0].account, today);
 
     res.json(rows[0]);
   } catch (err) {
@@ -291,23 +294,27 @@ router.get('/:id/history', auth, async (req, res) => {
 // POST /snapshot — manual snapshot from client (includes investment totals)
 router.post('/snapshot', auth, async (req, res) => {
   try {
-    const { investments_cost = 0, investments_mkt, other_assets_value = 0, other_loans = 0, net_worth, snapshot_date } = req.body;
+    const { account, investments_cost = 0, investments_mkt, other_assets_value = 0, other_loans = 0, net_worth, snapshot_date } = req.body;
+    if (account) {
+      const owned = await checkAccountOwnership(req.user.id, account);
+      if (!owned) return res.status(403).json({ error: 'Account not found for this user' });
+    }
     const date = snapshot_date || new Date().toISOString().slice(0, 10);
     const nw = net_worth !== undefined ? net_worth : (
       (investments_mkt || investments_cost) + other_assets_value - other_loans
     );
     const { rows } = await pool.query(
       `INSERT INTO net_worth_snapshots
-         (user_id, snapshot_date, investments_cost, investments_mkt, other_assets_value, other_loans, net_worth)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
-       ON CONFLICT (user_id, snapshot_date) DO UPDATE
+         (user_id, account, snapshot_date, investments_cost, investments_mkt, other_assets_value, other_loans, net_worth)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (user_id, account, snapshot_date) DO UPDATE
          SET investments_cost   = EXCLUDED.investments_cost,
              investments_mkt    = EXCLUDED.investments_mkt,
              other_assets_value = EXCLUDED.other_assets_value,
              other_loans        = EXCLUDED.other_loans,
              net_worth          = EXCLUDED.net_worth
        RETURNING *`,
-      [req.user.id, date, investments_cost, investments_mkt || null, other_assets_value, other_loans, nw]
+      [req.user.id, account || null, date, investments_cost, investments_mkt || null, other_assets_value, other_loans, nw]
     );
     res.json(rows[0]);
   } catch (err) {

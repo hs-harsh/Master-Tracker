@@ -801,9 +801,10 @@ export default function OtherAssets() {
   useEffect(() => {
     if (!token) return;
     setLoading(true);
+    const snapParam = activePerson ? `?account=${encodeURIComponent(activePerson)}` : '';
     Promise.all([
       fetchAssets(),
-      api.get('/other-assets/snapshots'),
+      api.get(`/other-assets/snapshots${snapParam}`),
       api.get('/persons'),
       api.get('/other-assets/types'),
     ]).then(([, s, p, t]) => {
@@ -874,7 +875,8 @@ export default function OtherAssets() {
         setAssets(prev => [...prev, data]);
       }
       setShowModal(false); setEditing(null); setUpdateAsset(null);
-      const { data: snaps } = await api.get('/other-assets/snapshots');
+      const snapParam = activePerson ? `?account=${encodeURIComponent(activePerson)}` : '';
+      const { data: snaps } = await api.get(`/other-assets/snapshots${snapParam}`);
       setSnapshots(snaps);
     } catch (err) { alert(err.response?.data?.error || 'Error saving asset'); }
   };
@@ -946,8 +948,9 @@ export default function OtherAssets() {
           <button onClick={async () => {
             setSnapshotSaving(true);
             try {
-              await api.post('/other-assets/snapshot', { other_assets_value: totalValue, other_loans: totalLoans, net_worth: netEquity });
-              const { data } = await api.get('/other-assets/snapshots'); setSnapshots(data);
+              await api.post('/other-assets/snapshot', { account: activePerson, other_assets_value: totalValue, other_loans: totalLoans, net_worth: netEquity });
+              const snapParam = activePerson ? `?account=${encodeURIComponent(activePerson)}` : '';
+              const { data } = await api.get(`/other-assets/snapshots${snapParam}`); setSnapshots(data);
             } catch (err) { alert(err.response?.data?.error || 'Error'); }
             finally { setSnapshotSaving(false); }
           {/* btn-ghost, not btn-primary: "Add Asset" is this page's one primary
