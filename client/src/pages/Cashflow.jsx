@@ -3,7 +3,7 @@ import {
   AreaChart, Area, ComposedChart, BarChart, Bar, Line, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { Plus, Pencil, Trash2, X, Save, Target, Check, ArrowLeft, Receipt, TrendingUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Target, Check, ArrowLeft, Receipt, TrendingUp, ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react';
 import api from '../lib/api';
 import { fmt, fmtDate, sliceByCalendarMonths } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
@@ -73,8 +73,16 @@ const TYPE_COLORS = identityPalette({
   'Trips':         'teal',
 });
 
+// Shift a "YYYY-MM-DD" (or "YYYY-MM") month string by `delta` calendar months,
+// local-safe (no UTC round-trip) — returns "YYYY-MM-01".
+function shiftMonth(monthStr, delta) {
+  const [y, m] = monthStr.slice(0, 7).split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
 // ── Month drill-down ───────────────────────────────────────────────────────────
-function MonthDrillDown({ month, person, onBack }) {
+function MonthDrillDown({ month, person, onBack, onChangeMonth }) {
   const [txs, setTxs]       = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -107,16 +115,31 @@ function MonthDrillDown({ month, person, onBack }) {
   return (
     <div className="card space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <button
           onClick={onBack}
           className="flex items-center gap-1.5 text-xs text-muted hover:text-white transition-colors"
         >
           <ArrowLeft size={13} /> Back to overview
         </button>
-        <span className="text-border">·</span>
-        <p className="text-white font-semibold text-sm">{fmtDate(month)} — Transaction breakdown</p>
-        <span className="ml-auto text-xs text-muted">{txs.length} transaction{txs.length !== 1 ? 's' : ''}</span>
+        <span className="text-xs text-muted">{txs.length} transaction{txs.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div className="flex items-center justify-center gap-1">
+        <button
+          onClick={() => onChangeMonth(shiftMonth(month, -1))}
+          className="tap p-1.5 rounded hover:bg-surface text-muted hover:text-white transition-colors"
+          title="Previous month"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <p className="text-white font-semibold text-sm text-center">{fmtDate(month)} — Transaction breakdown</p>
+        <button
+          onClick={() => onChangeMonth(shiftMonth(month, 1))}
+          className="tap p-1.5 rounded hover:bg-surface text-muted hover:text-white transition-colors"
+          title="Next month"
+        >
+          <ChevronRight size={16} />
+        </button>
       </div>
 
       {loading && <div className="py-8 text-center text-muted text-sm">Loading…</div>}
@@ -779,6 +802,7 @@ export default function Cashflow() {
           month={drillMonth}
           person={currentPerson}
           onBack={() => setDrillMonth(null)}
+          onChangeMonth={setDrillMonth}
         />
       )}
 
