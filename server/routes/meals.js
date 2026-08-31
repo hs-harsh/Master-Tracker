@@ -661,4 +661,208 @@ router.delete('/ideas/:id', async (req, res) => {
   }
 });
 
+// ─── Track Meal ───────────────────────────────────────────────────────────────
+// A free-text diary of what was actually eaten, one entry per day, plus a
+// weekly AI report driven by the user's own analysis instruction.
+
+const MAX_DAY_LOG_CHARS   = 4000;  // per day, generous for a day's meals
+const MAX_ANALYSE_PROMPT  = 2000;  // the analysis instruction
+
+// ── GET /api/meals/track?week_start=YYYY-MM-DD&person=X ──────────────────────
+// Days + saved report for one week.
+router.get('/track', async (req, res) => {
+  try {
+    const ws     = getMonday(req.query.week_start || todayStr());
+    const person = req.query.person || '';
+    const days   = getWeekDays(ws);
+
+    const { rows: dayRows } = await pool.query(
+      `SELECT entry_date::text AS entry_date, meals, updated_at
+       FROM meal_track_days
+       WHERE user_id=$1 AND person_name=$2 AND entry_date >= $3 AND entry_date <= $4
+       ORDER BY entry_date`,
+      [req.user.id, person, days[0], days[6]]
+    );
+
+    const { rows: reportRows } = await pool.query(
+      `SELECT prompt, report, updated_at
+       FROM meal_track_reports
+       WHERE user_id=$1 AND person_name=$2 AND week_start=$3`,
+      [req.user.id, person, ws]
+    );
+
+    res.json({ week_start: ws, days: dayRows, report: reportRows[0] || null });
+  } catch (e) {
+    console.error('GET /meals/track', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── GET /api/meals/track/weeks?person=X&from=&to= ────────────────────────────
+// How many days are logged per week, so the week strip can show its badges.
+router.get('/track/weeks', async (req, res) => {
+  try {
+    const person = req.query.person || '';
+    const from   = getMonday(req.query.from || todayStr());
+    const to     = getWeekDays(getMonday(req.query.to || todayStr()))[6];
+
+    const { rows } = await pool.query(
+      `SELECT entry_date::text AS entry_date
+       FROM meal_track_days
+       WHERE user_id=$1 AND person_name=$2 AND entry_date >= $3 AND entry_date <= $4
+         AND COALESCE(TRIM(meals), '') <> ''`,
+      [req.user.id, person, from, to]
+    );
+
+    // Bucket by that day's Monday so the client gets counts keyed by week_start.
+    const counts = {};
+    rows.forEach(r => {
+      const ws = getMonday(r.entry_date);
+      counts[ws] = (counts[ws] || 0) + 1;
+    });
+    res.json({ counts });
+  } catch (e) {
+    console.error('GET /meals/track/weeks', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── PUT /api/meals/track — upsert one week of day logs ───────────────────────
+router.put('/track', async (req, res) => {
+  try {
+    const person = req.body.person || '';
+    const ws     = getMonday(req.body.week_start || todayStr());
+    const valid  = new Set(getWeekDays(ws));
+    // A week is 7 days; cap the loop so a malformed/oversized body can't turn
+    // one save into thousands of upserts.
+    const days   = (Array.isArray(req.body.days) ? req.body.days : []).slice(0, 7);
+
+    for (const d of days) {
+      const date = String(d.entry_date || '').slice(0, 10);
+      if (!valid.has(date)) continue; // ignore anything outside the named week
+      // Bounded so a day's log stays a day's log — it is fed to the AI verbatim.
+      const meals = String(d.meals || '').trim().slice(0, MAX_DAY_LOG_CHARS);
+
+      if (!meals) {
+        await pool.query(
+          `DELETE FROM meal_track_days WHERE user_id=$1 AND person_name=$2 AND entry_date=$3`,
+          [req.user.id, person, date]
+        );
+        continue;
+      }
+      await pool.query(
+        `INSERT INTO meal_track_days (user_id, person_name, entry_date, meals)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (user_id, person_name, entry_date)
+         DO UPDATE SET meals = EXCLUDED.meals, updated_at = NOW()`,
+        [req.user.id, person, date, meals]
+      );
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('PUT /meals/track', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── POST /api/meals/track/analyse — weekly AI report over the logged days ────
+router.post('/track/analyse', async (req, res) => {
+  try {
+    const person = req.body.person || '';
+    const ws     = getMonday(req.body.week_start || todayStr());
+    const days   = getWeekDays(ws);
+    const instruction = String(req.body.prompt || '').trim().slice(0, MAX_ANALYSE_PROMPT);
+
+    const { rows: dayRows } = await pool.query(
+      `SELECT entry_date::text AS entry_date, meals
+       FROM meal_track_days
+       WHERE user_id=$1 AND person_name=$2 AND entry_date >= $3 AND entry_date <= $4
+         AND COALESCE(TRIM(meals), '') <> ''
+       ORDER BY entry_date`,
+      [req.user.id, person, days[0], days[6]]
+    );
+    if (!dayRows.length) {
+      return res.status(400).json({ error: 'Log at least one day of meals before analysing.' });
+    }
+
+    const logged = dayRows.map(d => {
+      const dt = new Date(d.entry_date + 'T12:00:00');
+      const wd = dt.toLocaleDateString('en-IN', { weekday: 'long' });
+      return `${wd} ${d.entry_date}:\n${d.meals}`;
+    }).join('\n\n');
+
+    const systemPrompt = `You are a nutrition coach reviewing a week of food logs.
+Return ONLY a valid JSON object with no explanation, no markdown, no code fences.
+
+The object must have exactly these top-level keys:
+{
+  "summary": "2-4 sentence overview of how the week went",
+  "score": number_0_to_100_or_null,
+  "sections": [
+    { "heading": "short section title", "points": ["concise bullet", "..."] }
+  ]
+}
+
+Rules:
+- The user's own instruction is the brief — shape the sections around what they asked for.
+- 2 to 5 sections, each with 2 to 6 short, specific, actionable bullets.
+- Reference actual foods and days from the log rather than generic advice.
+- "score" is your overall rating of the week's diet quality; use null if a score makes no sense for the instruction.`;
+
+    const userMessage = `Analyse this week of meals (week of ${ws}) for ${person || 'this person'}.
+
+Analysis instruction from the user: ${instruction || 'Give a balanced weekly nutrition review with what went well, what to improve, and concrete changes for next week.'}
+
+Food log (${dayRows.length} of 7 days logged):
+${logged}`;
+
+    const apiKey = await getAnthropicApiKey();
+    if (!apiKey) return res.status(500).json({ error: 'Anthropic API key not configured in Settings' });
+
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 3000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
+
+    const aiData = await aiRes.json();
+    if (!aiRes.ok) return res.status(aiRes.status).json({ error: aiData?.error?.message || 'AI error' });
+
+    const raw = aiData.content?.[0]?.text || '{}';
+    let report;
+    try {
+      report = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\{[\s\S]*\}/);
+      report = match ? JSON.parse(match[0]) : { summary: raw, score: null, sections: [] };
+    }
+    if (!Array.isArray(report.sections)) report.sections = [];
+    report.days_logged = dayRows.length;
+
+    const { rows: saved } = await pool.query(
+      `INSERT INTO meal_track_reports (user_id, person_name, week_start, prompt, report)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (user_id, person_name, week_start)
+       DO UPDATE SET prompt = EXCLUDED.prompt, report = EXCLUDED.report, updated_at = NOW()
+       RETURNING prompt, report, updated_at`,
+      [req.user.id, person, ws, instruction, JSON.stringify(report)]
+    );
+
+    res.json(saved[0]);
+  } catch (e) {
+    console.error('POST /meals/track/analyse', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

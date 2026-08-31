@@ -490,6 +490,36 @@ CREATE TABLE IF NOT EXISTS meal_ideas (
 );
 CREATE INDEX IF NOT EXISTS idx_meal_ideas_user_person ON meal_ideas(user_id, person_name, category);
 
+-- ─── Meal Tracking (Track Meal) ───────────────────────────────────────────────
+-- What was actually eaten, one free-text log per person per day. Distinct from
+-- meal_entries, which holds the planned 4-slot grid — this is the diary the
+-- weekly AI analysis reads.
+CREATE TABLE IF NOT EXISTS meal_track_days (
+  id          SERIAL PRIMARY KEY,
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  person_name VARCHAR(50) NOT NULL DEFAULT '',
+  entry_date  DATE NOT NULL,
+  meals       TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, person_name, entry_date)
+);
+CREATE INDEX IF NOT EXISTS idx_meal_track_days_user_id ON meal_track_days(user_id, person_name, entry_date);
+
+-- One AI weekly report per person per week, plus the instruction that produced it.
+CREATE TABLE IF NOT EXISTS meal_track_reports (
+  id          SERIAL PRIMARY KEY,
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  person_name VARCHAR(50) NOT NULL DEFAULT '',
+  week_start  DATE NOT NULL,
+  prompt      TEXT NOT NULL DEFAULT '',
+  report      JSONB,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, person_name, week_start)
+);
+CREATE INDEX IF NOT EXISTS idx_meal_track_reports_user_id ON meal_track_reports(user_id, person_name, week_start);
+
 -- Add scores JSONB column to habit_entries for dynamic/custom habit values
 DO $$
 BEGIN

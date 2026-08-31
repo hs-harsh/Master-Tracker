@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ChevronLeft, ChevronRight,
-  Plus, X, Check, Save, Sparkles, Copy,
-  Coffee, Sun, Moon, Apple,
-  ChevronDown, ChevronUp, RefreshCw, Mail, Lightbulb,
+  Plus, X, Check, Save, Sparkles,
+  ChevronDown, Lightbulb, UtensilsCrossed, ClipboardList,
 } from 'lucide-react';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
@@ -12,161 +11,79 @@ import EmptyState from '../../components/EmptyState';
 import SegmentedToggle from '../../components/SegmentedToggle';
 import { parseD, todayStr, getMonday, getWeekDays, fmtWeekRange } from '../../lib/utils';
 
-// ─── meal types ───────────────────────────────────────────────────────────────
-const MEAL_TYPES = [
-  { key: 'breakfast', label: 'Breakfast', icon: Coffee, color: 'text-hue-amber',   dot: 'bg-amber-400',   ring: 'bg-amber-400/10 border-amber-400/25',   stroke: '#fbbf24' },
-  { key: 'lunch',     label: 'Lunch',     icon: Sun,    color: 'text-pos', dot: 'bg-emerald-400', ring: 'bg-emerald-400/10 border-emerald-400/25', stroke: '#34d399' },
-  { key: 'dinner',    label: 'Dinner',    icon: Moon,   color: 'text-hue-blue',    dot: 'bg-blue-400',    ring: 'bg-blue-400/10 border-blue-400/25',      stroke: '#60a5fa' },
-  { key: 'snack',     label: 'Snack',     icon: Apple,  color: 'text-hue-purple',  dot: 'bg-purple-400',  ring: 'bg-purple-400/10 border-purple-400/25',  stroke: '#c084fc' },
-];
-const MEAL_MAP = Object.fromEntries(MEAL_TYPES.map(m => [m.key, m]));
-
 const MEAL_VIEWS = [
-  { key: 'ideas',   label: 'Healthy Ideas' },
-  { key: 'planner', label: 'Plan Week' },
+  { key: 'ideas', label: 'Healthy Ideas' },
+  { key: 'track', label: 'Track Meal' },
 ];
 
-const MAX_PREFERENCES = 8;
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/** How many weeks the week strip shows at once — one page of the strip. */
+const STRIP_WEEKS = 6;
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-function fmtDayHeader(ds) {
-  const d = parseD(ds);
+function shiftWeekStr(ws, weeks) {
+  const d = new Date(ws + 'T12:00:00');
+  d.setDate(d.getDate() + weeks * 7);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Compact label for a week cell, e.g. { range: '6–12', mo: 'Jan' } */
+function weekCellLabel(ws) {
+  const s = parseD(ws);
+  const e = parseD(shiftWeekStr(ws, 1));
+  e.setDate(e.getDate() - 1);
+  const mo = s.toLocaleDateString('en-IN', { month: 'short' });
+  const moEnd = e.toLocaleDateString('en-IN', { month: 'short' });
   return {
-    wd:  d.toLocaleDateString('en-IN', { weekday: 'short' }),
-    day: d.getDate(),
-    mo:  d.toLocaleDateString('en-IN', { month: 'short' }),
+    range: `${s.getDate()}–${e.getDate()}`,
+    mo: mo === moEnd ? mo : `${mo}/${moEnd}`,
   };
 }
 
-/** Mobile / PDF day title e.g. "Mon, 6 Apr" */
-function fmtDayLine(ds) {
-  const h = fmtDayHeader(ds);
-  return `${h.wd}, ${h.day} ${h.mo}`;
+/** Day heading for a tracked day, e.g. 'Mon · 6 Jan' */
+function fmtDayLabel(ds, i) {
+  const d = parseD(ds);
+  return `${DAY_LABELS[i]} · ${d.getDate()} ${d.toLocaleDateString('en-IN', { month: 'short' })}`;
 }
 
-/**
- * Split notes into macro badges (first line, pipe-separated) + description body.
- * Matches AI format: "P 22g | C 35g | F 8g" or "Protein: 22g | …"
- */
-function parseMealNotes(notes) {
-  const raw = (notes || '').trim();
-  if (!raw) return { macroLabels: [], description: '' };
-  const lines = raw.split('\n');
-  const first = (lines[0] || '').trim();
-  const body = lines.slice(1).join('\n').trim();
-  const looksMacro =
-    first.includes('|') &&
-    /\b(protein|carbs?|fat|P\s*[\d.:]|C\s*[\d.:]|F\s*[\d.:])/i.test(first);
-  if (!looksMacro) {
-    return { macroLabels: [], description: raw };
-  }
-  const segs = first.split('|').map((s) => s.trim()).filter(Boolean);
-  const macroLabels = segs.map((seg) => {
-    const s = seg.trim();
-    let m = s.match(/^protein:?\s*(.+)$/i);
-    if (m) return `Protein: ${m[1].trim()}`;
-    m = s.match(/^P:?\s*(.+)$/i);
-    if (m) return `Protein: ${m[1].trim()}`;
-    m = s.match(/^carbs?:?\s*(.+)$/i);
-    if (m) return `Carbs: ${m[1].trim()}`;
-    if (/^C\b/i.test(s)) return `Carbs: ${s.replace(/^C\s*:?\s*/i, '').trim()}`;
-    m = s.match(/^fat:?\s*(.+)$/i);
-    if (m) return `Fat: ${m[1].trim()}`;
-    if (/^F\b/i.test(s)) return `Fat: ${s.replace(/^F\s*:?\s*/i, '').trim()}`;
-    return s;
-  });
-  return { macroLabels, description: body };
+/** Span covered by a run of weeks, e.g. '2 Dec – 12 Jan 2026' */
+function fmtStripRange(firstWeek, lastWeek) {
+  const s = parseD(firstWeek);
+  const e = parseD(shiftWeekStr(lastWeek, 1));
+  e.setDate(e.getDate() - 1);
+  return `${s.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} – ${
+    e.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 }
-
-/** Shared meal body: title, kcal + macro badges, description (matches mobile card layout). */
-function MealPlanCardContent({ entry, compact }) {
-  const { macroLabels, description } = parseMealNotes(entry?.notes || '');
-  const tTitle = compact ? 'text-xs' : 'text-sm';
-  return (
-    <>
-      <p className={`text-white font-semibold leading-snug break-words ${tTitle}`}>{entry.title}</p>
-      <div className="flex flex-wrap gap-1.5 mt-2">
-        {entry.calories ? (
-          <span className="px-2 py-0.5 rounded-md text-[11px] font-mono border border-accent/45 text-accent-ink bg-accent/10">
-            {entry.calories} kcal
-          </span>
-        ) : null}
-        {macroLabels.map((lab, i) => (
-          <span
-            key={i}
-            className="px-2 py-0.5 rounded-md text-[11px] font-mono border border-emerald-500/45 text-pos bg-emerald-500/10"
-          >
-            {lab}
-          </span>
-        ))}
-      </div>
-      {description ? (
-        <p className="text-muted text-xs mt-2 leading-relaxed whitespace-pre-line break-words">{description}</p>
-      ) : null}
-    </>
-  );
-}
-
-function eKey(date, mealType) {
-  return `${String(date).slice(0,10)}_${mealType}`;
-}
-
-// ── Preference helpers — localStorage cache + DB persistence ─────────────────
-function lsKey(person) { return `meal_prompts_${person || 'default'}`; }
-function loadPreferences(person) {
-  try { return JSON.parse(localStorage.getItem(lsKey(person)) || '[]'); } catch { return []; }
-}
-function cachePreferences(person, prefs) {
-  try { localStorage.setItem(lsKey(person), JSON.stringify(prefs)); } catch {}
-}
-
-function nutritionTagClass(tag) {
-  const t = String(tag).toLowerCase();
-  if (t.includes('protein')) return 'bg-teal-500/15 text-hue-teal border-teal-500/30';
-  if (t.includes('fibre') || t.includes('fiber')) return 'bg-emerald-500/15 text-pos border-emerald-500/30';
-  if (t.includes('healthy fat')) return 'bg-amber-500/15 text-hue-amber border-amber-500/30';
-  if (t.includes('iron')) return 'bg-rose-500/15 text-neg border-rose-500/30';
-  if (t.includes('calcium')) return 'bg-sky-500/15 text-hue-blue border-sky-500/30';
-  if (t.includes('complex') || t.includes('carb')) return 'bg-violet-500/15 text-hue-violet border-violet-500/30';
-  if (t.includes('vitamin')) return 'bg-lime-500/15 text-hue-green border-lime-500/30';
-  return 'bg-white/5 text-muted border-hairline/10';
-}
-
-// ─── component ────────────────────────────────────────────────────────────────
-const MEAL_NOTIFY_EMAIL = 'harshsingh.iitd@gmail.com';
 
 export default function WellnessMeals() {
   const { personName, activePerson } = useAuth();
   const currentPerson = activePerson || personName;
 
-  // planner state
-  const [view,      setView]      = useState('ideas');
-  const [weekStart, setWeekStart] = useState(() => getMonday(todayStr()));
-  const [plan,      setPlan]      = useState(null);
-  const [entries,   setEntries]   = useState({});
-  const [loading,    setLoading]   = useState(false);
-  const [saving,     setSaving]    = useState(false);
-  const [accepting,  setAccepting] = useState(false);
-  const [generating, setGenerating]= useState(false);
-  const [aiError,    setAiError]   = useState('');
-  const [resetting,  setResetting] = useState(false);
-  const [reasoning,  setReasoning] = useState('');
-  const [showReasoning, setShowReasoning] = useState(false);
+  const [view, setView] = useState('ideas');
 
-  // Prompt state (top-level — never inside inner functions)
-  const [aiPrompt,     setAiPrompt]    = useState('');
-  const [preferences,  setPreferences] = useState(() => loadPreferences(activePerson || personName));
-  const [copiedPref,   setCopiedPref]  = useState(null);
+  // ── track state ────────────────────────────────────────────────────────────
+  const today = todayStr();
+  const thisWeek = getMonday(today);
+  // First (leftmost) week of the visible strip page — the current week sits last.
+  const [stripStart, setStripStart] = useState(() => shiftWeekStr(getMonday(todayStr()), -(STRIP_WEEKS - 1)));
+  const [weekStart, setWeekStart] = useState(null); // null until a week is clicked
+  const [dayLogs, setDayLogs] = useState({});       // { 'YYYY-MM-DD': 'text' }
+  const [weekCounts, setWeekCounts] = useState({}); // { week_start: days_logged }
+  const [trackLoading, setTrackLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState(null);
 
-  const [refreshingCell, setRefreshingCell] = useState(null); // 'date_mealtype' key
+  const [analysePrompt, setAnalysePrompt] = useState('');
+  const [report, setReport] = useState(null);
+  const [analysing, setAnalysing] = useState(false);
+  const [analyseError, setAnalyseError] = useState('');
 
-  // cell edit modal
-  const [editCell, setEditCell] = useState(null);
-  const [editData, setEditData] = useState({ title: '', notes: '', calories: '' });
-  const [editMode, setEditMode] = useState(false);
-  const [nutritionByKey, setNutritionByKey] = useState({});
-  const [nutritionLoadingKey, setNutritionLoadingKey] = useState(null);
-  const [emailSending, setEmailSending] = useState(false);
+  // Latest day text, readable from async callbacks without stale closures.
+  const dayLogsRef = useRef(dayLogs);
+  useEffect(() => { dayLogsRef.current = dayLogs; }, [dayLogs]);
+  // Snapshot of what the server already has, so blurring an untouched box is a no-op.
+  const savedSnapshotRef = useRef('');
 
   // healthy ideas state
   const [ideas, setIdeas] = useState({ breakfast_snacks: [], lunch_dinner: [] });
@@ -175,50 +92,7 @@ export default function WellnessMeals() {
   const [ideaSaving, setIdeaSaving] = useState(null); // category being saved
   const [expandedIdeaSections, setExpandedIdeaSections] = useState(new Set(['breakfast_snacks', 'lunch_dinner']));
 
-  // Reload preferences when person changes — instant from cache, then hydrate from DB
-  useEffect(() => {
-    const cached = loadPreferences(currentPerson);
-    setPreferences(cached);
-    setAiPrompt('');
-    api.get(`/settings/wellness-prefs?type=meal&person=${encodeURIComponent(currentPerson || '')}`)
-      .then(r => {
-        const dbPrefs = r.data?.prefs;
-        if (Array.isArray(dbPrefs) && dbPrefs.length > 0) {
-          // DB has data — use it as source of truth
-          setPreferences(dbPrefs);
-          cachePreferences(currentPerson, dbPrefs);
-        } else if (cached.length > 0) {
-          // DB is empty but localStorage has prefs — push them up to DB
-          api.put('/settings/wellness-prefs', { type: 'meal', person: currentPerson || '', prefs: cached }).catch(() => {});
-        }
-      })
-      .catch(() => {}); // silently keep cache on network error
-  }, [currentPerson]);
-
-  // ── load week ──────────────────────────────────────────────────────────────
-  const loadWeek = useCallback(async (ws, person) => {
-    setLoading(true);
-    try {
-      const { data } = await api.get(`/meals/week?week_start=${ws}&person=${encodeURIComponent(person || '')}`);
-      setPlan(data.plan);
-      const map = {};
-      (data.entries || []).forEach(e => {
-        map[eKey(e.entry_date, e.meal_type)] = {
-          title: e.title || '', notes: e.notes || '',
-          calories: e.calories != null ? String(e.calories) : '',
-        };
-      });
-      setEntries(map);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadWeek(weekStart, currentPerson); }, [weekStart, currentPerson, loadWeek]);
-
-  // ── healthy ideas ────────────────────────────────────────────────────────────
+  // ── healthy ideas ───────────────────────────────────────────────────────────
   const loadIdeas = useCallback(async (person) => {
     setIdeasLoading(true);
     try {
@@ -266,459 +140,298 @@ export default function WellnessMeals() {
     }
   };
 
-  // ── save entries ───────────────────────────────────────────────────────────
-  async function saveEntries(entriesOverride) {
-    if (!plan) return;
+  // ── track: week strip counts ────────────────────────────────────────────────
+  const stripWeeks = Array.from({ length: STRIP_WEEKS }, (_, i) => shiftWeekStr(stripStart, i));
+
+  const loadWeekCounts = useCallback(async (from, to, person) => {
+    try {
+      const { data } = await api.get(
+        `/meals/track/weeks?person=${encodeURIComponent(person || '')}&from=${from}&to=${to}`
+      );
+      setWeekCounts(data.counts || {});
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view !== 'track') return;
+    loadWeekCounts(stripStart, shiftWeekStr(stripStart, STRIP_WEEKS - 1), currentPerson);
+  }, [view, stripStart, currentPerson, loadWeekCounts]);
+
+  // ── track: load one week ────────────────────────────────────────────────────
+  const loadWeek = useCallback(async (ws, person) => {
+    setTrackLoading(true);
+    setAnalyseError('');
+    try {
+      const { data } = await api.get(
+        `/meals/track?week_start=${ws}&person=${encodeURIComponent(person || '')}`
+      );
+      const map = {};
+      getWeekDays(ws).forEach(d => { map[d] = ''; });
+      (data.days || []).forEach(d => { map[d.entry_date] = d.meals || ''; });
+      setDayLogs(map);
+      dayLogsRef.current = map;
+      // What we just loaded is exactly what the server holds.
+      savedSnapshotRef.current = JSON.stringify(
+        getWeekDays(ws).map(d => ({ entry_date: d, meals: map[d] || '' }))
+      );
+      setAnalysePrompt(data.report?.prompt || '');
+      setReport(data.report?.report || null);
+      setSavedAt(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTrackLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view !== 'track' || !weekStart) return;
+    loadWeek(weekStart, currentPerson);
+  }, [view, weekStart, currentPerson, loadWeek]);
+
+  // Switching profile closes the open week — its logs belong to the old person.
+  useEffect(() => { setWeekStart(null); setReport(null); }, [currentPerson]);
+
+  async function saveWeek({ force = false } = {}) {
+    if (!weekStart) return;
+    const days = getWeekDays(weekStart).map(d => ({ entry_date: d, meals: dayLogsRef.current[d] || '' }));
+    const snapshot = JSON.stringify(days);
+    if (!force && snapshot === savedSnapshotRef.current) return; // nothing changed
     setSaving(true);
     try {
-      const src = entriesOverride ?? entries;
-      const toSave = Object.entries(src)
-        .filter(([, v]) => v.title || v.notes)
-        .map(([key, val]) => {
-          const [date, mealType] = key.split('_');
-          return { entry_date: date, meal_type: mealType, ...val };
-        });
-      await api.put(`/meals/week/${plan.id}`, { entries: toSave });
-    } catch (err) { console.error(err); } finally { setSaving(false); }
-  }
-
-  async function acceptPlan() {
-    if (!plan) return;
-    setAccepting(true);
-    try {
-      await saveEntries();
-      const { data } = await api.post(`/meals/week/${plan.id}/accept`);
-      setPlan(data.plan);
-    } catch (err) { console.error(err); } finally { setAccepting(false); }
-  }
-
-  function savePrefsToDBAsync(person, prefs) {
-    api.put('/settings/wellness-prefs', { type: 'meal', person: person || '', prefs }).catch(() => {});
-  }
-
-  function addPreference(text) {
-    if (!text.trim()) return;
-    const next = [text, ...preferences.filter(p => p !== text)].slice(0, MAX_PREFERENCES);
-    setPreferences(next);
-    cachePreferences(currentPerson, next);
-    savePrefsToDBAsync(currentPerson, next);
-  }
-  function deletePreference(text) {
-    const next = preferences.filter(p => p !== text);
-    setPreferences(next);
-    cachePreferences(currentPerson, next);
-    savePrefsToDBAsync(currentPerson, next);
-  }
-
-  async function generatePlan() {
-    if (!plan) return;
-    setGenerating(true); setAiError(''); setReasoning(''); setShowReasoning(false);
-    const combined = aiPrompt.trim() || 'Healthy balanced diet';
-    if (aiPrompt.trim()) addPreference(aiPrompt.trim());
-    try {
-      const { data } = await api.post(`/meals/week/${plan.id}/generate`, { prompt: combined || 'Balanced healthy diet' });
-      const map = {};
-      (data.entries || []).forEach(e => {
-        map[eKey(e.entry_date, e.meal_type)] = {
-          title: e.title || '', notes: e.notes || '',
-          calories: e.calories != null ? String(e.calories) : '',
-        };
-      });
-      setEntries(map);
-      if (data.reasoning) { setReasoning(data.reasoning); setShowReasoning(true); }
+      await api.put('/meals/track', { week_start: weekStart, person: currentPerson || '', days });
+      savedSnapshotRef.current = snapshot;
+      setSavedAt(Date.now());
+      setWeekCounts(prev => ({ ...prev, [weekStart]: days.filter(d => d.meals.trim()).length }));
     } catch (err) {
-      setAiError(err.response?.data?.error || 'Generation failed. Check your API key in Settings.');
-    } finally { setGenerating(false); }
-  }
-
-  async function resetPlan() {
-    if (!plan || !confirm('Reset this plan to draft? You can then edit or regenerate it.')) return;
-    setResetting(true);
-    try {
-      const { data } = await api.post(`/meals/week/${plan.id}/reset`);
-      setPlan(data.plan);
-    } catch (err) { console.error(err); } finally { setResetting(false); }
-  }
-
-  function shiftWeek(dir) {
-    const d = new Date(weekStart + 'T12:00:00');
-    d.setDate(d.getDate() + dir * 7);
-    setWeekStart(d.toISOString().slice(0, 10));
-  }
-
-  function openCell(date, mealType) {
-    const existing = entries[eKey(date, mealType)];
-    if (plan?.status === 'accepted' && !existing?.title) return;
-    const readOnly = plan?.status === 'accepted';
-    setEditCell({ date, mealType, readOnly });
-    setEditData(existing || { title: '', notes: '', calories: '' });
-    setEditMode(!existing?.title && !readOnly);
-  }
-
-  function saveCell() {
-    if (!editCell || editCell.readOnly) return;
-    const key  = eKey(editCell.date, editCell.mealType);
-    const next = { ...entries, [key]: { ...editData } };
-    setEntries(next); setEditCell(null);
-  }
-
-  function clearCell() {
-    if (!editCell || editCell.readOnly) return;
-    const key  = eKey(editCell.date, editCell.mealType);
-    const next = { ...entries }; delete next[key];
-    setEntries(next); setEditCell(null);
-  }
-
-  async function refreshEntry(date, mealType) {
-    if (!plan || plan.status === 'accepted') return;
-    const key = eKey(date, mealType);
-    setRefreshingCell(key);
-    // Build current week entries from local state to send as context
-    const currentEntriesPayload = Object.entries(entries).map(([k, v]) => ({
-      entry_date: k.slice(0, 10),
-      meal_type: k.slice(11),
-      title: v.title,
-    })).filter(e => e.title);
-    try {
-      const { data } = await api.post(`/meals/week/${plan.id}/regenerate-entry`, {
-        entry_date: date,
-        meal_type: mealType,
-        current_entries: currentEntriesPayload,
-        current_meal: entries[key]?.title || null,
-      });
-      if (data?.entry) {
-        setEntries(prev => ({ ...prev, [key]: { title: data.entry.title || '', notes: data.entry.notes || '', calories: data.entry.calories != null ? String(data.entry.calories) : '' } }));
-      }
-    } catch (err) {
-      console.error('refresh entry failed', err);
+      console.error(err);
     } finally {
-      setRefreshingCell(null);
+      setSaving(false);
     }
   }
 
-  async function fetchNutritionBreakdown() {
-    if (!editCell || !editData.title?.trim()) return;
-    const key = eKey(editCell.date, editCell.mealType);
-    setNutritionLoadingKey(key);
+  async function analyseMeals() {
+    if (!weekStart) return;
+    setAnalysing(true); setAnalyseError('');
     try {
-      const { data } = await api.post('/meals/nutrition-breakdown', {
-        title: editData.title.trim(),
-        notes: editData.notes || '',
+      await saveWeek(); // analyse what's on screen, not the last save
+      const { data } = await api.post('/meals/track/analyse', {
+        week_start: weekStart,
+        person: currentPerson || '',
+        prompt: analysePrompt,
       });
-      setNutritionByKey((prev) => ({ ...prev, [key]: data }));
+      setReport(data.report || null);
     } catch (err) {
-      alert(err.response?.data?.error || err.message || 'Could not fetch nutrition');
+      setAnalyseError(err.response?.data?.error || 'Analysis failed. Check your API key in Settings.');
     } finally {
-      setNutritionLoadingKey(null);
+      setAnalysing(false);
     }
   }
 
-  async function sendMealPlanEmail() {
-    if (!plan) return;
-    setEmailSending(true);
-    try {
-      if (plan.status !== 'accepted') await saveEntries();
-      const { data } = await api.post(`/meals/week/${plan.id}/send-email`, {});
-      alert(`Meal plan emailed to ${data.sentTo || MEAL_NOTIFY_EMAIL} (PDF attached).`);
-    } catch (err) {
-      alert(err.response?.data?.error || err.message || 'Failed to send email');
-    } finally {
-      setEmailSending(false);
-    }
-  }
-
-  const today    = todayStr();
-  const weekDays = getWeekDays(weekStart);
-  const isAccepted = plan?.status === 'accepted';
-
-  const hasPlanContent = weekDays.some((ds) =>
-    MEAL_TYPES.some((mt) => (entries[eKey(ds, mt.key)]?.title || '').trim().length > 0),
-  );
-
-  // ── planner ────────────────────────────────────────────────────────────────
-  function Planner() {
+  // ── track view ──────────────────────────────────────────────────────────────
+  function WeekStrip() {
+    const stripHasCurrent = stripWeeks.includes(thisWeek);
     return (
-      <div className="card fade-up-1 overflow-hidden">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between p-4 border-b border-hairline/5">
-          <div className="flex items-center justify-center sm:justify-start gap-2 min-w-0">
-            <button onClick={() => shiftWeek(-1)}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+      <div className="card p-3 sm:p-4 overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => setStripStart(s => shiftWeekStr(s, -STRIP_WEEKS))} title="Earlier weeks"
+              className="icon-btn p-1.5 rounded-lg hover:bg-hairline/8 text-soft hover:text-white transition-colors">
               <ChevronLeft size={18} />
             </button>
-            <div>
-              <p className="text-white text-sm font-semibold font-body">{fmtWeekRange(weekStart)}</p>
-              {isAccepted
-                ? <span className="flex items-center gap-1 text-xs text-pos font-mono"><Check size={10} /> Accepted</span>
-                : <span className="text-xs text-hue-amber/60 font-mono">Draft</span>}
-            </div>
-            <button onClick={() => shiftWeek(1)}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-soft hover:text-white transition-colors">
+            <p className="text-white text-sm font-semibold font-body">
+              {fmtStripRange(stripStart, stripWeeks[STRIP_WEEKS - 1])}
+            </p>
+            <button onClick={() => setStripStart(s => shiftWeekStr(s, STRIP_WEEKS))} title="Later weeks"
+              className="icon-btn p-1.5 rounded-lg hover:bg-hairline/8 text-soft hover:text-white transition-colors">
               <ChevronRight size={18} />
             </button>
-          </div>
-          <div className="flex flex-col items-stretch gap-3 w-full sm:w-auto sm:items-end">
-            <div className="flex gap-2 flex-wrap justify-center sm:justify-end items-center w-full">
-              {isAccepted ? (
-                <>
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-400/10 text-pos text-xs font-semibold border border-emerald-400/20">
-                    <Check size={13} /> Plan Accepted — saved to calendar
-                  </span>
-                  <button onClick={resetPlan} disabled={resetting}
-                    title="Reset to draft so you can edit or regenerate"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold min-h-[44px]
-                      border border-hairline/15 text-soft hover:text-white hover:border-hairline/30 transition-colors disabled:opacity-50">
-                    <RefreshCw size={12} />{resetting ? 'Resetting…' : 'Reset Plan'}
-                  </button>
-                  {hasPlanContent && (
-                    <button
-                      type="button"
-                      onClick={sendMealPlanEmail}
-                      disabled={emailSending}
-                      title={`Email plan + PDF to ${MEAL_NOTIFY_EMAIL}`}
-                      className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 shrink-0 disabled:opacity-40"
-                    >
-                      <Mail size={12} />
-                      {emailSending ? 'Sending…' : 'Send email'}
-                    </button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <button onClick={() => saveEntries()} disabled={saving}
-                    className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5">
-                    <Save size={13} />{saving ? 'Saving…' : 'Save Draft'}
-                  </button>
-                  <button onClick={acceptPlan} disabled={accepting || saving}
-                    className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5">
-                    <Check size={13} />{accepting ? 'Saving…' : 'Accept Plan'}
-                  </button>
-                  {hasPlanContent && (
-                    <button
-                      type="button"
-                      onClick={sendMealPlanEmail}
-                      disabled={emailSending}
-                      title={`Email plan + PDF to ${MEAL_NOTIFY_EMAIL}`}
-                      className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 shrink-0 disabled:opacity-40"
-                    >
-                      <Mail size={12} />
-                      {emailSending ? 'Sending…' : 'Send email'}
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {!isAccepted && (
-          <div className="p-3 border-b border-hairline/5 bg-white/[0.02] space-y-2">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-1.5 text-xs text-hue-purple font-semibold shrink-0">
-                <Sparkles size={13} />AI
-              </div>
-              <input
-                className="input w-full flex-1 text-xs py-2 sm:py-1.5 min-w-0"
-                placeholder="e.g. High protein Indian diet, low carb, vegetarian…"
-                value={aiPrompt}
-                onChange={e => setAiPrompt(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); generatePlan(); } }}
-              />
-              <button onClick={generatePlan} disabled={generating}
-                className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-xs font-semibold
-                  bg-purple-500/20 text-hue-purple border border-purple-500/30
-                  hover:bg-purple-500/30 transition-colors disabled:opacity-50">
-                <Sparkles size={12} />{generating ? 'Generating…' : 'Generate'}
+            {!stripHasCurrent && (
+              <button onClick={() => setStripStart(shiftWeekStr(thisWeek, -(STRIP_WEEKS - 1)))}
+                className="px-2.5 py-1 rounded-lg text-xs font-mono bg-accent/10 text-accent-ink border border-accent/20 hover:bg-accent/20 transition-colors">
+                This week
               </button>
-            </div>
-            {/* Saved Preferences chips — all always sent to AI; × to remove */}
-            {preferences.length > 0 && (
-              <div>
-                <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5">Saved Preferences <span className="normal-case text-hue-purple/60">(all applied on generate)</span></p>
-                <div className="flex flex-wrap gap-1.5">
-                  {preferences.map((pref, i) => (
-                    <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-purple-500/30 bg-purple-500/10 text-hue-purple text-xs group">
-                      <button
-                        onClick={() => { navigator.clipboard.writeText(pref); setCopiedPref(pref); setTimeout(() => setCopiedPref(null), 1500); }}
-                        className="truncate max-w-[160px] text-left hover:text-white transition-colors"
-                        title="Click to copy">
-                        {copiedPref === pref
-                          ? <span className="flex items-center gap-1 text-hue-teal"><Check size={10} />Copied</span>
-                          : <span className="flex items-center gap-1">{pref}<Copy size={9} className="opacity-0 group-hover:opacity-50 flex-shrink-0" /></span>
-                        }
-                      </button>
-                      <button
-                        onClick={() => deletePreference(pref)}
-                        className="text-hue-purple/60 hover:text-neg transition-colors ml-0.5 flex-shrink-0"
-                        title="Remove preference">
-                        <X size={10} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {aiError && <p className="text-xs text-neg">{aiError}</p>}
-            {/* Reasoning panel */}
-            {reasoning && (
-              <div className="rounded-lg overflow-hidden border border-hairline/8">
-                <button
-                  onClick={() => setShowReasoning(r => !r)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-white/[0.02] transition-colors">
-                  <div className="flex items-center gap-2">
-                    <Sparkles size={12} className="text-hue-purple" />
-                    <span className="text-xs text-hue-purple font-semibold uppercase tracking-wider">AI Reasoning</span>
-                  </div>
-                  {showReasoning ? <ChevronUp size={13} className="text-muted" /> : <ChevronDown size={13} className="text-muted" />}
-                </button>
-                {showReasoning && (
-                  <div className="px-3 pb-3 text-xs text-soft leading-relaxed border-t border-hairline/5">
-                    {reasoning}
-                  </div>
-                )}
-              </div>
             )}
           </div>
-        )}
-
-        {/* Desktop: classic week grid */}
-        <div className="hidden lg:block overflow-x-auto">
-          <div className="min-w-[680px]">
-            <div className="grid grid-cols-8 border-b border-hairline/5">
-              <div className="p-3" />
-              {weekDays.map(ds => {
-                const h = fmtDayHeader(ds);
-                const isT = ds === today;
-                return (
-                  <div key={ds} className={`p-3 text-center border-l border-hairline/5 ${isT ? 'bg-accent/5' : ''}`}>
-                    <p className={`text-xs font-mono uppercase ${isT ? 'text-accent-ink' : 'text-muted'}`}>{h.wd}</p>
-                    <p className={`text-xl font-bold font-display ${isT ? 'text-accent-ink' : 'text-white'}`}>{h.day}</p>
-                    <p className="text-xs text-muted font-mono">{h.mo}</p>
-                  </div>
-                );
-              })}
-            </div>
-
-            {MEAL_TYPES.map(mt => (
-              <div key={mt.key} className="grid grid-cols-8 border-b border-hairline/5 last:border-0">
-                <div className={`flex items-center gap-2 p-3 border-r border-hairline/5 ${mt.ring.split(' ')[0]}`}>
-                  <mt.icon size={14} className={mt.color} />
-                  <span className={`text-xs font-semibold ${mt.color}`}>{mt.label}</span>
-                </div>
-                {weekDays.map(ds => {
-                  const key   = eKey(ds, mt.key);
-                  const entry = entries[key];
-                  const isT   = ds === today;
-                  const cellInteractive = !isAccepted || !!entry?.title;
-                  return (
-                    <div key={ds} onClick={() => openCell(ds, mt.key)}
-                      className={`group relative p-2.5 border-l border-hairline/5 min-h-[128px] align-top transition-colors
-                        ${isT ? 'bg-accent/5' : ''}
-                        ${cellInteractive ? 'cursor-pointer hover:bg-white/[0.04]' : 'cursor-default'}`}>
-                      {entry?.title ? (
-                        <div className="pr-0.5">
-                          <MealPlanCardContent entry={entry} compact />
-                          {!isAccepted && (
-                            <button
-                              onClick={e => { e.stopPropagation(); refreshEntry(ds, mt.key); }}
-                              disabled={!!refreshingCell}
-                              className="icon-btn absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md bg-white/5 hover:bg-white/10 text-muted hover:text-white"
-                              title="Get a different meal">
-                              <RefreshCw size={11} className={refreshingCell === key ? 'animate-spin text-hue-purple' : ''} />
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        !isAccepted && (
-                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                          <Plus size={16} className="text-muted" />
-                        </div>
-                        )
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+          <p className="text-[10px] sm:text-xs text-muted font-mono">Tap a week to log or review it</p>
         </div>
 
-        {/* Mobile / tablet: day stacks with meal cards (screenshot-style) */}
-        <div className="lg:hidden px-3 py-4 space-y-8 bg-[#0c0c0c]">
-          {weekDays.map((ds) => {
-            const isT = ds === today;
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2">
+          {stripWeeks.map(ws => {
+            const { range, mo } = weekCellLabel(ws);
+            const isThis = ws === thisWeek;
+            const isSel = weekStart === ws;
+            const count = weekCounts[ws] || 0;
             return (
-              <section key={ds} className="space-y-3">
-                <h3 className={`text-base font-bold font-display tracking-tight ${isT ? 'text-accent-ink' : 'text-[#e8bc3d]'}`}>
-                  {fmtDayLine(ds)}
-                </h3>
-                <div className="space-y-3">
-                  {MEAL_TYPES.map((mt) => {
-                    const key = eKey(ds, mt.key);
-                    const entry = entries[key];
-                    const cellInteractive = !isAccepted || !!entry?.title;
-                    if (entry?.title) {
-                      return (
-                        <div
-                          key={mt.key}
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => openCell(ds, mt.key)}
-                          onKeyDown={(ev) => {
-                            if (ev.key === 'Enter' || ev.key === ' ') {
-                              ev.preventDefault();
-                              openCell(ds, mt.key);
-                            }
-                          }}
-                          className={`rounded-xl border border-hairline/10 bg-[#141414] p-3.5 shadow-[0_1px_0_rgba(255,255,255,0.04)] ${
-                            cellInteractive ? 'cursor-pointer active:bg-white/[0.03]' : 'cursor-default'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 mb-2">
-                            <mt.icon size={17} className={`shrink-0 ${mt.color}`} />
-                            <span className="text-[10px] uppercase tracking-[0.12em] text-muted font-semibold flex-1">
-                              {mt.label}
-                            </span>
-                            {!isAccepted && (
-                              <button
-                                onClick={e => { e.stopPropagation(); refreshEntry(ds, mt.key); }}
-                                disabled={!!refreshingCell}
-                                className="p-1 rounded-md text-muted hover:text-white hover:bg-white/10 transition-colors"
-                                title="Get a different meal">
-                                <RefreshCw size={12} className={refreshingCell === eKey(ds, mt.key) ? 'animate-spin text-hue-purple' : ''} />
-                              </button>
-                            )}
-                          </div>
-                          <MealPlanCardContent entry={entry} />
-                        </div>
-                      );
-                    }
-                    if (!isAccepted) {
-                      return (
-                        <button
-                          key={mt.key}
-                          type="button"
-                          onClick={() => openCell(ds, mt.key)}
-                          className="w-full rounded-xl border border-dashed border-hairline/15 bg-white/[0.02] py-5 flex flex-col items-center justify-center gap-1.5 text-muted text-xs hover:border-hairline/25 hover:bg-white/[0.04] transition-colors"
-                        >
-                          <Plus size={18} strokeWidth={1.75} />
-                          <span>Add {mt.label}</span>
-                        </button>
-                      );
-                    }
-                    return (
-                      <div
-                        key={mt.key}
-                        className="rounded-xl border border-hairline/5 bg-white/[0.02] py-5 text-center text-muted text-xs"
-                      >
-                        —
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
+              <button key={ws} onClick={() => setWeekStart(ws)}
+                title={count ? `${count} of 7 days logged — tap to view or edit` : 'Tap to log this week'}
+                className={`min-h-[68px] rounded-xl border px-0.5 py-2 flex flex-col items-center justify-center gap-0.5 transition-colors ${
+                  isSel
+                    ? 'border-accent bg-accent/15'
+                    : count
+                      ? 'border-accent/30 bg-accent/[0.07] hover:bg-accent/15'
+                      : 'border-dashed border-border hover:bg-accent/10'
+                } ${isThis && !isSel ? 'ring-1 ring-accent/30' : ''}`}>
+                <span className={`text-[9px] sm:text-[10px] font-mono uppercase tracking-wide ${isThis ? 'text-accent-ink' : 'text-muted'}`}>
+                  {isThis ? 'This wk' : 'Week'}
+                </span>
+                <span className={`text-base sm:text-lg font-bold font-display leading-none ${isThis ? 'text-accent-ink' : count ? 'text-white' : 'text-soft'}`}>
+                  {range}
+                </span>
+                <span className="text-[9px] text-muted font-mono leading-none">{mo}</span>
+                {count ? (
+                  <span className="flex items-center gap-0.5 text-[9px] font-mono text-accent-ink leading-none mt-0.5">
+                    <Check size={8} />{count}/7
+                  </span>
+                ) : (
+                  <Plus size={10} className="text-muted/40 mt-0.5" />
+                )}
+              </button>
             );
           })}
         </div>
+      </div>
+    );
+  }
+
+  function DayLogs() {
+    const days = getWeekDays(weekStart);
+    const filled = days.filter(d => (dayLogs[d] || '').trim()).length;
+    return (
+      <div className="card overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 p-4 border-b border-hairline/5">
+          <div>
+            <p className="text-white text-sm font-semibold font-body">{fmtWeekRange(weekStart)}</p>
+            <p className="text-xs text-muted font-mono">{filled} of 7 days logged</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {savedAt && !saving && (
+              <span className="flex items-center gap-1 text-xs text-pos font-mono"><Check size={11} /> Saved</span>
+            )}
+            <button onClick={() => saveWeek({ force: true })} disabled={saving}
+              className="btn-ghost text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-50">
+              <Save size={13} />{saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+
+        <div className="divide-y divide-hairline/8">
+          {days.map((ds, i) => {
+            const isToday = ds === today;
+            return (
+              <div key={ds} className="p-3 sm:p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`text-xs font-mono font-semibold ${isToday ? 'text-accent-ink' : 'text-soft'}`}>
+                    {fmtDayLabel(ds, i)}
+                  </span>
+                  {isToday && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase tracking-wide bg-accent/15 text-accent-ink border border-accent/25">
+                      Today
+                    </span>
+                  )}
+                </div>
+                <textarea
+                  className="input w-full text-sm py-2 min-h-[76px] resize-y"
+                  placeholder="What did you eat? e.g. Breakfast: oats + banana · Lunch: dal, rice, salad · Dinner: grilled paneer · Snack: almonds"
+                  value={dayLogs[ds] || ''}
+                  onChange={e => setDayLogs(prev => ({ ...prev, [ds]: e.target.value }))}
+                  onBlur={() => saveWeek()}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  function ReportCard() {
+    if (!report) return null;
+    const score = typeof report.score === 'number' ? report.score : null;
+    const scoreTone = score == null ? '' : score >= 70 ? 'text-pos' : score >= 45 ? 'text-hue-amber' : 'text-neg';
+    return (
+      <div className="card p-4 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <ClipboardList size={15} className="text-hue-purple" />
+            <p className="font-display text-sm font-semibold text-white">Weekly report</p>
+            {report.days_logged ? (
+              <span className="text-[10px] text-muted font-mono">{report.days_logged}/7 days</span>
+            ) : null}
+          </div>
+          {score != null && (
+            <div className="text-right">
+              <p className="text-[10px] text-muted uppercase tracking-widest font-mono">Score</p>
+              <p className={`font-display text-xl font-bold leading-none ${scoreTone}`}>{score}<span className="text-muted text-xs font-mono">/100</span></p>
+            </div>
+          )}
+        </div>
+
+        {report.summary && (
+          <p className="text-soft text-sm leading-relaxed whitespace-pre-line">{report.summary}</p>
+        )}
+
+        {(report.sections || []).map((sec, i) => (
+          <div key={i}>
+            <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5">{sec.heading}</p>
+            <ul className="space-y-1.5">
+              {(sec.points || []).map((p, j) => (
+                <li key={j} className="flex gap-2 text-sm text-soft leading-relaxed">
+                  <span className="text-accent-ink mt-0.5 shrink-0">•</span>
+                  <span>{p}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function TrackMeal() {
+    return (
+      <div className="space-y-4 fade-up-1">
+        {WeekStrip()}
+
+        {!weekStart ? (
+          <div className="card">
+            <EmptyState compact icon={UtensilsCrossed} title="Pick a week to start"
+              hint="Tap a week above to log what you ate on each of its 7 days, then analyse it." />
+          </div>
+        ) : trackLoading ? (
+          <div className="text-center py-10 text-muted text-sm">Loading…</div>
+        ) : (
+          <>
+            {DayLogs()}
+
+            {/* Analyse */}
+            <div className="card p-4 space-y-3">
+              <div className="flex items-center gap-1.5 text-xs text-hue-purple font-semibold">
+                <Sparkles size={13} /> Analyse this week
+              </div>
+              <textarea
+                className="input w-full text-sm py-2 min-h-[68px] resize-y"
+                placeholder="How should the week be analysed? e.g. Focus on protein intake and flag days low on vegetables. Suggest 3 swaps for next week."
+                value={analysePrompt}
+                onChange={e => setAnalysePrompt(e.target.value)}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={analyseMeals} disabled={analysing}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]
+                    bg-purple-500/20 text-hue-purple border border-purple-500/30
+                    hover:bg-purple-500/30 transition-colors disabled:opacity-50">
+                  <Sparkles size={12} />{analysing ? 'Analysing…' : 'Analyse Meal'}
+                </button>
+                <p className="text-[10px] text-muted font-mono">Sends all logged days for this week as input</p>
+              </div>
+              {analyseError && <p className="text-xs text-neg">{analyseError}</p>}
+            </div>
+
+            {ReportCard()}
+          </>
+        )}
       </div>
     );
   }
@@ -799,214 +512,18 @@ export default function WellnessMeals() {
     );
   }
 
-  // ── edit modal ─────────────────────────────────────────────────────────────
-  function EditModal() {
-    if (!editCell) return null;
-    const mt = MEAL_MAP[editCell.mealType];
-    const d  = parseD(editCell.date);
-    const readOnly = !!editCell.readOnly;
-
-    const notesLines  = (editData.notes || '').split('\n');
-    const firstLine   = notesLines[0] || '';
-    const hasMacros   = /protein|carbs|fat/i.test(firstLine);
-    const macroChips  = hasMacros ? firstLine.split('|').map(s => s.trim()).filter(Boolean) : [];
-    const ingredients = hasMacros ? notesLines.slice(1).join('\n').trim() : editData.notes;
-
-    const nutKey = eKey(editCell.date, editCell.mealType);
-    const nut = nutritionByKey[nutKey];
-    const nutLoading = nutritionLoadingKey === nutKey;
-
-    const showDetailView = editData.title && (!editMode || readOnly);
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-        style={{ background: 'rgba(9,9,14,0.75)', backdropFilter: 'blur(6px)' }}>
-        <div className="card w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className={`flex items-center gap-2 ${mt.color}`}>
-                <mt.icon size={16} /><span className="font-semibold text-sm">{mt.label}</span>
-              </div>
-              <p className="text-muted text-xs mt-0.5">
-                {d?.toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'short' })}
-                {readOnly && <span className="ml-2 text-hue-amber/80">· View only</span>}
-              </p>
-            </div>
-            <button onClick={() => setEditCell(null)} className="text-muted hover:text-white transition-colors">
-              <X size={16} />
-            </button>
-          </div>
-
-          {showDetailView ? (
-            <>
-              <p className="text-white text-base font-bold leading-snug mb-3 break-words">{editData.title}</p>
-              {editData.calories && (
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-sm font-mono font-semibold ${mt.ring} ${mt.color} mb-3`}>
-                  {editData.calories} kcal
-                </span>
-              )}
-              {macroChips.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-3">
-                  {macroChips.map((chip, i) => (
-                    <span key={i} className={`px-2 py-0.5 rounded-md text-xs font-mono border ${mt.ring} ${mt.color}`}>{chip}</span>
-                  ))}
-                </div>
-              )}
-              {(ingredients || (!hasMacros && editData.notes)) && (
-                <div className="mb-3">
-                  <p className="text-[10px] text-muted uppercase tracking-wider mb-1">Ingredients / Notes</p>
-                  <p className="text-soft text-xs leading-relaxed whitespace-pre-line break-words">
-                    {ingredients || editData.notes}
-                  </p>
-                </div>
-              )}
-
-              <div className="mt-4 border-t border-hairline/10 pt-3 space-y-2">
-                <button
-                  type="button"
-                  onClick={fetchNutritionBreakdown}
-                  disabled={nutLoading || !editData.title?.trim()}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold
-                    bg-purple-500/15 text-hue-purple border border-purple-500/30 hover:bg-purple-500/25 transition-colors disabled:opacity-50"
-                >
-                  <Sparkles size={12} />
-                  {nutLoading ? 'Fetching nutrition…' : 'Fetch nutrition (AI)'}
-                </button>
-                <p className="text-[10px] text-muted leading-snug">
-                  Portions, macros, small add-ons (e.g. ghee), and nutrient tags (protein / fibre rich, etc.). Approximate values.
-                </p>
-                {nut?.items?.length > 0 && (
-                  <div className="overflow-x-auto rounded-lg border border-hairline/10 mt-2">
-                    <table className="w-full text-xs text-left">
-                      <thead>
-                        <tr className="text-muted uppercase border-b border-hairline/10">
-                          <th className="py-2 pr-2 pl-2">Item</th>
-                          <th className="py-2 pr-2">Portion</th>
-                          <th className="py-2 pr-2 min-w-[100px]">Tags</th>
-                          <th className="py-2 pr-2 text-right">kcal</th>
-                          <th className="py-2 pr-2 text-right">P</th>
-                          <th className="py-2 pr-2 text-right">C</th>
-                          <th className="py-2 pr-2 text-right">F</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {nut.items.flatMap((row, i) => {
-                          const comps = Array.isArray(row.components) ? row.components : [];
-                          const main = (
-                            <tr key={`m-${i}`} className="border-b border-hairline/5 bg-white/[0.03]">
-                              <td className="py-1.5 pr-2 pl-2 text-soft font-medium">{row.name}</td>
-                              <td className="py-1.5 pr-2 text-muted max-w-[120px]">{row.portion || '—'}</td>
-                              <td className="py-1.5 pr-2">
-                                <div className="flex flex-wrap gap-1">
-                                  {(row.tags || []).map((tg, j) => (
-                                    <span
-                                      key={j}
-                                      className={`px-1.5 py-0.5 rounded border text-[10px] leading-tight ${nutritionTagClass(tg)}`}
-                                    >
-                                      {tg}
-                                    </span>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="py-1.5 pr-2 text-right font-mono">{row.calories ?? '—'}</td>
-                              <td className="py-1.5 pr-2 text-right font-mono">{row.protein_g ?? '—'}</td>
-                              <td className="py-1.5 pr-2 text-right font-mono">{row.carbs_g ?? '—'}</td>
-                              <td className="py-1.5 pr-2 text-right font-mono">{row.fat_g ?? '—'}</td>
-                            </tr>
-                          );
-                          const sub = comps.map((c, k) => (
-                            <tr key={`c-${i}-${k}`} className="border-b border-hairline/5">
-                              <td className="py-1 pr-2 pl-5 text-muted text-[11px]">
-                                <span className="text-muted/60 mr-1">↳</span>
-                                {c.name}
-                              </td>
-                              <td className="py-1 pr-2 text-muted text-[11px]">{c.portion || '—'}</td>
-                              <td className="py-1 pr-2 text-muted/50 text-[10px]">—</td>
-                              <td className="py-1 pr-2 text-right font-mono text-[11px]">{c.calories ?? '—'}</td>
-                              <td className="py-1 pr-2 text-right font-mono text-[11px]">{c.protein_g ?? '—'}</td>
-                              <td className="py-1 pr-2 text-right font-mono text-[11px]">{c.carbs_g ?? '—'}</td>
-                              <td className="py-1 pr-2 text-right font-mono text-[11px]">{c.fat_g ?? '—'}</td>
-                            </tr>
-                          ));
-                          return [main, ...sub];
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {nut?.mealTotal && (
-                  <div className={`flex flex-wrap gap-3 text-xs font-mono px-2 py-2 rounded-lg border ${mt.ring} ${mt.color}`}>
-                    <span>Meal total: {nut.mealTotal.calories ?? '—'} kcal</span>
-                    <span>P {nut.mealTotal.protein_g ?? '—'}g</span>
-                    <span>C {nut.mealTotal.carbs_g ?? '—'}g</span>
-                    <span>F {nut.mealTotal.fat_g ?? '—'}g</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-2 mt-4">
-                {!readOnly && (
-                  <>
-                    <button type="button" onClick={clearCell} className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-neg hover:bg-red-400/10 transition-colors">Clear</button>
-                    <button type="button" onClick={() => setEditMode(true)} className="btn-primary flex-1 text-sm py-2">Edit</button>
-                  </>
-                )}
-                {readOnly && (
-                  <button type="button" onClick={() => setEditCell(null)} className="btn-primary flex-1 text-sm py-2">Close</button>
-                )}
-              </div>
-            </>
-          ) : readOnly ? null : (
-            <>
-              <div className="space-y-3">
-                <div>
-                  <label className="label">Meal</label>
-                  <input className="input w-full mt-1" placeholder="e.g. Oatmeal with berries"
-                    value={editData.title} autoFocus
-                    onChange={e => setEditData(p => ({ ...p, title: e.target.value }))}
-                    onKeyDown={e => e.key === 'Enter' && saveCell()} />
-                </div>
-                <div>
-                  <label className="label">Notes / Ingredients <span className="text-muted/50">(optional)</span></label>
-                  <textarea className="input w-full mt-1 resize-none h-20 text-xs"
-                    placeholder={'Protein: 30g | Carbs: 45g | Fat: 12g\nIngredients, prep notes…'}
-                    value={editData.notes}
-                    onChange={e => setEditData(p => ({ ...p, notes: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="label">Calories <span className="text-muted/50">(optional)</span></label>
-                  <input className="input w-full mt-1" type="number" placeholder="e.g. 350"
-                    value={editData.calories}
-                    onChange={e => setEditData(p => ({ ...p, calories: e.target.value }))} />
-                </div>
-              </div>
-              <div className="flex gap-2 mt-4">
-                <button type="button" onClick={clearCell} className="flex-1 py-2 text-sm rounded-xl border border-red-400/20 text-neg hover:bg-red-400/10 transition-colors">Clear</button>
-                <button type="button" onClick={saveCell} className="btn-primary flex-1 text-sm py-2">Save</button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="stack">
       <PageHeader
         className="fade-up"
         title={currentPerson ? `${currentPerson}'s Meals` : 'Meals'}
-        eyebrow="Weekly meal planner"
+        eyebrow="Meal ideas & weekly tracking"
         actions={<SegmentedToggle options={MEAL_VIEWS} value={view} onChange={setView} />}
       />
 
-      {loading && view === 'planner' && <div className="text-center py-10 text-muted text-sm fade-up-1">Loading…</div>}
-
-      {!loading && view === 'planner'  && Planner()}
-      {           view === 'ideas'     && HealthyIdeas()}
-
-      {EditModal()}
+      {view === 'ideas' && HealthyIdeas()}
+      {view === 'track' && TrackMeal()}
     </div>
   );
 }
