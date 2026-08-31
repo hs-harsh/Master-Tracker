@@ -12,8 +12,8 @@ import SegmentedToggle from '../../components/SegmentedToggle';
 import { parseD, todayStr, getMonday, getWeekDays, fmtWeekRange } from '../../lib/utils';
 
 const MEAL_VIEWS = [
-  { key: 'ideas', label: 'Healthy Ideas' },
   { key: 'track', label: 'Track Meal' },
+  { key: 'ideas', label: 'Healthy Ideas' },
 ];
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -60,7 +60,7 @@ export default function WellnessMeals() {
   const { personName, activePerson } = useAuth();
   const currentPerson = activePerson || personName;
 
-  const [view, setView] = useState('ideas');
+  const [view, setView] = useState('track');
 
   // ── track state ────────────────────────────────────────────────────────────
   const today = todayStr();
