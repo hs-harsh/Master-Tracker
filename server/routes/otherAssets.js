@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const pool = require('../db');
 const auth = require('../middleware/auth');
+const noGuests = require('../middleware/noGuests');
 const { sendEmail } = require('../utils/email');
 
 const DEFAULT_TYPES = ['Property', 'Vehicle', 'Gold', 'PPF', 'NPS'];
@@ -316,7 +317,7 @@ router.post('/snapshot', auth, async (req, res) => {
 });
 
 // POST /send-update-reminder — email profiles about stale assets
-router.post('/send-update-reminder', auth, async (req, res) => {
+router.post('/send-update-reminder', auth, noGuests, async (req, res) => {
   try {
     const { rows: staleAssets } = await pool.query(
       `SELECT oa.id, oa.name, oa.asset_type, oa.current_value, oa.as_of_date,

@@ -3,10 +3,12 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
 const { sendLoginOtp } = require('../utils/email');
+const { seedGuestFinance } = require('../utils/guestSeed');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_GUEST_ACCOUNTS = 200;    // newest kept; older ones swept on each guest login
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
 function generateOtp() {
@@ -15,7 +17,15 @@ function generateOtp() {
 
 function makeToken(user) {
   return jwt.sign(
-    { id: user.id, username: user.username, personName: user.person_name || user.username, isAdmin: !!user.is_admin },
+    {
+      id: user.id,
+      username: user.username,
+      personName: user.person_name || user.username,
+      isAdmin: !!user.is_admin,
+      // Read by middleware/noGuests.js to keep demo accounts out of the
+      // billed AI routes and the email senders.
+      isGuest: !!user.is_guest,
+    },
     JWT_SECRET,
     { expiresIn: '30d' }
   );
@@ -187,6 +197,69 @@ router.post('/verify-otp', async (req, res) => {
   } catch (err) {
     console.error('verify-otp error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/auth/guest — throwaway demo account ────────────────────────────
+// Creates a flagged guest user pre-filled with sample finance data, so the app
+// can be explored without signing up. Guests own their rows like any other
+// user, so they can never see a real account's data.
+router.post('/guest', async (req, res) => {
+  try {
+    const rawName = (req.body.name || req.body.personName || '').trim();
+    if (!rawName) return res.status(400).json({ error: 'Enter a name to continue' });
+    if (rawName.length > 30) return res.status(400).json({ error: 'Name must be 30 characters or fewer' });
+    // person_name is a display label, not markup — keep it plain.
+    const personName = rawName.replace(/[<>]/g, '');
+    if (!personName) return res.status(400).json({ error: 'Enter a valid name' });
+
+    // Keep the guest pool bounded: sweep accounts older than the session
+    // window, then trim the oldest if there are still too many. Deleting a
+    // user cascades to all of their data.
+    await pool.query(
+      `DELETE FROM users WHERE is_guest = TRUE AND created_at < NOW() - INTERVAL '24 hours'`
+    );
+    await pool.query(
+      `DELETE FROM users WHERE id IN (
+         SELECT id FROM users WHERE is_guest = TRUE
+         ORDER BY created_at DESC OFFSET $1
+       )`,
+      [MAX_GUEST_ACCOUNTS]
+    );
+
+    // Non-routable username in a reserved domain so it can never collide with,
+    // or be mistaken for, a real sign-in address.
+    const username = `guest_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}@guest.invalid`;
+
+    const { rows } = await pool.query(
+      `INSERT INTO users (username, password_hash, person_name, is_guest, last_login_at)
+       VALUES ($1, '', $2, TRUE, NOW())
+       RETURNING id, username, person_name, is_admin, is_guest`,
+      [username, personName]
+    );
+    const guest = rows[0];
+
+    await pool.query(
+      'INSERT INTO user_persons (user_id, person_name) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+      [guest.id, personName]
+    );
+
+    try {
+      await seedGuestFinance(pool, guest.id, personName);
+    } catch (seedErr) {
+      // An empty demo is still usable — log it and let the guest in.
+      console.error('guest seed failed:', seedErr.message);
+    }
+
+    res.status(201).json({
+      token: makeToken(guest),
+      personName: guest.person_name,
+      isAdmin: false,
+      isGuest: true,
+    });
+  } catch (err) {
+    console.error('guest login error:', err.message);
+    res.status(500).json({ error: 'Could not start a guest session' });
   }
 });
 

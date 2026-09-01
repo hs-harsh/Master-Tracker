@@ -2,6 +2,7 @@ const express        = require('express');
 const router         = express.Router();
 const pool           = require('../db');
 const auth           = require('../middleware/auth');
+const noGuests           = require('../middleware/noGuests');
 const {
   runBacktestPerSymbolAllocation,
   validateRulesDataCoverage,
@@ -354,7 +355,7 @@ router.delete('/strategies/:id', async (req, res) => {
 
 // ── POST /api/backtest/ai/parse-rules ────────────────────────────────────────
 // Send all 3 prompts → Claude returns structured rules JSON
-router.post('/ai/parse-rules', async (req, res) => {
+router.post('/ai/parse-rules', noGuests, async (req, res) => {
   const { dataPrompt, strategyPrompt, entryPrompt, exitPrompt } = req.body;
   try {
     const apiKey = await getAnthropicApiKey();

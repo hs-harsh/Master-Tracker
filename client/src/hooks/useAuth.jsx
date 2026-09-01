@@ -96,6 +96,13 @@ export function AuthProvider({ children }) {
     return data;
   };
 
+  // Guest demo session — creates a throwaway account pre-filled with sample data
+  const guestLogin = async (name) => {
+    const { data } = await api.post('/auth/guest', { name });
+    _setToken(data.token);
+    return data;
+  };
+
   // OTP step 1: send code → returns { isNewUser, devOtp? }
   const sendOtp = async (email) => {
     const { data } = await api.post('/auth/send-otp', { email });
@@ -118,7 +125,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthCtx.Provider value={{
-      token, login, register, sendOtp, verifyOtp, logout,
+      token, login, register, sendOtp, verifyOtp, guestLogin, logout,
       isAuth: !!token, personName, isAdmin,
       persons, personsLoaded, fetchPersons,
       activePerson, setActivePerson,

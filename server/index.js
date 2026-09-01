@@ -20,6 +20,9 @@ app.use(cors({
 app.use(express.json({ limit: '25mb' }));
 
 // Routes
+const authMw   = require('./middleware/auth');
+const noGuests = require('./middleware/noGuests');
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/persons', require('./routes/persons'));
 app.use('/api/cashflow', require('./routes/cashflow'));
@@ -35,8 +38,11 @@ app.use('/api/expense-analyser', require('./routes/expenseAnalyser'));
 // check on every handler.
 // app.use('/api/portfolio', require('./routes/portfolio'));
 app.use('/api/settings', require('./routes/settings'));
-app.use('/api/chat', require('./routes/finsight'));
-app.use('/api/ai',   require('./routes/aiparse'));
+// Guest (demo) accounts sign in without any verification, so they are kept out
+// of the routes that spend the owner's Anthropic budget. Individual AI and
+// email endpoints inside the feature routers carry the same guard inline.
+app.use('/api/chat', authMw, noGuests, require('./routes/finsight'));
+app.use('/api/ai',   authMw, noGuests, require('./routes/aiparse'));
 app.use('/api/prices', require('./routes/prices'));
 app.use('/api/stocks', require('./routes/stocks'));
 app.use('/api/admin', require('./routes/admin'));

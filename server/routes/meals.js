@@ -5,6 +5,7 @@ const auth               = require('../middleware/auth');
 const { sendMealPlanEmail } = require('../utils/email');
 const { getAnthropicApiKey } = require('../utils/anthropicKey');
 const { getMonday, todayStr, getWeekDays } = require('../utils/dateHelpers');
+const noGuests           = require('../middleware/noGuests');
 
 router.use(auth);
 
@@ -242,7 +243,7 @@ Group similar ingredients, include approximate quantities.`,
 
 // ── POST /api/meals/week/:id/generate ────────────────────────────────────────
 // Uses Claude to generate a full week of meals based on user prompt + past history.
-router.post('/week/:id/generate', async (req, res) => {
+router.post('/week/:id/generate', noGuests, async (req, res) => {
   try {
     const planId = parseInt(req.params.id, 10);
     const { prompt: userPrompt = '' } = req.body;
@@ -386,7 +387,7 @@ Requirements:
 });
 
 // ── POST /api/meals/week/:id/regenerate-entry — refresh a single meal cell ───
-router.post('/week/:id/regenerate-entry', async (req, res) => {
+router.post('/week/:id/regenerate-entry', noGuests, async (req, res) => {
   try {
     const planId = parseInt(req.params.id, 10);
     const { entry_date, meal_type, current_entries = [], current_meal = null } = req.body;
@@ -476,7 +477,7 @@ Requirements:
 });
 
 // ── POST /api/meals/nutrition-breakdown — per-ingredient estimates via Claude ─
-router.post('/nutrition-breakdown', async (req, res) => {
+router.post('/nutrition-breakdown', noGuests, async (req, res) => {
   try {
     const { title = '', notes = '' } = req.body || {};
     if (!String(title).trim()) return res.status(400).json({ error: 'title required' });
@@ -573,7 +574,7 @@ Rules:
 });
 
 // ── POST /api/meals/week/:id/send-email — email current plan (draft or accepted) ─
-router.post('/week/:id/send-email', async (req, res) => {
+router.post('/week/:id/send-email', noGuests, async (req, res) => {
   try {
     const planId = parseInt(req.params.id, 10);
 
@@ -767,7 +768,7 @@ router.put('/track', async (req, res) => {
 });
 
 // ── POST /api/meals/track/analyse — weekly AI report over the logged days ────
-router.post('/track/analyse', async (req, res) => {
+router.post('/track/analyse', noGuests, async (req, res) => {
   try {
     const person = req.body.person || '';
     const ws     = getMonday(req.body.week_start || todayStr());

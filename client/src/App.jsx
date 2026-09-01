@@ -23,7 +23,7 @@ import Trade from './pages/Trade';
 import StockTrade from './pages/StockTrade';
 import Settings from './pages/Settings';
 import Admin from './pages/Admin';
-import { Lock, Mail, Loader2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, Loader2, ArrowLeft, Eye, EyeOff, Compass } from 'lucide-react';
 
 // ── OTP digit input row ────────────────────────────────────────────────────────
 function OtpBoxes({ otp, setOtp, inputsRef }) {
@@ -65,10 +65,11 @@ function OtpBoxes({ otp, setOtp, inputsRef }) {
 
 // ── Shared auth form (used inline when not logged in) ─────────────────────────
 export function OtpLoginForm() {
-  const { login, register, sendOtp, verifyOtp } = useAuth();
+  const { login, register, sendOtp, verifyOtp, guestLogin } = useAuth();
 
-  // mode: 'signin' | 'otp-send' | 'otp-verify' | 'register'
+  // mode: 'signin' | 'otp-send' | 'otp-verify' | 'register' | 'guest'
   const [mode, setMode] = useState('signin');
+  const [guestName, setGuestName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -175,7 +176,23 @@ export function OtpLoginForm() {
     }
   };
 
-  const heading = mode === 'register' ? 'Create account' : 'Sign in required';
+  const handleGuestLogin = async (e) => {
+    e.preventDefault();
+    if (!guestName.trim()) { setError('Enter a name to continue'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      await guestLogin(guestName.trim());
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not start a guest session');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const heading = mode === 'register' ? 'Create account'
+    : mode === 'guest' ? 'Try the demo'
+    : 'Sign in required';
 
   return (
     <div className="flex-1 flex items-center justify-center min-h-full p-6">
@@ -189,6 +206,7 @@ export function OtpLoginForm() {
           <p className="text-muted text-sm mt-1">
             {mode === 'otp-verify'
               ? <>Code sent to <span className="text-text font-medium">{email}</span></>
+              : mode === 'guest' ? 'Look around with sample data — no sign-up needed.'
               : 'This section is private.'}
           </p>
         </div>
@@ -220,6 +238,10 @@ export function OtpLoginForm() {
               <button type="button" onClick={() => { reset('otp-send'); }}
                 className="btn-ghost w-full justify-center flex text-sm text-soft hover:text-accent-ink border border-border hover:border-accent/30">
                 <Mail size={14} className="mr-2" />Sign in with code instead
+              </button>
+              <button type="button" onClick={() => { setGuestName(''); reset('guest'); }}
+                className="btn-ghost w-full justify-center flex text-sm text-soft hover:text-accent-ink border border-border hover:border-accent/30">
+                <Compass size={14} className="mr-2" />Explore as guest
               </button>
             </div>
             <p className="text-center text-xs text-muted pt-1">
@@ -325,6 +347,35 @@ export function OtpLoginForm() {
             <p className="text-center text-xs text-muted pt-1">
               Already have an account?{' '}
               <button type="button" onClick={() => reset('signin')} className="text-accent-ink hover:underline">Sign in</button>
+            </p>
+          </form>
+        )}
+
+        {/* ── Guest demo ── */}
+        {mode === 'guest' && (
+          <form onSubmit={handleGuestLogin} className="card space-y-4">
+            <div>
+              <label className="label">Your name</label>
+              <input className="input" value={guestName} onChange={e => setGuestName(e.target.value)}
+                placeholder="e.g. Alex" autoComplete="off" maxLength={30} required autoFocus />
+              <p className="text-muted text-xs mt-1">Names the demo profile your sample data sits under</p>
+            </div>
+            {error && <p className="text-rose text-sm">{error}</p>}
+            <button type="submit" disabled={loading || !guestName.trim()}
+              className="btn-primary w-full justify-center flex gap-2">
+              {loading
+                ? <><Loader2 size={16} className="animate-spin" />Setting up your demo…</>
+                : <><Compass size={15} />Start exploring</>}
+            </button>
+            <p className="text-muted text-xs text-center leading-relaxed">
+              A temporary account filled with sample finance data so you can look around.
+              It is not linked to any email and is cleared automatically.
+            </p>
+            <p className="text-center text-xs text-muted pt-1">
+              <button type="button" onClick={() => reset('signin')}
+                className="inline-flex items-center gap-1 hover:text-text transition-colors">
+                <ArrowLeft size={12} />Back to sign in
+              </button>
             </p>
           </form>
         )}

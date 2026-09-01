@@ -243,6 +243,17 @@ BEGIN
   END IF;
 END $$;
 
+-- Guest (demo) accounts: throwaway users created by "Explore as guest" and
+-- pre-filled with sample finance data. Flagged so they can be swept up without
+-- ever touching a real account.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'is_guest') THEN
+    ALTER TABLE users ADD COLUMN is_guest BOOLEAN DEFAULT FALSE;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_users_is_guest ON users(is_guest, created_at);
+
 -- Remove auto-first-user admin (replaced by explicit email above)
 -- (No-op if already set correctly)
 
