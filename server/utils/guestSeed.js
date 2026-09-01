@@ -6,11 +6,22 @@
  * middle-income single earner (~₹50k/month salary) rather than the six-figure
  * figures the dev fixtures use.
  *
- * Everything is written under the guest's own user_id and person name, so a
- * guest only ever sees data seeded for them.
+ * Every guest gets the SAME figures — only the profile name differs — so the
+ * demo is a known, predictable dataset that can be talked through and compared
+ * against a screenshot. That comes from the fixed RNG seed below; the rows are
+ * still written under each guest's own user_id, so guests remain isolated from
+ * each other and from real accounts, they just happen to hold identical numbers.
+ *
+ * Dates stay anchored to today, so the same dataset always lands in the ranges
+ * the UI defaults to no matter when the guest signs in.
  */
 
-// ── Deterministic-ish RNG, seeded per guest so two guests differ ─────────────
+// ── Deterministic RNG. The fixed seed is what makes every guest identical —
+//    seeding this per guest (on user id or the clock) is what would make two
+//    demos disagree. ─────────────────────────────────────────────────────────
+const GUEST_SEED = 20260101;
+
+
 function makeRng(seed) {
   let a = seed >>> 0;
   return function rng() {
@@ -116,7 +127,7 @@ function otherAssetsFor() {
  * @param {string} person  the guest's profile name
  */
 async function seedGuestFinance(pool, userId, person) {
-  const rng = makeRng(Date.now() ^ (userId * 2654435761));
+  const rng = makeRng(GUEST_SEED);
   const rand = (min, max) => min + rng() * (max - min);
   const randInt = (min, max) => Math.floor(rand(min, max + 1));
   const pick = (arr) => arr[randInt(0, arr.length - 1)];
