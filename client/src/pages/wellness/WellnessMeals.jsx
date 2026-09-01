@@ -1,8 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
+  BarChart, Bar, Cell, LabelList, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
+import {
   ChevronLeft, ChevronRight,
   Plus, X, Check, Save, Sparkles,
   ChevronDown, Lightbulb, UtensilsCrossed, ClipboardList,
+  User, HeartPulse,
 } from 'lucide-react';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
@@ -10,6 +15,7 @@ import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
 import SegmentedToggle from '../../components/SegmentedToggle';
 import { parseD, todayStr, getMonday, getWeekDays, fmtWeekRange } from '../../lib/utils';
+import { TT, AX, GRID, HUE } from '../../lib/chartTheme';
 
 const MEAL_VIEWS = [
   { key: 'track', label: 'Track Meal' },
@@ -47,6 +53,29 @@ function fmtDayLabel(ds, i) {
   return `${DAY_LABELS[i]} · ${d.getDate()} ${d.toLocaleDateString('en-IN', { month: 'short' })}`;
 }
 
+// The standing profile the weekly analysis is written against. Mirrors the
+// fields server/routes/meals.js accepts — anything else is dropped there.
+const EMPTY_CONTEXT = {
+  age: '', sex: '', height_cm: '', weight_kg: '',
+  activity: '', goal: '', diet: '',
+  portions: '', conditions: '', allergies: '', notes: '',
+};
+
+const ACTIVITY_OPTIONS = ['Sedentary', 'Lightly active', 'Moderately active', 'Very active'];
+const GOAL_OPTIONS     = ['General health', 'Lose weight', 'Maintain weight', 'Gain muscle', 'Manage a condition'];
+const DIET_OPTIONS     = ['Vegetarian', 'Eggetarian', 'Non-vegetarian', 'Vegan', 'Jain'];
+const SEX_OPTIONS      = ['Female', 'Male', 'Other'];
+
+/**
+ * Colour follows the RATING — how well the week went for that nutrient, where
+ * 10 is ideal for every nutrient. It deliberately does not follow the verdict:
+ * a week low in added sugar is a good week, so colouring "low" red would say
+ * the opposite of what the bar means. The verdict word (which direction it is
+ * off in) is printed beside every bar, so status is never colour-alone.
+ */
+const ratingHue = (rating) => (rating >= 7 ? 'emerald' : rating >= 4 ? 'amber' : 'rose');
+const VERDICT_LABEL = { low: 'below target', adequate: 'on target', high: 'above target' };
+
 /** Span covered by a run of weeks, e.g. '2 Dec – 12 Jan 2026' */
 function fmtStripRange(firstWeek, lastWeek) {
   const s = parseD(firstWeek);
@@ -76,6 +105,12 @@ export default function WellnessMeals() {
 
   const [analysePrompt, setAnalysePrompt] = useState('');
   const [report, setReport] = useState(null);
+
+  // Standing analysis context — entered once per profile, reused every week.
+  const [context, setContext] = useState(EMPTY_CONTEXT);
+  const [contextSaved, setContextSaved] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [contextSaving, setContextSaving] = useState(false);
   const [analysing, setAnalysing] = useState(false);
   const [analyseError, setAnalyseError] = useState('');
 
@@ -193,6 +228,52 @@ export default function WellnessMeals() {
 
   // Switching profile closes the open week — its logs belong to the old person.
   useEffect(() => { setWeekStart(null); setReport(null); }, [currentPerson]);
+
+  // ── track: the standing analysis context ───────────────────────────────────
+  useEffect(() => {
+    if (view !== 'track') return;
+    let cancelled = false;
+    api.get(`/meals/track/context?person=${encodeURIComponent(currentPerson || '')}`)
+      .then(r => {
+        if (cancelled) return;
+        const saved = r.data?.context || {};
+        const has = Object.keys(saved).length > 0;
+        setContext({ ...EMPTY_CONTEXT, ...saved });
+        setContextSaved(has);
+        // Nudge first-time users to fill it in; keep it out of the way after.
+        setContextOpen(!has);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [view, currentPerson]);
+
+  async function saveContext() {
+    setContextSaving(true);
+    try {
+      const { data } = await api.put('/meals/track/context', {
+        person: currentPerson || '',
+        context,
+      });
+      const saved = data?.context || {};
+      setContext({ ...EMPTY_CONTEXT, ...saved });
+      setContextSaved(Object.keys(saved).length > 0);
+      setContextOpen(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setContextSaving(false);
+    }
+  }
+
+  const contextSummary = () => {
+    const bits = [];
+    if (context.age) bits.push(`${context.age}y`);
+    if (context.sex) bits.push(context.sex);
+    if (context.weight_kg) bits.push(`${context.weight_kg}kg`);
+    if (context.goal) bits.push(context.goal);
+    if (context.conditions) bits.push(context.conditions.split(/[,\n]/)[0].trim());
+    return bits.slice(0, 4).join(' · ');
+  };
 
   async function saveWeek({ force = false } = {}) {
     if (!weekStart) return;
@@ -347,6 +428,192 @@ export default function WellnessMeals() {
     );
   }
 
+  function ContextCard() {
+    const set = (k) => (e) => setContext(prev => ({ ...prev, [k]: e.target.value }));
+    const Num = ({ k, label, unit }) => (
+      <div>
+        <label className="label">{label}</label>
+        <div className="relative">
+          <input type="number" className="input w-full text-sm py-2 pr-9" value={context[k]}
+            onChange={set(k)} min={0} />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted font-mono">{unit}</span>
+        </div>
+      </div>
+    );
+    const Pick = ({ k, label, options }) => (
+      <div>
+        <label className="label">{label}</label>
+        <select className="input w-full text-sm py-2" value={context[k]} onChange={set(k)}>
+          <option value="">—</option>
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+    );
+
+    return (
+      <div className="card overflow-hidden">
+        <button type="button" onClick={() => setContextOpen(o => !o)}
+          className="w-full flex items-center justify-between gap-3 py-3 px-4 hover:bg-surface/40 transition-colors text-left">
+          <div className="flex items-center gap-2 min-w-0">
+            {contextOpen ? <ChevronDown size={14} className="text-muted shrink-0" /> : <ChevronRight size={14} className="text-muted shrink-0" />}
+            <User size={14} className="text-hue-teal shrink-0" />
+            <span className="font-display text-sm font-semibold text-white shrink-0">Your profile</span>
+            <span className="text-xs text-muted truncate">
+              {contextSaved ? (contextSummary() || 'saved') : 'not set — the analysis will be generic without it'}
+            </span>
+          </div>
+          {contextSaved
+            ? <span className="flex items-center gap-1 text-[10px] text-pos font-mono shrink-0"><Check size={10} /> saved</span>
+            : <span className="text-[10px] text-hue-amber font-mono shrink-0">add once</span>}
+        </button>
+
+        {contextOpen && (
+          <div className="px-4 pb-4 space-y-3 border-t border-hairline/8 pt-3">
+            <p className="text-xs text-muted">
+              Saved once for this profile and reused for every weekly analysis — so the report is
+              written for your body, portions and needs instead of a generic adult.
+            </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Num k="age" label="Age" unit="yrs" />
+              <Pick k="sex" label="Sex" options={SEX_OPTIONS} />
+              <Num k="height_cm" label="Height" unit="cm" />
+              <Num k="weight_kg" label="Weight" unit="kg" />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Pick k="activity" label="Activity level" options={ACTIVITY_OPTIONS} />
+              <Pick k="goal"     label="Goal"           options={GOAL_OPTIONS} />
+              <Pick k="diet"     label="Dietary pattern" options={DIET_OPTIONS} />
+            </div>
+
+            <div>
+              <label className="label">Typical portions</label>
+              <textarea className="input w-full text-sm py-2 min-h-[56px] resize-y"
+                placeholder="e.g. 2 rotis and 1 katori dal per meal, 1 cup rice, tea twice a day"
+                value={context.portions} onChange={set('portions')} />
+            </div>
+
+            <div>
+              <label className="label flex items-center gap-1.5">
+                <HeartPulse size={12} className="text-neg" /> Medical conditions
+              </label>
+              <textarea className="input w-full text-sm py-2 min-h-[56px] resize-y"
+                placeholder="e.g. type 2 diabetes, hypertension, PCOS, thyroid — or leave blank"
+                value={context.conditions} onChange={set('conditions')} />
+              <p className="text-muted text-xs mt-1">
+                Anything here is treated as the priority the week is judged against.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Allergies / intolerances</label>
+                <input className="input w-full text-sm py-2" placeholder="e.g. lactose, peanuts"
+                  value={context.allergies} onChange={set('allergies')} />
+              </div>
+              <div>
+                <label className="label">Anything else</label>
+                <input className="input w-full text-sm py-2" placeholder="e.g. training for a 10k, night shifts"
+                  value={context.notes} onChange={set('notes')} />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button onClick={saveContext} disabled={contextSaving}
+                className="btn-primary text-sm px-3 py-2 flex items-center gap-1.5 shrink-0 whitespace-nowrap disabled:opacity-50">
+                <Save size={13} />{contextSaving ? 'Saving…' : 'Save profile'}
+              </button>
+              <span className="text-[10px] text-muted font-mono">Used by every analysis from now on</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function NutrientChart({ nutrients }) {
+    if (!nutrients?.length) return null;
+    // Horizontal bars: named categories of differing label length, compared on
+    // one 0–10 magnitude scale. Colour carries the verdict, but the verdict word
+    // sits beside every bar so identity is never colour-alone.
+    const data = nutrients.map(n => ({ ...n, fill: HUE[ratingHue(n.rating)] }));
+    const height = Math.max(140, data.length * 34 + 24);
+    return (
+      <div>
+        <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-2">
+          Nutrients — how well the week met your needs <span className="normal-case">(10 = ideal)</span>
+        </p>
+        <ResponsiveContainer width="100%" height={height}>
+          <BarChart data={data} layout="vertical" margin={{ top: 0, right: 34, bottom: 0, left: 0 }} barSize={14}>
+            <CartesianGrid {...GRID} horizontal={false} />
+            <XAxis type="number" domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} {...AX} />
+            <YAxis type="category" dataKey="name" width={92} {...AX} />
+            <Tooltip {...TT} cursor={{ fill: 'transparent' }}
+              formatter={(v, _n, p) => [`${v}/10 — ${VERDICT_LABEL[p.payload.verdict] || p.payload.verdict}`, p.payload.name]} />
+            <Bar dataKey="rating" radius={[0, 4, 4, 0]} isAnimationActive={false}>
+              {data.map((d, i) => <Cell key={i} fill={d.fill} />)}
+              <LabelList dataKey="rating" position="right"
+                className="fill-muted" style={{ fontSize: 10, fontFamily: 'monospace' }} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+
+        <ul className="space-y-1.5 mt-1">
+          {data.map((n, i) => (
+            <li key={i} className="flex items-start gap-2 text-xs">
+              <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: n.fill }} />
+              <span className="text-soft">
+                <span className="text-white font-semibold">{n.name}</span>
+                <span className="text-muted font-mono"> · {VERDICT_LABEL[n.verdict] || n.verdict}</span>
+                {n.note ? <> — {n.note}</> : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  function MacroBar({ macros }) {
+    const p = macros?.protein_g, c = macros?.carbs_g, f = macros?.fat_g;
+    if (![p, c, f].some(v => typeof v === 'number' && v > 0)) return null;
+    // Calories, not grams: a gram of fat is not a gram of carbs, so a split by
+    // weight would misstate where the day's energy actually came from.
+    const parts = [
+      { key: 'Protein', g: p || 0, kcal: (p || 0) * 4, hue: HUE.teal },
+      { key: 'Carbs',   g: c || 0, kcal: (c || 0) * 4, hue: HUE.blue },
+      { key: 'Fat',     g: f || 0, kcal: (f || 0) * 9, hue: HUE.amber },
+    ];
+    const total = parts.reduce((s, x) => s + x.kcal, 0) || 1;
+    return (
+      <div>
+        <div className="flex items-baseline justify-between gap-2 mb-2">
+          <p className="text-[10px] text-muted uppercase tracking-widest font-mono">
+            Daily average · where the energy came from
+          </p>
+          {typeof macros.calories === 'number' && (
+            <p className="text-xs font-mono text-soft">{macros.calories} kcal/day</p>
+          )}
+        </div>
+        <div className="flex gap-[2px] h-3 rounded-full overflow-hidden">
+          {parts.map(x => (
+            <div key={x.key} title={`${x.key}: ${x.g}g`}
+              style={{ width: `${(x.kcal / total) * 100}%`, background: x.hue }} />
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+          {parts.map(x => (
+            <span key={x.key} className="flex items-center gap-1.5 text-xs text-soft">
+              <span className="w-2 h-2 rounded-sm" style={{ background: x.hue }} />
+              {x.key} <span className="font-mono text-muted">{x.g}g · {Math.round((x.kcal / total) * 100)}%</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   function ReportCard() {
     if (!report) return null;
     const score = typeof report.score === 'number' ? report.score : null;
@@ -371,6 +638,15 @@ export default function WellnessMeals() {
 
         {report.summary && (
           <p className="text-soft text-sm leading-relaxed whitespace-pre-line">{report.summary}</p>
+        )}
+
+        <MacroBar macros={report.macros} />
+        <NutrientChart nutrients={report.nutrients} />
+
+        {report.context_used === false && (
+          <p className="text-xs text-hue-amber">
+            Written without a profile — add one above and re-run for advice tuned to you.
+          </p>
         )}
 
         {(report.sections || []).map((sec, i) => (
@@ -406,7 +682,9 @@ export default function WellnessMeals() {
           <>
             {DayLogs()}
 
-            {/* Analyse */}
+            {/* Analyse — the profile above it, since it frames the whole report */}
+            {ContextCard()}
+
             <div className="card p-4 space-y-3">
               <div className="flex items-center gap-1.5 text-xs text-hue-purple font-semibold">
                 <Sparkles size={13} /> Analyse this week

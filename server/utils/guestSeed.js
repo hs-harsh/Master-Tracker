@@ -394,6 +394,22 @@ const GUEST_MEAL_IDEAS = {
   lunch_dinner:     ['Rajma with brown rice', 'Paneer bhurji + 2 roti', 'Grilled fish with salad', 'Khichdi with lots of veg'],
 };
 
+// The saved profile preset behind the sample report — so a guest sees what the
+// analysis is being framed against, and can edit it before running their own.
+const GUEST_MEAL_CONTEXT = {
+  age: 31,
+  sex: 'Female',
+  height_cm: 162,
+  weight_kg: 58,
+  activity: 'Lightly active',
+  goal: 'General health',
+  diet: 'Vegetarian',
+  portions: '2 rotis and a katori of dal per meal, about a cup of rice at dinner, tea twice a day with sugar',
+  conditions: 'Borderline low haemoglobin — iron is worth watching',
+  allergies: '',
+  notes: 'Cooks on weekdays, orders in most weekends',
+};
+
 // A worked example of the weekly report, so a guest opening Track Meal sees
 // the end of the flow without having to run the analysis first. They can still
 // press Analyse Meal and generate their own.
@@ -401,6 +417,18 @@ const GUEST_MEAL_REPORT = {
   summary: 'A solid week overall. Home-cooked meals on weekdays kept protein and fibre steady, and portions looked controlled. The weekend was the weak point — two ordered-in meals and a skipped breakfast pulled the average down.',
   score: 71,
   days_logged: 7,
+  context_used: true,
+  macros: { calories: 1980, protein_g: 62, carbs_g: 268, fat_g: 61 },
+  // rating = how well the week went (10 ideal, always); verdict = which way it
+  // is off. Low added sugar is a good week, hence a high rating with "low".
+  nutrients: [
+    { name: 'Protein',     rating: 5, verdict: 'low',      note: 'dal, curd and paneer carried most of it, but the two ordered-in days fell well short' },
+    { name: 'Fibre',       rating: 6, verdict: 'low',      note: 'weekday salads and sprouts help — Saturday had none at all' },
+    { name: 'Added sugar', rating: 4, verdict: 'high',     note: 'two sweetened teas a day plus the weekend cake slice add up' },
+    { name: 'Sodium',      rating: 6, verdict: 'high',     note: 'pickle and papad push it up, but nothing extreme this week' },
+    { name: 'Iron',        rating: 7, verdict: 'adequate', note: 'rajma and spinach cover most of a vegetarian requirement' },
+    { name: 'Calcium',     rating: 8, verdict: 'adequate', note: 'curd on most days does the work here' },
+  ],
   sections: [
     { heading: 'What went well', points: [
       'Dal, curd or paneer appeared at almost every weekday meal — protein was spread through the day rather than crammed into dinner.',
@@ -562,6 +590,14 @@ async function seedGuestWellness(pool, userId, person) {
       );
     }
   }
+
+  // The profile preset the sample report was written against.
+  await pool.query(
+    `INSERT INTO meal_contexts (user_id, person_name, context)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (user_id, person_name) DO NOTHING`,
+    [userId, person, JSON.stringify(GUEST_MEAL_CONTEXT)]
+  );
 
   // A finished report on last week, so Track Meal shows the end of the flow.
   await pool.query(

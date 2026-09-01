@@ -670,6 +670,46 @@ router.delete('/ideas/:id', async (req, res) => {
 const MAX_DAY_LOG_CHARS   = 4000;  // per day, generous for a day's meals
 const MAX_ANALYSE_PROMPT  = 2000;  // the analysis instruction
 
+// Standing context fields. Free text is capped rather than validated — these go
+// into the prompt, so the ceiling is what keeps one profile from becoming the
+// whole request.
+const CONTEXT_TEXT_FIELDS = {
+  sex: 24, activity: 40, goal: 60, diet: 40,
+  portions: 600, conditions: 600, allergies: 300, notes: 600,
+};
+const CONTEXT_NUM_FIELDS = {
+  age: [1, 120], height_cm: [50, 250], weight_kg: [20, 400],
+};
+
+/** Keep only known fields, clamped — never trust the body shape. */
+function cleanContext(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const out = {};
+  for (const [key, max] of Object.entries(CONTEXT_TEXT_FIELDS)) {
+    const v = String(src[key] ?? '').trim().slice(0, max);
+    if (v) out[key] = v;
+  }
+  for (const [key, [lo, hi]] of Object.entries(CONTEXT_NUM_FIELDS)) {
+    const n = Number(src[key]);
+    if (Number.isFinite(n) && n >= lo && n <= hi) out[key] = Math.round(n * 10) / 10;
+  }
+  return out;
+}
+
+/** Human-readable lines for the prompt — omits anything the user left blank. */
+function contextLines(ctx) {
+  const label = {
+    age: 'Age', sex: 'Sex', height_cm: 'Height (cm)', weight_kg: 'Weight (kg)',
+    activity: 'Activity level', goal: 'Goal', diet: 'Dietary pattern',
+    portions: 'Typical portions', conditions: 'Medical conditions',
+    allergies: 'Allergies / intolerances', notes: 'Other notes',
+  };
+  return Object.keys(label)
+    .filter(k => ctx[k] !== undefined && ctx[k] !== '')
+    .map(k => `- ${label[k]}: ${ctx[k]}`)
+    .join('\n');
+}
+
 // ── GET /api/meals/track?week_start=YYYY-MM-DD&person=X ──────────────────────
 // Days + saved report for one week.
 router.get('/track', async (req, res) => {
@@ -696,6 +736,41 @@ router.get('/track', async (req, res) => {
     res.json({ week_start: ws, days: dayRows, report: reportRows[0] || null });
   } catch (e) {
     console.error('GET /meals/track', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── GET /api/meals/track/context?person=X — the saved analysis preset ────────
+router.get('/track/context', async (req, res) => {
+  try {
+    const person = req.query.person || '';
+    const { rows } = await pool.query(
+      `SELECT context, updated_at FROM meal_contexts WHERE user_id=$1 AND person_name=$2`,
+      [req.user.id, person]
+    );
+    res.json({ context: rows[0]?.context || {}, updated_at: rows[0]?.updated_at || null });
+  } catch (e) {
+    console.error('GET /meals/track/context', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── PUT /api/meals/track/context — save it once, reused on every analysis ────
+router.put('/track/context', async (req, res) => {
+  try {
+    const person = req.body.person || '';
+    const context = cleanContext(req.body.context);
+    const { rows } = await pool.query(
+      `INSERT INTO meal_contexts (user_id, person_name, context)
+       VALUES ($1,$2,$3)
+       ON CONFLICT (user_id, person_name)
+       DO UPDATE SET context = EXCLUDED.context, updated_at = NOW()
+       RETURNING context, updated_at`,
+      [req.user.id, person, JSON.stringify(context)]
+    );
+    res.json({ context: rows[0].context, updated_at: rows[0].updated_at });
+  } catch (e) {
+    console.error('PUT /meals/track/context', e);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -794,26 +869,44 @@ router.post('/track/analyse', async (req, res) => {
       return `${wd} ${d.entry_date}:\n${d.meals}`;
     }).join('\n\n');
 
-    const systemPrompt = `You are a nutrition coach reviewing a week of food logs.
+    const { rows: ctxRows } = await pool.query(
+      `SELECT context FROM meal_contexts WHERE user_id=$1 AND person_name=$2`,
+      [req.user.id, person]
+    );
+    const context = ctxRows[0]?.context || {};
+    const ctxText = contextLines(context);
+
+    const systemPrompt = `You are a nutrition coach reviewing one week of a specific person's food logs.
 Return ONLY a valid JSON object with no explanation, no markdown, no code fences.
 
 The object must have exactly these top-level keys:
 {
-  "summary": "2-4 sentence overview of how the week went",
+  "summary": "2-4 sentence overview, written about THIS person's week",
   "score": number_0_to_100_or_null,
+  "macros": { "calories": number_or_null, "protein_g": number_or_null, "carbs_g": number_or_null, "fat_g": number_or_null },
+  "nutrients": [
+    { "name": "Protein", "rating": number_0_to_10, "verdict": "low" | "adequate" | "high", "note": "one short clause tied to the log" }
+  ],
   "sections": [
     { "heading": "short section title", "points": ["concise bullet", "..."] }
   ]
 }
 
 Rules:
+- The person's profile below is the frame: judge portions, calories and protein against THEIR body, activity and goal, not a generic adult.
+- If a medical condition is given, it outranks everything else. Call out foods in the log that work against it, and make at least one section about managing it.
+- "macros" are your best estimate of the DAILY AVERAGE across the logged days. Use null only if the log is too vague to estimate.
+- "nutrients" must have 5 to 8 entries covering at least Protein, Fibre, and any nutrient the person's conditions or goal make relevant (e.g. sodium for hypertension, iron for anaemia, added sugar for diabetes).
+- "rating" is 0-10 for HOW WELL this nutrient was handled for this person over the week, where 10 is ideal and 0 is badly off. Higher is always better, for every nutrient. A week with very little added sugar scores HIGH on added sugar; a week short on protein scores LOW on protein.
+- "verdict" says which DIRECTION it is off in: "low" = they got less than they should, "high" = more than they should, "adequate" = about right. A nutrient can score 9 with verdict "low" (e.g. added sugar pleasingly low) — rating is quality, verdict is direction.
 - The user's own instruction is the brief — shape the sections around what they asked for.
 - 2 to 5 sections, each with 2 to 6 short, specific, actionable bullets.
-- Reference actual foods and days from the log rather than generic advice.
-- "score" is your overall rating of the week's diet quality; use null if a score makes no sense for the instruction.`;
+- Reference actual foods and days from the log. Never give advice that would read the same for any other person.
+- "score" is your overall rating of how well the week served this person's goal and health; null if a score makes no sense for the instruction.`;
 
     const userMessage = `Analyse this week of meals (week of ${ws}) for ${person || 'this person'}.
 
+${ctxText ? `The person being analysed:\n${ctxText}\n` : 'No profile was provided — say in the summary that a profile would sharpen the analysis, and judge against general adult guidance.\n'}
 Analysis instruction from the user: ${instruction || 'Give a balanced weekly nutrition review with what went well, what to improve, and concrete changes for next week.'}
 
 Food log (${dayRows.length} of 7 days logged):
@@ -848,8 +941,38 @@ ${logged}`;
       const match = raw.match(/\{[\s\S]*\}/);
       report = match ? JSON.parse(match[0]) : { summary: raw, score: null, sections: [] };
     }
+    // Normalise before storing. The charts read these fields directly, so a
+    // stray shape from the model would otherwise render as a broken axis.
     if (!Array.isArray(report.sections)) report.sections = [];
+    report.nutrients = (Array.isArray(report.nutrients) ? report.nutrients : [])
+      .map(n => {
+        const rating = Math.max(0, Math.min(10, Number(n?.rating)));
+        if (!n?.name || !Number.isFinite(rating)) return null;
+        // Rating and verdict are different axes: rating is how well the week
+        // went (10 = ideal, always), verdict is which way it is off. Low added
+        // sugar is a high rating with a "low" verdict, so the verdict must not
+        // be derived from the rating band — only checked against the vocabulary.
+        const verdict = ['low', 'adequate', 'high'].includes(n?.verdict) ? n.verdict : 'adequate';
+        return {
+          name: String(n.name).slice(0, 40),
+          rating: Math.round(rating * 10) / 10,
+          verdict,
+          note: n.note ? String(n.note).slice(0, 240) : '',
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 10);
+
+    const macros = report.macros && typeof report.macros === 'object' ? report.macros : {};
+    const num = (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v)) : null);
+    report.macros = {
+      calories:  num(macros.calories),
+      protein_g: num(macros.protein_g),
+      carbs_g:   num(macros.carbs_g),
+      fat_g:     num(macros.fat_g),
+    };
     report.days_logged = dayRows.length;
+    report.context_used = Object.keys(context).length > 0;
 
     const { rows: saved } = await pool.query(
       `INSERT INTO meal_track_reports (user_id, person_name, week_start, prompt, report)

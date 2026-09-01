@@ -531,6 +531,21 @@ CREATE TABLE IF NOT EXISTS meal_track_reports (
 );
 CREATE INDEX IF NOT EXISTS idx_meal_track_reports_user_id ON meal_track_reports(user_id, person_name, week_start);
 
+-- Standing context for the weekly analysis — body profile, typical portions,
+-- goals and any medical conditions. Entered once per profile and reused on
+-- every analysis, so the report is written for this person rather than in
+-- general. Free-text fields are passed to the model as-is.
+CREATE TABLE IF NOT EXISTS meal_contexts (
+  id          SERIAL PRIMARY KEY,
+  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  person_name VARCHAR(50) NOT NULL DEFAULT '',
+  context     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, person_name)
+);
+CREATE INDEX IF NOT EXISTS idx_meal_contexts_user_id ON meal_contexts(user_id, person_name);
+
 -- Add scores JSONB column to habit_entries for dynamic/custom habit values
 DO $$
 BEGIN
