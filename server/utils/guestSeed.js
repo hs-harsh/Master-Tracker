@@ -70,21 +70,33 @@ const TXN_AMOUNTS = {
   'Trips':         [3500, 14000],
 };
 
-/** Liquid holdings — a starter portfolio worth roughly ₹4.5L. */
-function investmentsFor(person) {
-  //  goal, asset_class, instrument, ticker, currency, avg_price, qty, broker
-  return [
-    ['Retirement',     'Equity', 'Nifty 50 Index Fund',      'NIFTYBEES', 'INR', 254.0,  480,    'Groww'],
-    ['Retirement',     'Debt',   'EPF Contribution',          null,       'INR', 1,      142000, 'EPFO'],
-    ['Wealth',         'Equity', 'Parag Parikh Flexi Cap',   'PPFCF',     'INR', 68.5,   1300,   'Groww'],
-    ['Wealth',         'Equity', 'Nifty Next 50 Index Fund', 'JUNIORBEES','INR', 62.0,   700,    'Zerodha'],
-    // One small USD holding so the multi-currency conversion is visible.
-    ['Wealth',         'Equity', 'S&P 500 ETF',              'VOO',       'USD', 448.0,  1,      'INDmoney'],
-    ['Wealth',         'Gold',   'Sovereign Gold Bond',      'SGB',       'INR', 5600.0, 8,      'Zerodha'],
-    ['Emergency Fund', 'Cash',   'Liquid Fund',              'LIQ',       'INR', 1,      55000,  'Groww'],
-    ['Emergency Fund', 'Debt',   'Bank FD 7.0%',              null,       'INR', 1,      75000,  'SBI'],
-  ].map(r => [...r, person]);
-}
+/**
+ * Liquid holdings, as shares of the portfolio rather than fixed amounts.
+ *
+ * The Dashboard's "Saved vs Deployed" compares total invested against corpus,
+ * where corpus is a running sum of the tracked months' savings starting at
+ * zero. Hard-coded amounts drift away from that and the demo ends up claiming
+ * far more deployed than it ever saved, so the INR holdings are scaled at seed
+ * time to a share of the savings the guest's own cashflow actually accumulates.
+ */
+const INR_HOLDINGS = [
+  // goal, asset_class, instrument, ticker, avg_price, weight, broker
+  ['Retirement',     'Equity', 'Nifty 50 Index Fund',      'NIFTYBEES',  254.0,  0.22, 'Groww'],
+  ['Retirement',     'Debt',   'EPF Contribution',          null,        1,      0.24, 'EPFO'],
+  ['Wealth',         'Equity', 'Parag Parikh Flexi Cap',   'PPFCF',      68.5,   0.16, 'Groww'],
+  ['Wealth',         'Equity', 'Nifty Next 50 Index Fund', 'JUNIORBEES', 62.0,   0.08, 'Zerodha'],
+  ['Wealth',         'Gold',   'Sovereign Gold Bond',      'SGB',        5600.0, 0.09, 'Zerodha'],
+  ['Emergency Fund', 'Cash',   'Liquid Fund',              'LIQ',        1,      0.11, 'Groww'],
+  ['Emergency Fund', 'Debt',   'Bank FD 7.0%',              null,        1,      0.10, 'SBI'],
+];
+
+// One small USD holding so the multi-currency conversion stays visible. Kept
+// deliberately tiny and fixed, so a live FX rate can't move the deployed total
+// far from the savings it is meant to track.
+// Small weight on purpose: if the live FX lookup fails the client values this
+// leg at ₹1/$, so a large dollar position would make the deployed total read
+// far below the savings it is sized against.
+const USD_HOLDING = ['Wealth', 'Equity', 'S&P 500 ETF', 'VOO', 448.0, 0.05, 'INDmoney'];
 
 /** Illiquid assets — a two-wheeler, jewellery and the usual retirement pots. */
 function otherAssetsFor() {
@@ -111,24 +123,85 @@ async function seedGuestFinance(pool, userId, person) {
   const chance = (p) => rng() < p;
   const { daysAgo, monthsAgo, dayInMonth } = makeDates();
 
+  // ── Ledger first ──────────────────────────────────────────────────────────
+  // The cashflow API prefers the transactions ledger over the monthly figures,
+  // per category, for any month that has rows. So the ledger is built first and
+  // the monthly rows are derived from it, rather than the two being generated
+  // independently and then disagreeing on screen.
+  // Runs from last month back, not from this one: the current month is only
+  // part-elapsed, so a full month of spending dated inside it would read as a
+  // finished month that badly missed its savings target. The current month is
+  // left to the generated figures below and shows as a complete month.
+  const LEDGER_FROM = 1;
+  const LEDGER_TO   = 12;   // inclusive — 12 months of ledger history
+  const txns = [];
+  const byMonth = [];                       // byMonth[m][type] = total for that month
+
+  for (let m = LEDGER_FROM; m <= LEDGER_TO; m++) {
+    const totals = { Income: 0, 'Other Income': 0, Major: 0, 'Non-Recurring': 0, Regular: 0, EMI: 0, Trips: 0 };
+    const on = (lo, hi) => dayInMonth(m, randInt(lo, hi));
+    const add = (type, date, amount) => {
+      const amt = Math.round(amount);
+      totals[type] += amt;
+      txns.push({ type, date, amount: amt });
+    };
+
+    add('Income', on(1, 3), rand(48000, 54000));   // exactly one salary credit
+    add('EMI',    on(4, 8), rand(9800, 10200));    // exactly one loan EMI
+
+    // Everyday spend: 5–8 rows adding up to roughly ₹17–24k.
+    const regularBudget = rand(17000, 24000);
+    const regularCount  = randInt(5, 8);
+    let spent = 0;
+    for (let i = 0; i < regularCount; i++) {
+      const last  = i === regularCount - 1;
+      const share = last ? Math.max(300, regularBudget - spent)
+                         : regularBudget / regularCount * rand(0.6, 1.4);
+      spent += share;
+      add('Regular', on(1, 28), share);
+    }
+
+    if (chance(0.6))  add('Non-Recurring', on(5, 26), rand(600, 5000));
+    if (chance(0.35)) add('Other Income',  on(8, 24), rand(500, 6000));
+    if (chance(0.25)) add('Major',         on(6, 22), rand(6000, 22000));
+    if (chance(0.2))  add('Trips',         on(9, 25), rand(3500, 14000));
+
+    byMonth[m] = totals;
+  }
+
+  for (const t of txns) {
+    await pool.query(
+      `INSERT INTO transactions (date, type, account, amount, remark, user_id)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [t.date, t.type, person, t.amount, pick(TXN_REMARKS[t.type]), userId]
+    );
+  }
+
   // ── Cashflow: 18 months around a ~₹50k salary ─────────────────────────────
   const BASE_INCOME = 50000;
-  let corpus = 260000; // starting savings pot, grows with each month's saving
+  let corpus = 260000;     // asset-split base; grows with each month's saving
+  // Mirrors what GET /api/cashflow reports as corpus: a running sum of
+  // actual_saving from zero. The portfolio below is sized against it.
+  let cumulativeSaving = 0;
 
   for (let m = MONTHS - 1; m >= 0; m--) {
-    const month        = monthsAgo(m);
-    const income       = Math.round(BASE_INCOME * rand(0.98, 1.08));
-    const otherIncome  = chance(0.35) ? Math.round(rand(500, 6000)) : 0;
-    const major        = chance(0.25) ? Math.round(rand(6000, 22000)) : 0;
-    const nonRecurring = Math.round(rand(600, 5000));
-    const regular      = Math.round(rand(17000, 24000));
-    const emi          = 10000;
-    const trips        = chance(0.2) ? Math.round(rand(3500, 14000)) : 0;
+    const month  = monthsAgo(m);
+    const ledger = byMonth[m];   // undefined for months older than the ledger
+
+    const income       = ledger ? ledger.Income          : Math.round(BASE_INCOME * rand(0.98, 1.08));
+    const otherIncome  = ledger ? ledger['Other Income'] : (chance(0.35) ? Math.round(rand(500, 6000)) : 0);
+    const major        = ledger ? ledger.Major           : (chance(0.25) ? Math.round(rand(6000, 22000)) : 0);
+    const nonRecurring = ledger ? ledger['Non-Recurring']: Math.round(rand(600, 5000));
+    const regular      = ledger ? ledger.Regular         : Math.round(rand(17000, 24000));
+    const emi          = ledger ? ledger.EMI             : 10000;
+    const trips        = ledger ? ledger.Trips           : (chance(0.2) ? Math.round(rand(3500, 14000)) : 0);
+
     const netExpense   = major + nonRecurring + regular + emi + trips;
     const actualSaving = income + otherIncome - netExpense;
     // Target = what's left after the unavoidable costs (regular + EMI).
     const targetSaving = Math.round(income - regular - emi);
 
+    cumulativeSaving += actualSaving;
     corpus += Math.max(actualSaving, 0) * rand(0.92, 1.04);
 
     const cash            = Math.round(corpus * rand(0.08, 0.12));
@@ -185,58 +258,44 @@ async function seedGuestFinance(pool, userId, person) {
     );
   }
 
-  // ── Transactions: a coherent ledger for the last 12 months ───────────────
-  // Built month by month rather than sprinkled at random, because the cashflow
-  // API prefers the transactions ledger over the monthly figures for any month
-  // that has rows — two stray salary credits in one month would show up as a
-  // doubled income spike on the chart. So: exactly one salary and one EMI a
-  // month, and day-to-day spend that adds up to roughly the month's budget.
-  const txns = [];
-  const addTxn = (type, date, amount) =>
-    txns.push({ type, date, amount: Math.round(amount) });
+  // ── Investments, sized against what was actually saved ───────────────────
+  // Deploy a little under the accumulated savings, so the Dashboard's
+  // "Saved vs Deployed" shows a small, sensible cushion rather than claiming
+  // several lakh deployed beyond anything the guest ever earned. Staying just
+  // under also keeps the "corpus sitting uninvested" alert (which fires above
+  // a ₹50k gap) quiet.
+  const savedSoFar    = Math.max(50000, cumulativeSaving);
+  const targetInvested = savedSoFar * rand(0.93, 0.99);
+  // The USD leg is priced in dollars; hold back its rough INR worth so the
+  // INR legs plus the converted dollar leg land on the target together.
+  // Fractional units, as the Indian platforms that offer US stocks actually
+  // sell them — a whole share of a ~$450 ETF would be a far bigger slice of a
+  // portfolio this size than the weight intends.
+  const USD_INR_APPROX = 85;
+  const usdQty      = Math.max(0.01,
+    +(targetInvested * USD_HOLDING[5] / (USD_HOLDING[4] * USD_INR_APPROX)).toFixed(2));
+  const usdInrValue = usdQty * USD_HOLDING[4] * USD_INR_APPROX;
+  const inrBudget   = Math.max(0, targetInvested - usdInrValue);
 
-  for (let m = 0; m < 12; m++) {
-    const on = (lo, hi) => dayInMonth(m, randInt(lo, hi));
+  const holdings = INR_HOLDINGS.map(([goal, assetClass, instrument, ticker, price, weight, broker]) => {
+    const qty = Math.max(1, Math.round(inrBudget * weight / price));
+    return { goal, assetClass, instrument, ticker, currency: 'INR', price, qty, broker };
+  });
+  holdings.push({
+    goal: USD_HOLDING[0], assetClass: USD_HOLDING[1], instrument: USD_HOLDING[2],
+    ticker: USD_HOLDING[3], currency: 'USD', price: USD_HOLDING[4], qty: usdQty, broker: USD_HOLDING[6],
+  });
 
-    addTxn('Income', on(1, 3), rand(48000, 54000));       // exactly one salary credit
-    addTxn('EMI',    on(4, 8), rand(9800, 10200));        // exactly one loan EMI
-
-    // Everyday spend: 5–8 rows adding up to roughly ₹17–24k.
-    const regularBudget = rand(17000, 24000);
-    const regularCount  = randInt(5, 8);
-    let spent = 0;
-    for (let i = 0; i < regularCount; i++) {
-      const last  = i === regularCount - 1;
-      const share = last ? Math.max(300, regularBudget - spent)
-                         : regularBudget / regularCount * rand(0.6, 1.4);
-      spent += share;
-      addTxn('Regular', on(1, 28), share);
-    }
-
-    if (chance(0.6))  addTxn('Non-Recurring', on(5, 26), rand(600, 5000));
-    if (chance(0.35)) addTxn('Other Income',  on(8, 24), rand(500, 6000));
-    if (chance(0.25)) addTxn('Major',         on(6, 22), rand(6000, 22000));
-    if (chance(0.2))  addTxn('Trips',         on(9, 25), rand(3500, 14000));
-  }
-
-  for (const t of txns) {
-    await pool.query(
-      `INSERT INTO transactions (date, type, account, amount, remark, user_id)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
-      [t.date, t.type, person, t.amount, pick(TXN_REMARKS[t.type]), userId]
-    );
-  }
-
-  // ── Investments ───────────────────────────────────────────────────────────
-  for (const [goal, assetClass, instrument, ticker, currency, avgPrice, qty, broker, account]
-       of investmentsFor(person)) {
+  for (const h of holdings) {
     await pool.query(
       `INSERT INTO investments
          (user_id, date, account, goal, asset_class, instrument, side, amount,
           broker, avg_price, qty, ticker, currency)
        VALUES ($1,$2,$3,$4,$5,$6,'BUY',$7,$8,$9,$10,$11,$12)`,
-      [userId, daysAgo(randInt(30, 600)), account, goal, assetClass, instrument,
-       +(avgPrice * qty).toFixed(2), broker, avgPrice, qty, ticker, currency]
+      // Bought inside the tracked window, so the Dashboard's "invested since"
+      // line covers the same period as the corpus it is compared against.
+      [userId, daysAgo(randInt(20, MONTHS * 30 - 40)), person, h.goal, h.assetClass, h.instrument,
+       +(h.price * h.qty).toFixed(2), h.broker, h.price, h.qty, h.ticker, h.currency]
     );
   }
 
@@ -264,9 +323,21 @@ async function seedGuestFinance(pool, userId, person) {
   }
 
   // ── Net-worth snapshots, so the Illiquid trend chart is populated ─────────
-  let nw = 420000;
-  for (let q = 7; q >= 0; q--) {
-    nw = nw * rand(1.015, 1.05);
+  // Walked backwards from today's real illiquid position, so the newest point
+  // on the trend line agrees with the Total Value / Net Equity cards above it
+  // instead of being an unrelated made-up curve.
+  const illiquidValue  = otherAssetsFor().reduce((s, a) => s + a[3], 0);
+  const illiquidLoans  = otherAssetsFor().reduce((s, a) => s + a[4], 0);
+  const series = [];
+  let value = illiquidValue;
+  let loans = illiquidLoans;
+  for (let q = 0; q <= 7; q++) {
+    series.push({ q, value, loans });
+    value = value / rand(1.02, 1.06);   // older quarters are worth a bit less
+    loans = loans * rand(1.02, 1.05);   // and carried a bit more debt
+  }
+  for (const s of series) {
+    const investedThen = targetInvested * (1 - s.q * rand(0.06, 0.10));
     await pool.query(
       // No ON CONFLICT clause: a freshly created guest has no snapshots to
       // collide with, and this stays correct whichever unique constraint
@@ -275,8 +346,10 @@ async function seedGuestFinance(pool, userId, person) {
          (user_id, snapshot_date, investments_cost, investments_mkt,
           other_assets_value, other_loans, net_worth)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [userId, daysAgo(q * 91), Math.round(nw * 0.5), Math.round(nw * 0.56),
-       Math.round(nw * 0.48), Math.round(nw * 0.05), Math.round(nw)]
+      [userId, daysAgo(s.q * 91),
+       Math.round(Math.max(0, investedThen)), Math.round(Math.max(0, investedThen * 1.06)),
+       Math.round(s.value), Math.round(s.loans),
+       Math.round(Math.max(0, investedThen) + s.value - s.loans)]
     );
   }
 }
