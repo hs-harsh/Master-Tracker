@@ -343,10 +343,11 @@ router.patch('/strategies/:id', async (req, res) => {
 // ── DELETE /api/backtest/strategies/:id ──────────────────────────────────────
 router.delete('/strategies/:id', async (req, res) => {
   try {
-    await pool.query(
+    const result = await pool.query(
       `DELETE FROM bt_strategies WHERE id=$1 AND user_id=$2`,
       [req.params.id, req.user.id]
     );
+    if (!result.rowCount) return res.status(404).json({ error: 'Not found' });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

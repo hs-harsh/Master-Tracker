@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
 const { sendLoginOtp } = require('../utils/email');
-const { seedGuestFinance } = require('../utils/guestSeed');
+const { seedGuestFinance, seedGuestWellness } = require('../utils/guestSeed');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
@@ -254,6 +254,7 @@ router.post('/guest', async (req, res) => {
 
     try {
       await seedGuestFinance(pool, guest.id, personName);
+      await seedGuestWellness(pool, guest.id, personName);
     } catch (seedErr) {
       // An empty demo is still usable — log it and let the guest in.
       console.error('guest seed failed:', seedErr.message);

@@ -365,4 +365,305 @@ async function seedGuestFinance(pool, userId, person) {
   }
 }
 
-module.exports = { seedGuestFinance };
+// ─── Wellness sample data ─────────────────────────────────────────────────────
+
+const HABIT_KEYS = ['clean_food', 'walk', 'gym', 'sports'];
+
+// A weekday-shaped meal diary. Weekends eat out more, Mondays reset — the
+// point is that the week reads like someone's actual eating, not noise.
+const WEEKDAY_MEALS = [
+  'Breakfast: poha with peanuts + filter coffee\nLunch: dal, 2 roti, bhindi sabzi, curd\nDinner: rajma chawal, salad\nSnack: banana, handful of almonds',
+  'Breakfast: 3 idli with sambar\nLunch: office canteen — rice, sambar, cabbage poriyal\nDinner: 2 roti, paneer bhurji\nSnack: masala chai + 2 biscuits',
+  'Breakfast: 2 egg omelette + 2 toast\nLunch: curd rice with pickle, boiled egg\nDinner: khichdi with ghee, papad\nSnack: sprouts chaat',
+  'Breakfast: upma + coffee\nLunch: roti, chana masala, salad\nDinner: chicken curry with rice\nSnack: buttermilk, roasted chana',
+  'Breakfast: oats with milk and banana\nLunch: lemon rice, curd\nDinner: 2 roti, mixed veg, dal\nSnack: apple',
+  'Breakfast: paratha with curd\nLunch: veg pulao, raita\nDinner: dal tadka, jeera rice\nSnack: tea + murukku',
+];
+const WEEKEND_MEALS = [
+  'Breakfast: masala dosa at the corner place\nLunch: biryani (ordered in)\nDinner: light — soup and toast\nSnack: filter coffee, samosa',
+  'Breakfast: aloo paratha with butter\nLunch: chole bhature\nDinner: curd rice\nSnack: cold coffee, cake slice',
+  'Breakfast: eggs and toast, late\nLunch: home — roti, paneer butter masala\nDinner: pizza with friends\nSnack: popcorn',
+];
+const LIGHT_MEALS = [
+  'Breakfast: skipped — woke up late\nLunch: 2 roti, dal\nDinner: maggi\nSnack: tea',
+  'Breakfast: banana + coffee\nLunch: fruit bowl and curd\nDinner: khichdi (stomach was off)\nSnack: none',
+];
+
+const GUEST_MEAL_IDEAS = {
+  breakfast_snacks: ['Sprouts chaat with lemon', 'Overnight oats with curd', 'Besan chilla', 'Roasted chana instead of biscuits'],
+  lunch_dinner:     ['Rajma with brown rice', 'Paneer bhurji + 2 roti', 'Grilled fish with salad', 'Khichdi with lots of veg'],
+};
+
+// A worked example of the weekly report, so the demo shows what Analyse Meal
+// produces. Guests cannot call the AI route (middleware/noGuests.js), so
+// without this the feature would look empty to them.
+const GUEST_MEAL_REPORT = {
+  summary: 'A solid week overall. Home-cooked meals on weekdays kept protein and fibre steady, and portions looked controlled. The weekend was the weak point — two ordered-in meals and a skipped breakfast pulled the average down.',
+  score: 71,
+  days_logged: 7,
+  sections: [
+    { heading: 'What went well', points: [
+      'Dal, curd or paneer appeared at almost every weekday meal — protein was spread through the day rather than crammed into dinner.',
+      'Snacks were mostly fruit, sprouts or roasted chana instead of fried options.',
+    ] },
+    { heading: 'Worth watching', points: [
+      'Saturday had no vegetables across all three meals.',
+      'Breakfast was skipped once, which pushed a heavier lunch straight after.',
+      'Refined carbs (maggi, bhature, pizza) landed on three separate days.',
+    ] },
+    { heading: 'Try next week', points: [
+      'Keep one weekend meal home-cooked — the paneer bhurji you already make would do.',
+      'Add a side salad or raita to any ordered-in meal.',
+      'Prep overnight oats on Friday so the late-start morning still gets breakfast.',
+    ] },
+  ],
+};
+
+const EXERCISES = [
+  { name: 'Barbell Bench Press', category: 'strength', muscles: [
+    { muscle: 'chest', role: 'primary' }, { muscle: 'triceps', role: 'secondary' }, { muscle: 'front-delts', role: 'secondary' }] },
+  { name: 'Incline Dumbbell Press', category: 'strength', muscles: [
+    { muscle: 'chest', role: 'primary' }, { muscle: 'front-delts', role: 'secondary' }, { muscle: 'triceps', role: 'secondary' }] },
+  { name: 'Pull Up', category: 'strength', muscles: [
+    { muscle: 'lats', role: 'primary' }, { muscle: 'biceps', role: 'secondary' }, { muscle: 'upper-back', role: 'secondary' }, { muscle: 'forearms', role: 'secondary' }] },
+  { name: 'Barbell Row', category: 'strength', muscles: [
+    { muscle: 'upper-back', role: 'primary' }, { muscle: 'lats', role: 'primary' }, { muscle: 'biceps', role: 'secondary' }, { muscle: 'lower-back', role: 'secondary' }] },
+  { name: 'Overhead Press', category: 'strength', muscles: [
+    { muscle: 'front-delts', role: 'primary' }, { muscle: 'side-delts', role: 'secondary' }, { muscle: 'triceps', role: 'secondary' }, { muscle: 'abs', role: 'secondary' }] },
+  { name: 'Lateral Raise', category: 'strength', muscles: [
+    { muscle: 'side-delts', role: 'primary' }, { muscle: 'rear-delts', role: 'secondary' }] },
+  { name: 'Face Pull', category: 'strength', muscles: [
+    { muscle: 'rear-delts', role: 'primary' }, { muscle: 'upper-back', role: 'secondary' }] },
+  { name: 'Barbell Back Squat', category: 'strength', muscles: [
+    { muscle: 'quads', role: 'primary' }, { muscle: 'glutes', role: 'primary' }, { muscle: 'hamstrings', role: 'secondary' }, { muscle: 'lower-back', role: 'secondary' }, { muscle: 'abs', role: 'secondary' }] },
+  { name: 'Romanian Deadlift', category: 'strength', muscles: [
+    { muscle: 'hamstrings', role: 'primary' }, { muscle: 'glutes', role: 'primary' }, { muscle: 'lower-back', role: 'secondary' }, { muscle: 'forearms', role: 'secondary' }] },
+  { name: 'Leg Press', category: 'strength', muscles: [
+    { muscle: 'quads', role: 'primary' }, { muscle: 'glutes', role: 'secondary' }, { muscle: 'hamstrings', role: 'secondary' }] },
+  { name: 'Calf Raise', category: 'strength', muscles: [{ muscle: 'calves', role: 'primary' }] },
+  { name: 'Barbell Curl', category: 'strength', muscles: [
+    { muscle: 'biceps', role: 'primary' }, { muscle: 'forearms', role: 'secondary' }] },
+  { name: 'Triceps Pushdown', category: 'strength', muscles: [{ muscle: 'triceps', role: 'primary' }] },
+  { name: 'Cable Woodchop', category: 'strength', muscles: [
+    { muscle: 'obliques', role: 'primary' }, { muscle: 'abs', role: 'secondary' }] },
+  { name: 'Hanging Leg Raise', category: 'strength', muscles: [
+    { muscle: 'abs', role: 'primary' }, { muscle: 'obliques', role: 'secondary' }, { muscle: 'forearms', role: 'secondary' }] },
+  { name: 'Back Extension', category: 'strength', muscles: [
+    { muscle: 'lower-back', role: 'primary' }, { muscle: 'glutes', role: 'secondary' }, { muscle: 'hamstrings', role: 'secondary' }] },
+  { name: 'Treadmill Run', category: 'cardio', muscles: [
+    { muscle: 'quads', role: 'primary' }, { muscle: 'calves', role: 'primary' }, { muscle: 'hamstrings', role: 'secondary' }, { muscle: 'glutes', role: 'secondary' }] },
+  { name: 'Stair Stepper', category: 'cardio', muscles: [
+    { muscle: 'quads', role: 'primary' }, { muscle: 'glutes', role: 'primary' }, { muscle: 'calves', role: 'secondary' }] },
+];
+
+const SPLITS = [
+  { title: 'Push Day',  type: 'strength', names: ['Barbell Bench Press', 'Incline Dumbbell Press', 'Overhead Press', 'Lateral Raise', 'Triceps Pushdown'] },
+  { title: 'Pull Day',  type: 'strength', names: ['Pull Up', 'Barbell Row', 'Face Pull', 'Barbell Curl'] },
+  { title: 'Leg Day',   type: 'strength', names: ['Barbell Back Squat', 'Romanian Deadlift', 'Leg Press', 'Calf Raise'] },
+  { title: 'Core & Conditioning', type: 'cardio', names: ['Treadmill Run', 'Hanging Leg Raise', 'Cable Woodchop', 'Back Extension'] },
+  { title: 'Upper Accessory', type: 'strength', names: ['Incline Dumbbell Press', 'Barbell Row', 'Lateral Raise', 'Barbell Curl', 'Triceps Pushdown'] },
+];
+
+// The Muscles tab shows what was trained THIS week, so the newest session is a
+// full-body one — otherwise the body map is nearly blank if a guest signs in on
+// a Monday.
+const FULL_BODY = {
+  title: 'Full Body', type: 'strength',
+  names: ['Barbell Back Squat', 'Barbell Bench Press', 'Barbell Row', 'Overhead Press',
+          'Romanian Deadlift', 'Lateral Raise', 'Face Pull', 'Barbell Curl',
+          'Triceps Pushdown', 'Calf Raise', 'Hanging Leg Raise', 'Cable Woodchop'],
+};
+
+// Beginner-to-intermediate loads that creep up week over week, so the strength
+// trend has a real slope rather than a flat line.
+function weightFor(name, weekIdx, rand) {
+  const base = {
+    'Barbell Bench Press': 42, 'Incline Dumbbell Press': 16, 'Pull Up': 0,
+    'Barbell Row': 38, 'Overhead Press': 26, 'Lateral Raise': 7,
+    'Face Pull': 16, 'Barbell Back Squat': 55, 'Romanian Deadlift': 50,
+    'Leg Press': 95, 'Calf Raise': 40, 'Barbell Curl': 16,
+    'Triceps Pushdown': 20, 'Cable Woodchop': 14, 'Hanging Leg Raise': 0,
+    'Back Extension': 5,
+  }[name];
+  if (base == null || base === 0) return null;
+  return Math.round((base + weekIdx * rand(0.8, 1.8)) * 2) / 2;
+}
+
+/**
+ * Seed one guest's wellness data — habits, meal diary and workout logs for the
+ * last ~2 months. Same fixed seed as the finance data, so every guest sees the
+ * same thing.
+ */
+async function seedGuestWellness(pool, userId, person) {
+  const rng = makeRng(GUEST_SEED + 1);
+  const rand = (min, max) => min + rng() * (max - min);
+  const randInt = (min, max) => Math.floor(rand(min, max + 1));
+  const pick = (arr) => arr[randInt(0, arr.length - 1)];
+  const chance = (p) => rng() < p;
+  const { daysAgo } = makeDates();
+
+  const DAYS  = 60;   // ~2 months
+  const WEEKS = 8;
+
+  const dow = (ds) => new Date(ds + 'T12:00:00').getDay();   // 0 Sun … 6 Sat
+  const mondayOf = (ds) => {
+    const d = new Date(ds + 'T12:00:00');
+    d.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()));
+    return d.toISOString().slice(0, 10);
+  };
+
+  // ── Habits ────────────────────────────────────────────────────────────────
+  // Not a full grid: real logging has gaps, and the empty-cell styling only
+  // shows up if some days are genuinely missing.
+  for (let day = DAYS; day >= 0; day--) {
+    if (chance(0.16)) continue;                       // day not logged at all
+    const ds = daysAgo(day);
+    const weekend = dow(ds) === 0 || dow(ds) === 6;
+    const scores = {};
+
+    // Eating is better on weekdays; the gym mostly happens on weekdays too.
+    if (!chance(0.10)) scores.clean_food = weekend ? randInt(2, 4) : randInt(3, 5);
+    if (!chance(0.12)) scores.walk       = randInt(2, 5);
+    if (!chance(0.15)) scores.gym        = weekend ? randInt(1, 3) : randInt(3, 5);
+    if (!chance(0.45)) scores.sports     = weekend ? randInt(3, 5) : randInt(1, 3);
+
+    if (!Object.keys(scores).length) continue;
+    await pool.query(
+      `INSERT INTO habit_entries
+         (user_id, person_name, date, scores, clean_food, walk, gym, sports)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (user_id, person_name, date) DO NOTHING`,
+      [userId, person, ds, JSON.stringify(scores),
+       scores.clean_food ?? null, scores.walk ?? null, scores.gym ?? null, scores.sports ?? null]
+    );
+  }
+
+  // ── Meal diary (Track Meal) ───────────────────────────────────────────────
+  for (let day = DAYS; day >= 0; day--) {
+    if (chance(0.25)) continue;                       // not every day gets written up
+    const ds = daysAgo(day);
+    const weekend = dow(ds) === 0 || dow(ds) === 6;
+    const meals = chance(0.12) ? pick(LIGHT_MEALS)
+                : weekend      ? pick(WEEKEND_MEALS)
+                :                pick(WEEKDAY_MEALS);
+    await pool.query(
+      `INSERT INTO meal_track_days (user_id, person_name, entry_date, meals)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (user_id, person_name, entry_date) DO NOTHING`,
+      [userId, person, ds, meals]
+    );
+  }
+
+  for (const [category, items] of Object.entries(GUEST_MEAL_IDEAS)) {
+    for (const text of items) {
+      await pool.query(
+        `INSERT INTO meal_ideas (user_id, person_name, category, text) VALUES ($1,$2,$3,$4)`,
+        [userId, person, category, text]
+      );
+    }
+  }
+
+  // A finished report on last week, so Track Meal shows the end of the flow.
+  await pool.query(
+    `INSERT INTO meal_track_reports (user_id, person_name, week_start, prompt, report)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (user_id, person_name, week_start) DO NOTHING`,
+    [userId, person, mondayOf(daysAgo(7)),
+     'Review my protein and vegetable intake, and suggest three swaps for next week.',
+     JSON.stringify(GUEST_MEAL_REPORT)]
+  );
+
+  // ── Workouts ──────────────────────────────────────────────────────────────
+  const today = daysAgo(0);
+  for (let w = WEEKS - 1; w >= 0; w--) {
+    const weekStart = mondayOf(daysAgo(w * 7));
+    const weekIdx   = (WEEKS - 1) - w;
+    const { rows } = await pool.query(
+      `INSERT INTO workout_plans (user_id, person_name, week_start, status)
+       VALUES ($1,$2,$3,'accepted')
+       ON CONFLICT (user_id, person_name, week_start) DO UPDATE SET status = EXCLUDED.status
+       RETURNING id`,
+      [userId, person, weekStart]
+    );
+    const planId = rows[0].id;
+
+    const trainingDays = [0, 1, 3, 4, 5];   // Mon, Tue, Thu, Fri, Sat
+    const isCurrentWeek = w === 0;
+    const latestThisWeek = isCurrentWeek
+      ? Math.max(...trainingDays.filter(d => {
+          const t = new Date(weekStart + 'T12:00:00');
+          t.setDate(t.getDate() + d);
+          return t.toISOString().slice(0, 10) <= today;
+        }), 0)
+      : -1;
+
+    for (const dayOffset of trainingDays) {
+      const dt = new Date(weekStart + 'T12:00:00');
+      dt.setDate(dt.getDate() + dayOffset);
+      const ds = dt.toISOString().slice(0, 10);
+      if (ds > today) continue;                            // never log the future
+      if (!isCurrentWeek && chance(0.18)) continue;        // a missed session
+
+      const split = dayOffset === latestThisWeek
+        ? FULL_BODY
+        : SPLITS[(weekIdx * 5 + dayOffset) % SPLITS.length];
+
+      const built = split.names.map(exName => {
+        const ex = EXERCISES.find(e => e.name === exName);
+        const sets = [];
+        let durationMin = null;
+        if (ex.category === 'cardio') {
+          durationMin = randInt(18, 35);
+        } else {
+          const setCount = randInt(3, 4);
+          const w0 = weightFor(exName, weekIdx, rand);
+          for (let s = 1; s <= setCount; s++) {
+            sets.push({
+              set: s,
+              weight_kg: w0,
+              weight_raw: w0 == null ? 'bodyweight' : String(w0),
+              reps: randInt(6, 12),
+              note: s === setCount && chance(0.2) ? 'to failure' : null,
+            });
+          }
+        }
+        return { ex, sets, durationMin };
+      });
+
+      // The Analytics view counts sets from this legacy JSON mirror on
+      // workout_entries.notes rather than from workout_exercise_logs, so it has
+      // to be written alongside — same shape POST /workouts/.../log-entry uses.
+      const legacyNotes = JSON.stringify(built.map(({ ex, sets }) => {
+        const weights = [...new Set(sets.map(s => s.weight_raw).filter(Boolean))];
+        const reps    = [...new Set(sets.map(s => s.reps).filter(r => r != null))];
+        return {
+          name: ex.name,
+          weight: weights.length ? weights.join('/') : null,
+          sets: sets.length || null,
+          reps: reps.length ? reps.join('/') : null,
+        };
+      }));
+
+      const { rows: entryRows } = await pool.query(
+        `INSERT INTO workout_entries
+           (workout_plan_id, user_id, entry_date, workout_type, title, duration, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [planId, userId, ds, split.type, split.title, randInt(40, 70), legacyNotes]
+      );
+      const entryId = entryRows[0].id;
+
+      let seq = 0;
+      for (const { ex, sets, durationMin } of built) {
+        await pool.query(
+          `INSERT INTO workout_exercise_logs
+             (workout_entry_id, user_id, seq, exercise_name, category, muscles, sets, duration_min)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [entryId, userId, seq++, ex.name, ex.category,
+           JSON.stringify(ex.muscles), JSON.stringify(sets), durationMin]
+        );
+      }
+    }
+  }
+}
+
+module.exports = { seedGuestFinance, seedGuestWellness };

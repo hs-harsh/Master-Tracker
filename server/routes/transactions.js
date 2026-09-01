@@ -104,10 +104,14 @@ router.delete('/clear-all', auth, async (req, res) => {
 
 router.delete('/:id', auth, async (req, res) => {
   try {
-    await pool.query(
+    // Scoped by user_id, so another user's row is never touched. Report the
+    // miss rather than a success the caller did not get — a blind 200 tells a
+    // client the row is gone when it is still there.
+    const result = await pool.query(
       `DELETE FROM transactions WHERE id = $1 AND user_id = $2`,
       [req.params.id, req.user.id]
     );
+    if (!result.rowCount) return res.status(404).json({ error: 'Not found' });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
