@@ -38,11 +38,13 @@ app.use('/api/expense-analyser', require('./routes/expenseAnalyser'));
 // check on every handler.
 // app.use('/api/portfolio', require('./routes/portfolio'));
 app.use('/api/settings', require('./routes/settings'));
-// Guest (demo) accounts sign in without any verification, so they are kept out
-// of the routes that spend the owner's Anthropic budget. Individual AI and
-// email endpoints inside the feature routers carry the same guard inline.
-app.use('/api/chat', authMw, noGuests, require('./routes/finsight'));
-app.use('/api/ai',   authMw, noGuests, require('./routes/aiparse'));
+// Guests get the full product, AI features included — the demo is meant to
+// show what the app actually does. `authMw` stays: /api/chat shipped with no
+// auth middleware at all, so without it the route is callable by anyone with
+// no token. The only routes still closed to guests are the two that send mail
+// to the owner's inbox (see middleware/noGuests.js).
+app.use('/api/chat', authMw, require('./routes/finsight'));
+app.use('/api/ai',   authMw, require('./routes/aiparse'));
 app.use('/api/prices', require('./routes/prices'));
 app.use('/api/stocks', require('./routes/stocks'));
 app.use('/api/admin', require('./routes/admin'));

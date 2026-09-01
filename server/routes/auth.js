@@ -26,8 +26,8 @@ function makeToken(user) {
       username: user.username,
       personName: user.person_name || user.username,
       isAdmin: !!user.is_admin,
-      // Read by middleware/noGuests.js to keep demo accounts out of the
-      // billed AI routes and the email senders.
+      // Read by middleware/noGuests.js, which keeps demo accounts out of the
+      // email senders. Everything else, AI included, is open to guests.
       isGuest: !!user.is_guest,
     },
     JWT_SECRET,

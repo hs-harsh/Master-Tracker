@@ -2,7 +2,6 @@ const express = require('express');
 const router  = express.Router();
 const pool    = require('../db');
 const auth    = require('../middleware/auth');
-const noGuests    = require('../middleware/noGuests');
 const { getAnthropicApiKey } = require('../utils/anthropicKey');
 const { getMonday, todayStr } = require('../utils/dateHelpers');
 const { MUSCLE_IDS, muscleLabel, validateExercises, completeExerciseMuscles } = require('../utils/muscles');
@@ -248,7 +247,7 @@ router.get('/calendar', async (req, res) => {
 // ─── POST /api/workouts/week/:id/ai-log ───────────────────────────────────────
 // Parses a free-text description of a performed workout into structured
 // exercises: per exercise name, category, muscles worked and per-set detail.
-router.post('/week/:id/ai-log', noGuests, async (req, res) => {
+router.post('/week/:id/ai-log', async (req, res) => {
   try {
     const planId = parseInt(req.params.id, 10);
     const { prompt: userPrompt, entry_date } = req.body;
@@ -615,7 +614,7 @@ Recommend my next session.`;
 });
 
 // ─── POST /api/workouts/training-feedback ─────────────────────────────────────
-router.post('/training-feedback', noGuests, async (req, res) => {
+router.post('/training-feedback', async (req, res) => {
   try {
     const person = req.body?.person || '';
     const today = todayStr();

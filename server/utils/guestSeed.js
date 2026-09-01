@@ -394,9 +394,9 @@ const GUEST_MEAL_IDEAS = {
   lunch_dinner:     ['Rajma with brown rice', 'Paneer bhurji + 2 roti', 'Grilled fish with salad', 'Khichdi with lots of veg'],
 };
 
-// A worked example of the weekly report, so the demo shows what Analyse Meal
-// produces. Guests cannot call the AI route (middleware/noGuests.js), so
-// without this the feature would look empty to them.
+// A worked example of the weekly report, so a guest opening Track Meal sees
+// the end of the flow without having to run the analysis first. They can still
+// press Analyse Meal and generate their own.
 const GUEST_MEAL_REPORT = {
   summary: 'A solid week overall. Home-cooked meals on weekdays kept protein and fibre steady, and portions looked controlled. The weekend was the weak point — two ordered-in meals and a skipped breakfast pulled the average down.',
   score: 71,
