@@ -397,6 +397,7 @@ const GUEST_MEAL_IDEAS = {
 // The saved profile preset behind the sample report — so a guest sees what the
 // analysis is being framed against, and can edit it before running their own.
 const GUEST_MEAL_CONTEXT = {
+  household: 'Me and my partner — both vegetarian, cooking at home on weekdays',
   age: 31,
   sex: 'Female',
   height_cm: 162,
@@ -404,7 +405,13 @@ const GUEST_MEAL_CONTEXT = {
   activity: 'Lightly active',
   goal: 'General health',
   diet: 'Vegetarian',
-  portions: '2 rotis and a katori of dal per meal, about a cup of rice at dinner, tea twice a day with sugar',
+  portions: '2 rotis and a katori of dal per meal, about a cup of rice at dinner, tea twice a day',
+  staples: [
+    'Rotis are a mixed atta — khapli wheat, barley, jowar, ragi, kala chana, soy, makka, oats — 2–2.5 per person with a little ghee.',
+    'Normal sabzi is ~250g vegetables for two, cooked in a spoon of mustard oil with the usual haldi, jeera, hing and coriander.',
+    'Fruit bowl most mornings: Greek yogurt, banana, apple, chia, pumpkin seeds, rolled oats, and pomegranate or blueberries about half the time.',
+    '5 soaked almonds and 2 walnuts each, roughly 5 days a week.',
+  ].join('\n'),
   conditions: 'Borderline low haemoglobin — iron is worth watching',
   allergies: '',
   notes: 'Cooks on weekdays, orders in most weekends',
@@ -414,37 +421,50 @@ const GUEST_MEAL_CONTEXT = {
 // the end of the flow without having to run the analysis first. They can still
 // press Analyse Meal and generate their own.
 const GUEST_MEAL_REPORT = {
-  summary: 'A solid week overall. Home-cooked meals on weekdays kept protein and fibre steady, and portions looked controlled. The weekend was the weak point — two ordered-in meals and a skipped breakfast pulled the average down.',
-  score: 71,
+  overall: 7,
+  verdict: 'A genuinely solid vegetarian week — the weekday dal-sabzi-roti rhythm carried protein, fibre and iron. The two ordered-in weekend meals are the only real dip.',
   days_logged: 7,
   context_used: true,
-  macros: { calories: 1980, protein_g: 62, carbs_g: 268, fat_g: 61 },
-  // rating = how well the week went (10 ideal, always); verdict = which way it
-  // is off. Low added sugar is a good week, hence a high rating with "low".
   nutrients: [
-    { name: 'Protein',     rating: 5, verdict: 'low',      note: 'dal, curd and paneer carried most of it, but the two ordered-in days fell well short' },
-    { name: 'Fibre',       rating: 6, verdict: 'low',      note: 'weekday salads and sprouts help — Saturday had none at all' },
-    { name: 'Added sugar', rating: 4, verdict: 'high',     note: 'two sweetened teas a day plus the weekend cake slice add up' },
-    { name: 'Sodium',      rating: 6, verdict: 'high',     note: 'pickle and papad push it up, but nothing extreme this week' },
-    { name: 'Iron',        rating: 7, verdict: 'adequate', note: 'rajma and spinach cover most of a vegetarian requirement' },
-    { name: 'Calcium',     rating: 8, verdict: 'adequate', note: 'curd on most days does the work here' },
+    { name: 'Protein',   status: 'medium', note: 'dal, curd and paneer most days, but the two ordered-in meals had almost none' },
+    { name: 'Fibre',     status: 'high',   note: '' },
+    { name: 'Calcium',   status: 'high',   note: '' },
+    { name: 'Iron',      status: 'medium', note: 'rajma and palak are there — pair them with lemon or tomato to absorb more of it' },
+    { name: 'B12',       status: 'check',  note: 'a food log cannot settle this on a vegetarian diet — supplement/check: B12' },
+    { name: 'Omega-3',   status: 'medium', note: 'chia in the fruit bowl helps; walnuts only landed twice' },
+    { name: 'Iodine',    status: 'check',  note: 'depends on whether the salt at home is iodised' },
+    { name: 'Vitamin D', status: 'check',  note: 'sunlight and blood work, not the food log' },
+    { name: 'Potassium', status: 'high',   note: '' },
+    { name: 'Magnesium', status: 'high',   note: '' },
+    { name: 'Vitamin C', status: 'medium', note: 'mostly from tomato in the sabzi; no whole citrus or amla this week' },
+    { name: 'Folate',    status: 'high',   note: '' },
+    { name: 'Zinc',      status: 'medium', note: '' },
+    { name: 'Plant diversity', status: 'high', note: '19 different plants across the week' },
   ],
-  sections: [
-    { heading: 'What went well', points: [
-      'Dal, curd or paneer appeared at almost every weekday meal — protein was spread through the day rather than crammed into dinner.',
-      'Snacks were mostly fruit, sprouts or roasted chana instead of fried options.',
-    ] },
-    { heading: 'Worth watching', points: [
-      'Saturday had no vegetables across all three meals.',
-      'Breakfast was skipped once, which pushed a heavier lunch straight after.',
-      'Refined carbs (maggi, bhature, pizza) landed on three separate days.',
-    ] },
-    { heading: 'Try next week', points: [
-      'Keep one weekend meal home-cooked — the paneer bhurji you already make would do.',
-      'Add a side salad or raita to any ordered-in meal.',
-      'Prep overnight oats on Friday so the late-start morning still gets breakfast.',
-    ] },
+  strong: [
+    'Dal or a legume on five of seven days',
+    'Fruit bowl every weekday — yogurt, banana, chia and seeds doing a lot of quiet work',
+    'Vegetables in both meals on all five weekdays',
   ],
+  improve: [
+    'Saturday had no vegetables at all',
+    'Walnuts only twice this week',
+    'No vitamin C food alongside the iron-heavy meals',
+  ],
+  biggest_gap: 'Iron is present but poorly absorbed — the rajma and palak meals had no vitamin C alongside them.',
+  priorities: [
+    { nutrient: 'Iron',      food: 'legumes + vitamin C', dishes: 'rajma / chole / kala chana with lemon squeezed on, or tomato-heavy sabzi', frequency: '3x' },
+    { nutrient: 'Omega-3',   food: 'walnuts and flaxseed', dishes: '2 walnuts with the morning bowl, or a spoon of ground flax stirred into curd', frequency: '5x' },
+    { nutrient: 'Vitamin C', food: 'whole fruit',          dishes: 'guava, orange or amla as the evening snack', frequency: '4x' },
+  ],
+  dish_ideas: [
+    'Kala chana chaat with lemon and onion',
+    'Palak paneer with a tomato base',
+    'Methi thepla with curd',
+    'Sprouts salad with lemon and chaat masala',
+    'Flaxseed chutney with dosa',
+  ],
+  goal: 'Squeeze lemon on every legume meal this week.',
 };
 
 const EXERCISES = [
@@ -605,7 +625,7 @@ async function seedGuestWellness(pool, userId, person) {
      VALUES ($1,$2,$3,$4,$5)
      ON CONFLICT (user_id, person_name, week_start) DO NOTHING`,
     [userId, person, mondayOf(daysAgo(7)),
-     'Review my protein and vegetable intake, and suggest three swaps for next week.',
+     'Standard weekly report — go easy on the weekend, we eat out then.',
      JSON.stringify(GUEST_MEAL_REPORT)]
   );
 

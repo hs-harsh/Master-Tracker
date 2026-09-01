@@ -1,9 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  BarChart, Bar, Cell, LabelList, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts';
-import {
   ChevronLeft, ChevronRight,
   Plus, X, Check, Save, Sparkles,
   ChevronDown, Lightbulb, UtensilsCrossed, ClipboardList,
@@ -15,7 +11,6 @@ import PageHeader from '../../components/PageHeader';
 import EmptyState from '../../components/EmptyState';
 import SegmentedToggle from '../../components/SegmentedToggle';
 import { parseD, todayStr, getMonday, getWeekDays, fmtWeekRange } from '../../lib/utils';
-import { TT, AX, GRID, HUE } from '../../lib/chartTheme';
 
 const MEAL_VIEWS = [
   { key: 'track', label: 'Track Meal' },
@@ -56,9 +51,10 @@ function fmtDayLabel(ds, i) {
 // The standing profile the weekly analysis is written against. Mirrors the
 // fields server/routes/meals.js accepts — anything else is dropped there.
 const EMPTY_CONTEXT = {
+  household: '',
   age: '', sex: '', height_cm: '', weight_kg: '',
   activity: '', goal: '', diet: '',
-  portions: '', conditions: '', allergies: '', notes: '',
+  portions: '', staples: '', conditions: '', allergies: '', notes: '',
 };
 
 const ACTIVITY_OPTIONS = ['Sedentary', 'Lightly active', 'Moderately active', 'Very active'];
@@ -67,14 +63,21 @@ const DIET_OPTIONS     = ['Vegetarian', 'Eggetarian', 'Non-vegetarian', 'Vegan',
 const SEX_OPTIONS      = ['Female', 'Male', 'Other'];
 
 /**
- * Colour follows the RATING — how well the week went for that nutrient, where
- * 10 is ideal for every nutrient. It deliberately does not follow the verdict:
- * a week low in added sugar is a good week, so colouring "low" red would say
- * the opposite of what the bar means. The verdict word (which direction it is
- * off in) is printed beside every bar, so status is never colour-alone.
+ * The four states a nutrient can be in. "check" is deliberately not a failure:
+ * B12 and vitamin D cannot be read off a food log at all, so showing them as a
+ * gap would be wrong. Each state carries a fill level and a word as well as a
+ * colour, so the grid is readable without colour and in greyscale.
  */
-const ratingHue = (rating) => (rating >= 7 ? 'emerald' : rating >= 4 ? 'amber' : 'rose');
-const VERDICT_LABEL = { low: 'below target', adequate: 'on target', high: 'above target' };
+const NUTRIENT_STATES = {
+  high:   { level: 3, hue: 'emerald', label: 'good',   dot: 'bg-hue-emerald' },
+  medium: { level: 2, hue: 'amber',   label: 'ok',     dot: 'bg-hue-amber' },
+  low:    { level: 1, hue: 'rose',    label: 'low',    dot: 'bg-hue-rose' },
+  check:  { level: 0, hue: 'slate',   label: 'check',  dot: 'bg-muted/50' },
+};
+const stateOf = (status) => NUTRIENT_STATES[status] || NUTRIENT_STATES.check;
+
+/** Legacy reports stored a 0–10 rating; map it onto the status vocabulary. */
+const legacyStatus = (rating) => (rating >= 7 ? 'high' : rating >= 4 ? 'medium' : 'low');
 
 /** Span covered by a run of weeks, e.g. '2 Dec – 12 Jan 2026' */
 function fmtStripRange(firstWeek, lastWeek) {
@@ -272,6 +275,7 @@ export default function WellnessMeals() {
     if (context.weight_kg) bits.push(`${context.weight_kg}kg`);
     if (context.goal) bits.push(context.goal);
     if (context.conditions) bits.push(context.conditions.split(/[,\n]/)[0].trim());
+    if (context.staples) bits.push('baseline saved');
     return bits.slice(0, 4).join(' · ');
   };
 
@@ -474,6 +478,13 @@ export default function WellnessMeals() {
               written for your body, portions and needs instead of a generic adult.
             </p>
 
+            <div>
+              <label className="label">Who this covers</label>
+              <input className="input w-full text-sm py-2"
+                placeholder="e.g. me and my partner — she is vegetarian, I also eat eggs and chicken"
+                value={context.household} onChange={set('household')} />
+            </div>
+
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Num k="age" label="Age" unit="yrs" />
               <Pick k="sex" label="Sex" options={SEX_OPTIONS} />
@@ -492,6 +503,20 @@ export default function WellnessMeals() {
               <textarea className="input w-full text-sm py-2 min-h-[56px] resize-y"
                 placeholder="e.g. 2 rotis and 1 katori dal per meal, 1 cup rice, tea twice a day"
                 value={context.portions} onChange={set('portions')} />
+            </div>
+
+            <div>
+              <label className="label">Everyday baseline</label>
+              <textarea className="input w-full text-sm py-2 min-h-[92px] resize-y"
+                placeholder={"What a normal week already includes, so it is never suggested back to you as missing.\n" +
+                  "e.g. Rotis are a mixed atta — khapli wheat, barley, jowar, ragi, kala chana, soy, makka, oats — 2–2.5 per person with a little ghee.\n" +
+                  "Sabzi is ~250g vegetables for two, in a spoon of mustard oil.\n" +
+                  "Fruit bowl most mornings: Greek yogurt, banana, apple, chia, pumpkin seeds, oats, pomegranate or blueberries.\n" +
+                  "5 soaked almonds and 2 walnuts each, about 5 days a week."}
+                value={context.staples} onChange={set('staples')} />
+              <p className="text-muted text-xs mt-1">
+                The analysis credits everything here and looks for the gap that is left.
+              </p>
             </div>
 
             <div>
@@ -532,42 +557,82 @@ export default function WellnessMeals() {
     );
   }
 
-  function NutrientChart({ nutrients }) {
+  function NutrientGrid({ nutrients }) {
     if (!nutrients?.length) return null;
-    // Horizontal bars: named categories of differing label length, compared on
-    // one 0–10 magnitude scale. Colour carries the verdict, but the verdict word
-    // sits beside every bar so identity is never colour-alone.
-    const data = nutrients.map(n => ({ ...n, fill: HUE[ratingHue(n.rating)] }));
-    const height = Math.max(140, data.length * 34 + 24);
+    // A compact status grid rather than a bar chart: the log rarely supports
+    // exact quantities, so a numeric axis would claim a precision that is not
+    // there. Four states, each with a fill level as well as a colour, so the
+    // grid reads in greyscale and at a glance.
+    const rows = nutrients.map(n => {
+      const status = n.status || (typeof n.rating === 'number' ? legacyStatus(n.rating) : 'check');
+      return { ...n, status, st: stateOf(status) };
+    });
+    // Only the notes that change what you'd cook: weak first, then the ones a
+    // food log genuinely can't settle. Capped so the card stays scannable.
+    const NOTE_ORDER = { low: 0, medium: 1, check: 2 };
+    const notable = rows
+      .filter(n => n.note && n.status !== 'high')
+      .sort((a, b) => NOTE_ORDER[a.status] - NOTE_ORDER[b.status])
+      .slice(0, 5);
+
     return (
       <div>
-        <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-2">
-          Nutrients — how well the week met your needs <span className="normal-case">(10 = ideal)</span>
-        </p>
-        <ResponsiveContainer width="100%" height={height}>
-          <BarChart data={data} layout="vertical" margin={{ top: 0, right: 34, bottom: 0, left: 0 }} barSize={14}>
-            <CartesianGrid {...GRID} horizontal={false} />
-            <XAxis type="number" domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} {...AX} />
-            <YAxis type="category" dataKey="name" width={92} {...AX} />
-            <Tooltip {...TT} cursor={{ fill: 'transparent' }}
-              formatter={(v, _n, p) => [`${v}/10 — ${VERDICT_LABEL[p.payload.verdict] || p.payload.verdict}`, p.payload.name]} />
-            <Bar dataKey="rating" radius={[0, 4, 4, 0]} isAnimationActive={false}>
-              {data.map((d, i) => <Cell key={i} fill={d.fill} />)}
-              <LabelList dataKey="rating" position="right"
-                className="fill-muted" style={{ fontSize: 10, fontFamily: 'monospace' }} />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-
-        <ul className="space-y-1.5 mt-1">
-          {data.map((n, i) => (
-            <li key={i} className="flex items-start gap-2 text-xs">
-              <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: n.fill }} />
-              <span className="text-soft">
-                <span className="text-white font-semibold">{n.name}</span>
-                <span className="text-muted font-mono"> · {VERDICT_LABEL[n.verdict] || n.verdict}</span>
-                {n.note ? <> — {n.note}</> : null}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-2">
+          <p className="text-[10px] text-muted uppercase tracking-widest font-mono">Nutrient coverage</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {['high', 'medium', 'low', 'check'].map(k => (
+              <span key={k} className="flex items-center gap-1 text-[10px] text-muted font-mono">
+                <span className={`w-1.5 h-1.5 rounded-full ${NUTRIENT_STATES[k].dot}`} />
+                {NUTRIENT_STATES[k].label}
               </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-1.5 max-w-3xl">
+          {rows.map((n, i) => (
+            <div key={i} className="flex items-center gap-2 min-w-0"
+              title={`${n.name} — ${n.st.label}${n.note ? `: ${n.note}` : ''}`}>
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${n.st.dot}`} />
+              <span className="text-xs text-soft truncate flex-1 min-w-0">{n.name}</span>
+              <span className="flex gap-[2px] shrink-0" aria-label={n.st.label}>
+                {[1, 2, 3].map(seg => (
+                  <span key={seg}
+                    className={`w-2.5 h-1.5 rounded-[1px] ${seg <= n.st.level ? n.st.dot : 'bg-hairline/25'}`} />
+                ))}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {notable.length > 0 && (
+          <ul className="space-y-1 mt-3">
+            {notable.map((n, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs">
+                <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${n.st.dot}`} />
+                <span className="text-soft">
+                  <span className="text-white font-semibold">{n.name}</span>
+                  <span className="text-muted font-mono"> · {n.st.label}</span> — {n.note}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  /** 🟢 Strong / 🟡 Could improve — a titled list of short bullets. */
+  function BulletBlock({ title, items, dot }) {
+    if (!items?.length) return null;
+    return (
+      <div>
+        <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5">{title}</p>
+        <ul className="space-y-1">
+          {items.map((t, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm text-soft leading-relaxed">
+              <span className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 ${dot}`} />
+              <span>{t}</span>
             </li>
           ))}
         </ul>
@@ -575,88 +640,118 @@ export default function WellnessMeals() {
     );
   }
 
-  function MacroBar({ macros }) {
-    const p = macros?.protein_g, c = macros?.carbs_g, f = macros?.fat_g;
-    if (![p, c, f].some(v => typeof v === 'number' && v > 0)) return null;
-    // Calories, not grams: a gram of fat is not a gram of carbs, so a split by
-    // weight would misstate where the day's energy actually came from.
-    const parts = [
-      { key: 'Protein', g: p || 0, kcal: (p || 0) * 4, hue: HUE.teal },
-      { key: 'Carbs',   g: c || 0, kcal: (c || 0) * 4, hue: HUE.blue },
-      { key: 'Fat',     g: f || 0, kcal: (f || 0) * 9, hue: HUE.amber },
-    ];
-    const total = parts.reduce((s, x) => s + x.kcal, 0) || 1;
+  /** Nutrient → food → dishes → how often, as one scannable chain per row. */
+  function PriorityList({ priorities }) {
+    if (!priorities?.length) return null;
     return (
       <div>
-        <div className="flex items-baseline justify-between gap-2 mb-2">
-          <p className="text-[10px] text-muted uppercase tracking-widest font-mono">
-            Daily average · where the energy came from
-          </p>
-          {typeof macros.calories === 'number' && (
-            <p className="text-xs font-mono text-soft">{macros.calories} kcal/day</p>
-          )}
-        </div>
-        <div className="flex gap-[2px] h-3 rounded-full overflow-hidden">
-          {parts.map(x => (
-            <div key={x.key} title={`${x.key}: ${x.g}g`}
-              style={{ width: `${(x.kcal / total) * 100}%`, background: x.hue }} />
+        <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-2">Next week — 3 priorities</p>
+        <ol className="space-y-2">
+          {priorities.map((p, i) => (
+            <li key={i} className="flex items-start gap-2.5">
+              <span className="w-5 h-5 rounded-full bg-accent/15 text-accent-ink text-[10px] font-mono
+                flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+              <div className="min-w-0 text-sm leading-relaxed">
+                <span className="text-white font-semibold">{p.nutrient}</span>
+                {p.food ? <span className="text-muted"> → {p.food}</span> : null}
+                <span className="text-soft"> → {p.dishes}</span>
+                {p.frequency
+                  ? <span className="text-accent-ink font-mono text-xs"> → {p.frequency}</span>
+                  : null}
+              </div>
+            </li>
           ))}
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
-          {parts.map(x => (
-            <span key={x.key} className="flex items-center gap-1.5 text-xs text-soft">
-              <span className="w-2 h-2 rounded-sm" style={{ background: x.hue }} />
-              {x.key} <span className="font-mono text-muted">{x.g}g · {Math.round((x.kcal / total) * 100)}%</span>
-            </span>
-          ))}
-        </div>
+        </ol>
       </div>
     );
   }
 
   function ReportCard() {
     if (!report) return null;
-    const score = typeof report.score === 'number' ? report.score : null;
-    const scoreTone = score == null ? '' : score >= 70 ? 'text-pos' : score >= 45 ? 'text-hue-amber' : 'text-neg';
+    // Reports written before the rated-nutrient shape stored score/100 and free
+    // sections. Read both so old weeks still open.
+    const legacy  = report.overall == null && typeof report.score === 'number';
+    const overall = legacy
+      ? Math.round(report.score / 10 * 10) / 10
+      : (typeof report.overall === 'number' ? report.overall : null);
+    const tone = overall == null ? '' : overall >= 7 ? 'text-pos' : overall >= 4.5 ? 'text-hue-amber' : 'text-neg';
+    const verdict = report.verdict || report.summary || '';
+
     return (
       <div className="card p-4 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-center gap-2">
             <ClipboardList size={15} className="text-hue-purple" />
-            <p className="font-display text-sm font-semibold text-white">Weekly report</p>
+            <p className="font-display text-sm font-semibold text-white">This week</p>
             {report.days_logged ? (
               <span className="text-[10px] text-muted font-mono">{report.days_logged}/7 days</span>
             ) : null}
           </div>
-          {score != null && (
+          {overall != null && (
             <div className="text-right">
-              <p className="text-[10px] text-muted uppercase tracking-widest font-mono">Score</p>
-              <p className={`font-display text-xl font-bold leading-none ${scoreTone}`}>{score}<span className="text-muted text-xs font-mono">/100</span></p>
+              <p className="text-[10px] text-muted uppercase tracking-widest font-mono">Overall</p>
+              <p className={`font-display text-xl font-bold leading-none ${tone}`}>
+                {overall}<span className="text-muted text-xs font-mono">/10</span>
+              </p>
             </div>
           )}
         </div>
 
-        {report.summary && (
-          <p className="text-soft text-sm leading-relaxed whitespace-pre-line">{report.summary}</p>
+        {verdict && (
+          <p className="text-soft text-sm leading-relaxed whitespace-pre-line">{verdict}</p>
         )}
 
-        <MacroBar macros={report.macros} />
-        <NutrientChart nutrients={report.nutrients} />
+        <NutrientGrid nutrients={report.nutrients} />
 
         {report.context_used === false && (
           <p className="text-xs text-hue-amber">
-            Written without a profile — add one above and re-run for advice tuned to you.
+            Written without a profile — add one above and re-run for advice tuned to what you actually eat.
           </p>
         )}
 
+        <BulletBlock title="Strong" items={report.strong} dot="bg-hue-emerald" />
+        <BulletBlock title="Could improve" items={report.improve} dot="bg-hue-amber" />
+
+        {report.biggest_gap && (
+          <div>
+            <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5">Biggest gap</p>
+            <p className="flex items-start gap-2 text-sm text-soft leading-relaxed">
+              <span className="w-1.5 h-1.5 rounded-full mt-2 shrink-0 bg-hue-rose" />
+              <span>{report.biggest_gap}</span>
+            </p>
+          </div>
+        )}
+
+        <PriorityList priorities={report.priorities} />
+
+        {report.dish_ideas?.length > 0 && (
+          <div>
+            <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-2">Dish ideas</p>
+            <div className="flex flex-wrap gap-1.5">
+              {report.dish_ideas.map((d, i) => (
+                <span key={i} className="text-xs text-soft bg-hairline/8 border border-hairline/10
+                  rounded-full px-2.5 py-1">{d}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {report.goal && (
+          <div className="rounded-xl border border-accent/25 bg-accent/[0.07] px-3 py-2.5">
+            <p className="text-[10px] text-accent-ink uppercase tracking-widest font-mono mb-1">Next week's goal</p>
+            <p className="text-sm text-white leading-relaxed">{report.goal}</p>
+          </div>
+        )}
+
+        {/* Older reports kept their advice in free-form sections. */}
         {(report.sections || []).map((sec, i) => (
           <div key={i}>
             <p className="text-[10px] text-muted uppercase tracking-widest font-mono mb-1.5">{sec.heading}</p>
             <ul className="space-y-1.5">
-              {(sec.points || []).map((p, j) => (
+              {(sec.points || []).map((pt, j) => (
                 <li key={j} className="flex gap-2 text-sm text-soft leading-relaxed">
                   <span className="text-accent-ink mt-0.5 shrink-0">•</span>
-                  <span>{p}</span>
+                  <span>{pt}</span>
                 </li>
               ))}
             </ul>

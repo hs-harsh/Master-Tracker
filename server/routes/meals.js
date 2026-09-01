@@ -675,11 +675,48 @@ const MAX_ANALYSE_PROMPT  = 2000;  // the analysis instruction
 // whole request.
 const CONTEXT_TEXT_FIELDS = {
   sex: 24, activity: 40, goal: 60, diet: 40,
-  portions: 600, conditions: 600, allergies: 300, notes: 600,
+  household: 300, portions: 600, staples: 1500,
+  conditions: 600, allergies: 300, notes: 600,
 };
 const CONTEXT_NUM_FIELDS = {
   age: [1, 120], height_cm: [50, 250], weight_kg: [20, 400],
 };
+
+// The house rules for every meal analysis, for every user. The saved profile
+// supplies who the person is and what they already eat; this supplies how the
+// week is judged — so nobody has to type out a coaching brief to get a useful
+// report, and two people's reports stay comparable.
+const NUTRITION_RULES = `You are a Daily Nutrition Quality Rater and Weekly Nutrition Coach for an Indian household.
+
+WHAT YOU JUDGE
+- Food quality, nutrient coverage, variety and long-term sustainability. NOT calories, NOT weight loss, NOT portion restriction — unless the user's own instruction explicitly asks for those.
+- Nutrients, in priority order.
+  Highest: protein, fibre, calcium, iron, B12, omega-3, iodine, vitamin D, potassium, magnesium, hydration.
+  Important: vitamin C, folate, vitamin A, zinc, vitamin E, vitamin K.
+  Optimisation: selenium, choline, plant diversity, polyphenols.
+- Food-first and Indian-household: optimise the diet they already eat rather than replacing it. Reach for dal, sabzi, roti, rajma, chole, kala chana, curd, paneer, soy, tofu, sprouts, leafy greens, seeds and nuts before anything imported or expensive.
+
+STATUS VOCABULARY
+- "high"   — clearly well covered this week.
+- "medium" — meaningful sources present, could be stronger.
+- "low"    — little or no meaningful source in the log.
+- "check"  — the food log cannot settle it; it depends on supplementation, fortified foods, sunlight or a blood test. B12 and vitamin D usually land here for a vegetarian household unless the log says otherwise.
+Never invent nutrient quantities the log does not support, and never assume a portion size that was not given.
+
+DAILY VS WEEKLY
+- This is a WEEKLY review: judge the week as a whole, not day by day. Nuts, seeds, omega-3, selenium, choline and plant diversity are weekly patterns, so do not call them missing because one day lacked them.
+- Only name something a gap if it genuinely recurs across the week.
+
+WHAT NOT TO DO
+- Never recommend a food the household already eats regularly as though it were missing. Their baseline is in the profile — read it, credit it, and find the REMAINING gap.
+- Never call normal Indian cooking unhealthy for containing oil, ghee or spices. A spoon of mustard oil in a sabzi and a little ghee on a roti are normal; do not flag them without a specific reason. The usual haldi, jeera, hing, black pepper, curry leaves and coriander are already there — do not suggest them as missing nutrients.
+- No wall of deficiencies, no shaming a food, no supplement doses, no drastic changes. Where a nutrient depends on supplementation or a blood test, say "supplement/check: B12" and stop there.
+- Do not turn Indian meals into Western health bowls, and do not give medical treatment advice unless asked.
+
+WHAT TO DO
+- Make the smallest useful change. Name actual dishes, never vague advice like "increase iron".
+- Reward variety.
+- Keep every string short enough to read at a glance — this renders as a compact card, not an essay.`;
 
 /** Keep only known fields, clamped — never trust the body shape. */
 function cleanContext(raw) {
@@ -699,9 +736,12 @@ function cleanContext(raw) {
 /** Human-readable lines for the prompt — omits anything the user left blank. */
 function contextLines(ctx) {
   const label = {
+    household: 'Who this covers',
     age: 'Age', sex: 'Sex', height_cm: 'Height (cm)', weight_kg: 'Weight (kg)',
     activity: 'Activity level', goal: 'Goal', diet: 'Dietary pattern',
-    portions: 'Typical portions', conditions: 'Medical conditions',
+    portions: 'Typical portions',
+    staples: 'Everyday baseline — already eaten regularly',
+    conditions: 'Medical conditions',
     allergies: 'Allergies / intolerances', notes: 'Other notes',
   };
   return Object.keys(label)
@@ -876,38 +916,39 @@ router.post('/track/analyse', async (req, res) => {
     const context = ctxRows[0]?.context || {};
     const ctxText = contextLines(context);
 
-    const systemPrompt = `You are a nutrition coach reviewing one week of a specific person's food logs.
-Return ONLY a valid JSON object with no explanation, no markdown, no code fences.
+    const systemPrompt = `${NUTRITION_RULES}
 
-The object must have exactly these top-level keys:
+OUTPUT
+Return ONLY a valid JSON object. No explanation, no markdown, no code fences.
+
 {
-  "summary": "2-4 sentence overview, written about THIS person's week",
-  "score": number_0_to_100_or_null,
-  "macros": { "calories": number_or_null, "protein_g": number_or_null, "carbs_g": number_or_null, "fat_g": number_or_null },
+  "overall": number_0_to_10,
+  "verdict": "one sentence summing the week up",
   "nutrients": [
-    { "name": "Protein", "rating": number_0_to_10, "verdict": "low" | "adequate" | "high", "note": "one short clause tied to the log" }
+    { "name": "Protein", "status": "high" | "medium" | "low" | "check", "note": "one short clause, only where it adds something" }
   ],
-  "sections": [
-    { "heading": "short section title", "points": ["concise bullet", "..."] }
-  ]
+  "strong": ["what genuinely went well — 2 to 3 short bullets"],
+  "improve": ["what could be stronger — up to 3 short bullets"],
+  "biggest_gap": "the single biggest recurring gap this week, one sentence",
+  "priorities": [
+    { "nutrient": "Iron", "food": "legumes", "dishes": "rajma / chole / kala chana with lemon", "frequency": "3x" }
+  ],
+  "dish_ideas": ["concrete dishes to cook next week — 3 to 5 of them"],
+  "goal": "exactly one simple goal for next week"
 }
 
-Rules:
-- The person's profile below is the frame: judge portions, calories and protein against THEIR body, activity and goal, not a generic adult.
-- If a medical condition is given, it outranks everything else. Call out foods in the log that work against it, and make at least one section about managing it.
-- "macros" are your best estimate of the DAILY AVERAGE across the logged days. Use null only if the log is too vague to estimate.
-- "nutrients" must have 5 to 8 entries covering at least Protein, Fibre, and any nutrient the person's conditions or goal make relevant (e.g. sodium for hypertension, iron for anaemia, added sugar for diabetes).
-- "rating" is 0-10 for HOW WELL this nutrient was handled for this person over the week, where 10 is ideal and 0 is badly off. Higher is always better, for every nutrient. A week with very little added sugar scores HIGH on added sugar; a week short on protein scores LOW on protein.
-- "verdict" says which DIRECTION it is off in: "low" = they got less than they should, "high" = more than they should, "adequate" = about right. A nutrient can score 9 with verdict "low" (e.g. added sugar pleasingly low) — rating is quality, verdict is direction.
-- The user's own instruction is the brief — shape the sections around what they asked for.
-- 2 to 5 sections, each with 2 to 6 short, specific, actionable bullets.
-- Reference actual foods and days from the log. Never give advice that would read the same for any other person.
-- "score" is your overall rating of how well the week served this person's goal and health; null if a score makes no sense for the instruction.`;
+- "nutrients": 8 to 15 entries in priority order, highest tier first. Cover every highest-priority nutrient the log can speak to.
+- "priorities": exactly 3, each a real gap from THIS week, phrased as nutrient then food group then actual dishes then how often.
+- "strong", "improve" and "dish_ideas" are short phrases, not sentences with preamble.
+- Reference actual foods and days from the log. Nothing you write should read the same for a different household.
+- The user's instruction below is the brief: bias the report towards what they asked about, without dropping any key of this shape.`;
 
-    const userMessage = `Analyse this week of meals (week of ${ws}) for ${person || 'this person'}.
+    const userMessage = `Weekly report for the week of ${ws}${person ? `, for ${person}` : ''}.
 
-${ctxText ? `The person being analysed:\n${ctxText}\n` : 'No profile was provided — say in the summary that a profile would sharpen the analysis, and judge against general adult guidance.\n'}
-Analysis instruction from the user: ${instruction || 'Give a balanced weekly nutrition review with what went well, what to improve, and concrete changes for next week.'}
+${ctxText
+  ? `THE HOUSEHOLD — who this is and what they already eat:\n${ctxText}\n\nEverything under the everyday baseline is already part of their diet: credit it, and never recommend it as though it were missing.\n`
+  : 'No profile has been saved. Note that in one clause of the verdict, judge against general Indian vegetarian-household guidance, and keep the recommendations conservative.\n'}
+Instruction from the user: ${instruction || 'Give the standard weekly report.'}
 
 Food log (${dayRows.length} of 7 days logged):
 ${logged}`;
@@ -939,39 +980,50 @@ ${logged}`;
       report = JSON.parse(raw);
     } catch {
       const match = raw.match(/\{[\s\S]*\}/);
-      report = match ? JSON.parse(match[0]) : { summary: raw, score: null, sections: [] };
+      report = match ? JSON.parse(match[0]) : { verdict: raw, overall: null };
     }
-    // Normalise before storing. The charts read these fields directly, so a
-    // stray shape from the model would otherwise render as a broken axis.
-    if (!Array.isArray(report.sections)) report.sections = [];
+    // Normalise before storing. The card reads these fields directly, so a
+    // stray shape from the model would otherwise render as a broken row.
+    const STATUSES = ['high', 'medium', 'low', 'check'];
+    const str = (v, max) => (v == null ? '' : String(v).trim().slice(0, max));
+    const strList = (v, max, cap) => (Array.isArray(v) ? v : [])
+      .map(x => str(x, max)).filter(Boolean).slice(0, cap);
+
+    const overall = Number(report.overall);
+    report.overall = Number.isFinite(overall)
+      ? Math.round(Math.max(0, Math.min(10, overall)) * 10) / 10
+      : null;
+    report.verdict = str(report.verdict, 300);
+
     report.nutrients = (Array.isArray(report.nutrients) ? report.nutrients : [])
       .map(n => {
-        const rating = Math.max(0, Math.min(10, Number(n?.rating)));
-        if (!n?.name || !Number.isFinite(rating)) return null;
-        // Rating and verdict are different axes: rating is how well the week
-        // went (10 = ideal, always), verdict is which way it is off. Low added
-        // sugar is a high rating with a "low" verdict, so the verdict must not
-        // be derived from the rating band — only checked against the vocabulary.
-        const verdict = ['low', 'adequate', 'high'].includes(n?.verdict) ? n.verdict : 'adequate';
-        return {
-          name: String(n.name).slice(0, 40),
-          rating: Math.round(rating * 10) / 10,
-          verdict,
-          note: n.note ? String(n.note).slice(0, 240) : '',
-        };
+        const name = str(n?.name, 32);
+        if (!name) return null;
+        // "check" is the honest default: a nutrient the log cannot settle is
+        // not the same as one that is missing, and must not be shown as a gap.
+        const status = STATUSES.includes(n?.status) ? n.status : 'check';
+        return { name, status, note: str(n?.note, 180) };
       })
       .filter(Boolean)
-      .slice(0, 10);
+      .slice(0, 16);
 
-    const macros = report.macros && typeof report.macros === 'object' ? report.macros : {};
-    const num = (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.round(Number(v)) : null);
-    report.macros = {
-      calories:  num(macros.calories),
-      protein_g: num(macros.protein_g),
-      carbs_g:   num(macros.carbs_g),
-      fat_g:     num(macros.fat_g),
-    };
-    report.days_logged = dayRows.length;
+    report.strong      = strList(report.strong, 200, 4);
+    report.improve     = strList(report.improve, 200, 3);
+    report.biggest_gap = str(report.biggest_gap, 300);
+    report.dish_ideas  = strList(report.dish_ideas, 120, 6);
+    report.goal        = str(report.goal, 200);
+
+    report.priorities = (Array.isArray(report.priorities) ? report.priorities : [])
+      .map(pr => {
+        const nutrient = str(pr?.nutrient, 32);
+        const dishes   = str(pr?.dishes, 160);
+        if (!nutrient || !dishes) return null;
+        return { nutrient, food: str(pr?.food, 60), dishes, frequency: str(pr?.frequency, 24) };
+      })
+      .filter(Boolean)
+      .slice(0, 3);
+
+    report.days_logged  = dayRows.length;
     report.context_used = Object.keys(context).length > 0;
 
     const { rows: saved } = await pool.query(
