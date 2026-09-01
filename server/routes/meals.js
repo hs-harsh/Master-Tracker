@@ -673,7 +673,11 @@ const MAX_ANALYSE_PROMPT  = 2000;  // the analysis instruction
 // Standing context fields. Free text is capped rather than validated — these go
 // into the prompt, so the ceiling is what keeps one profile from becoming the
 // whole request.
+// One free-text preference block is what the user actually writes. The rest are
+// the structured fields an earlier version of this screen collected — still
+// accepted so a profile saved back then keeps feeding the analysis.
 const CONTEXT_TEXT_FIELDS = {
+  preferences: 6000,
   sex: 24, activity: 40, goal: 60, diet: 40,
   household: 300, portions: 600, staples: 1500,
   conditions: 600, allergies: 300, notes: 600,
@@ -744,10 +748,12 @@ function contextLines(ctx) {
     conditions: 'Medical conditions',
     allergies: 'Allergies / intolerances', notes: 'Other notes',
   };
-  return Object.keys(label)
+  const legacy = Object.keys(label)
     .filter(k => ctx[k] !== undefined && ctx[k] !== '')
     .map(k => `- ${label[k]}: ${ctx[k]}`)
     .join('\n');
+  // The free-text block leads: it is what the user wrote in their own words.
+  return [ctx.preferences || '', legacy].filter(Boolean).join('\n\n');
 }
 
 // ── GET /api/meals/track?week_start=YYYY-MM-DD&person=X ──────────────────────
@@ -946,8 +952,8 @@ Return ONLY a valid JSON object. No explanation, no markdown, no code fences.
     const userMessage = `Weekly report for the week of ${ws}${person ? `, for ${person}` : ''}.
 
 ${ctxText
-  ? `THE HOUSEHOLD — who this is and what they already eat:\n${ctxText}\n\nEverything under the everyday baseline is already part of their diet: credit it, and never recommend it as though it were missing.\n`
-  : 'No profile has been saved. Note that in one clause of the verdict, judge against general Indian vegetarian-household guidance, and keep the recommendations conservative.\n'}
+  ? `THE USER'S STANDING PREFERENCES — in their own words:\n${ctxText}\n\nAnything they describe as part of their normal diet is already covered: credit it, and never recommend it as though it were missing. If they state preferences about the OUTPUT — what to emphasise, how blunt to be, what to leave out — honour them inside the JSON shape above; never drop or rename a key to satisfy them.\n`
+  : 'No preferences have been saved. Note that in one clause of the verdict, judge against general Indian vegetarian-household guidance, and keep the recommendations conservative.\n'}
 Instruction from the user: ${instruction || 'Give the standard weekly report.'}
 
 Food log (${dayRows.length} of 7 days logged):

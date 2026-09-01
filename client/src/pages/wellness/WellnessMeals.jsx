@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight,
   Plus, X, Check, Save, Sparkles,
   ChevronDown, Lightbulb, UtensilsCrossed, ClipboardList,
-  User, HeartPulse,
+  User,
 } from 'lucide-react';
 import api from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
@@ -48,19 +48,39 @@ function fmtDayLabel(ds, i) {
   return `${DAY_LABELS[i]} · ${d.getDate()} ${d.toLocaleDateString('en-IN', { month: 'short' })}`;
 }
 
-// The standing profile the weekly analysis is written against. Mirrors the
-// fields server/routes/meals.js accepts — anything else is dropped there.
-const EMPTY_CONTEXT = {
-  household: '',
-  age: '', sex: '', height_cm: '', weight_kg: '',
-  activity: '', goal: '', diet: '',
-  portions: '', staples: '', conditions: '', allergies: '', notes: '',
+// What the weekly analysis is written against. The user writes it as prose in
+// the prompt window; the structured fields below are only read, not written —
+// they are what an earlier version of this screen collected.
+const LEGACY_CONTEXT_LABELS = {
+  household: 'Who this covers', age: 'Age', sex: 'Sex',
+  height_cm: 'Height (cm)', weight_kg: 'Weight (kg)',
+  activity: 'Activity level', goal: 'Goal', diet: 'Dietary pattern',
+  portions: 'Typical portions', staples: 'Everyday baseline',
+  conditions: 'Medical conditions', allergies: 'Allergies / intolerances',
+  notes: 'Other notes',
 };
 
-const ACTIVITY_OPTIONS = ['Sedentary', 'Lightly active', 'Moderately active', 'Very active'];
-const GOAL_OPTIONS     = ['General health', 'Lose weight', 'Maintain weight', 'Gain muscle', 'Manage a condition'];
-const DIET_OPTIONS     = ['Vegetarian', 'Eggetarian', 'Non-vegetarian', 'Vegan', 'Jain'];
-const SEX_OPTIONS      = ['Female', 'Male', 'Other'];
+/** Read a saved context into the one text box, whichever shape it was saved in. */
+function contextToText(saved) {
+  if (!saved || typeof saved !== 'object') return '';
+  if (saved.preferences) return saved.preferences;
+  return Object.entries(LEGACY_CONTEXT_LABELS)
+    .filter(([k]) => saved[k] !== undefined && saved[k] !== '')
+    .map(([k, label]) => `${label}: ${saved[k]}`)
+    .join('\n');
+}
+
+const PREFERENCE_PLACEHOLDER = `Tell the analysis who it is writing for, and how you want it written. For example:
+
+We are two — my partner is vegetarian, I also eat eggs and chicken. Recommend vegetarian for her unless the log says otherwise.
+
+Our rotis are a mixed atta: khapli wheat, barley, jowar, ragi, kala chana, soy, makka, oats. 2–2.5 per person with a little ghee — that ghee is normal, don't flag it. Normal sabzi is ~250g vegetables for two in a spoon of mustard oil.
+
+Fruit bowl most mornings: Greek yogurt, banana, apple, chia, pumpkin seeds, oats, pomegranate or blueberries. 5 soaked almonds and 2 walnuts each, about 5 days a week. Don't tell us to add these — we already eat them.
+
+I have borderline low haemoglobin, so watch iron.
+
+Keep the report short. Skip anything about calories.`;
 
 /**
  * The four states a nutrient can be in. "check" is deliberately not a failure:
@@ -110,7 +130,8 @@ export default function WellnessMeals() {
   const [report, setReport] = useState(null);
 
   // Standing analysis context — entered once per profile, reused every week.
-  const [context, setContext] = useState(EMPTY_CONTEXT);
+  const [context, setContext] = useState('');       // the saved preference text
+  const [contextDraft, setContextDraft] = useState(''); // what is in the box
   const [contextSaved, setContextSaved] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [contextSaving, setContextSaving] = useState(false);
@@ -239,12 +260,12 @@ export default function WellnessMeals() {
     api.get(`/meals/track/context?person=${encodeURIComponent(currentPerson || '')}`)
       .then(r => {
         if (cancelled) return;
-        const saved = r.data?.context || {};
-        const has = Object.keys(saved).length > 0;
-        setContext({ ...EMPTY_CONTEXT, ...saved });
-        setContextSaved(has);
-        // Nudge first-time users to fill it in; keep it out of the way after.
-        setContextOpen(!has);
+        const text = contextToText(r.data?.context);
+        setContext(text);
+        setContextDraft(text);
+        setContextSaved(!!text);
+        // Unset: the box is the whole card. Set: collapsed until they open it.
+        setContextOpen(!text);
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -253,13 +274,16 @@ export default function WellnessMeals() {
   async function saveContext() {
     setContextSaving(true);
     try {
+      // Saving replaces the whole preference block, legacy fields included —
+      // what is in the box is what the analysis will be given.
       const { data } = await api.put('/meals/track/context', {
         person: currentPerson || '',
-        context,
+        context: { preferences: contextDraft.trim() },
       });
-      const saved = data?.context || {};
-      setContext({ ...EMPTY_CONTEXT, ...saved });
-      setContextSaved(Object.keys(saved).length > 0);
+      const text = contextToText(data?.context);
+      setContext(text);
+      setContextDraft(text);
+      setContextSaved(!!text);
       setContextOpen(false);
     } catch (err) {
       console.error(err);
@@ -268,15 +292,10 @@ export default function WellnessMeals() {
     }
   }
 
+  /** First meaningful line of the saved text, for the collapsed row. */
   const contextSummary = () => {
-    const bits = [];
-    if (context.age) bits.push(`${context.age}y`);
-    if (context.sex) bits.push(context.sex);
-    if (context.weight_kg) bits.push(`${context.weight_kg}kg`);
-    if (context.goal) bits.push(context.goal);
-    if (context.conditions) bits.push(context.conditions.split(/[,\n]/)[0].trim());
-    if (context.staples) bits.push('baseline saved');
-    return bits.slice(0, 4).join(' · ');
+    const line = context.split('\n').map(l => l.trim()).find(Boolean) || '';
+    return line.length > 90 ? `${line.slice(0, 90)}…` : line;
   };
 
   async function saveWeek({ force = false } = {}) {
@@ -432,27 +451,57 @@ export default function WellnessMeals() {
     );
   }
 
+  /**
+   * The preference prompt window. Unset, it IS the card — a box and one button,
+   * no form. Set, it collapses to a single row that opens back into the same
+   * box, so setting and editing are the same gesture.
+   */
   function ContextCard() {
-    const set = (k) => (e) => setContext(prev => ({ ...prev, [k]: e.target.value }));
-    const Num = ({ k, label, unit }) => (
-      <div>
-        <label className="label">{label}</label>
-        <div className="relative">
-          <input type="number" className="input w-full text-sm py-2 pr-9" value={context[k]}
-            onChange={set(k)} min={0} />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted font-mono">{unit}</span>
+    const dirty = contextDraft.trim() !== context.trim();
+    const box = (
+      <>
+        <textarea
+          aria-label="Your preferences"
+          className="input w-full text-sm py-2 min-h-[180px] resize-y leading-relaxed"
+          placeholder={PREFERENCE_PLACEHOLDER}
+          value={contextDraft}
+          onChange={e => setContextDraft(e.target.value)}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={saveContext} disabled={contextSaving || (contextSaved && !dirty)}
+            className="btn-primary text-sm px-3 py-2 flex items-center gap-1.5 shrink-0 whitespace-nowrap
+              disabled:opacity-50">
+            <Save size={13} />
+            {contextSaving
+              ? 'Saving…'
+              : contextSaved ? 'Update preference' : 'Set user preference'}
+          </button>
+          {contextSaved && dirty && (
+            <button onClick={() => setContextDraft(context)}
+              className="text-xs text-muted hover:text-text transition-colors">Discard changes</button>
+          )}
+          <span className="text-[10px] text-muted font-mono">
+            {contextSaved ? 'Used by every analysis' : 'Saved once — used by every analysis from now on'}
+          </span>
         </div>
-      </div>
+      </>
     );
-    const Pick = ({ k, label, options }) => (
-      <div>
-        <label className="label">{label}</label>
-        <select className="input w-full text-sm py-2" value={context[k]} onChange={set(k)}>
-          <option value="">—</option>
-          {options.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </div>
-    );
+
+    if (!contextSaved) {
+      return (
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <User size={14} className="text-hue-teal shrink-0" />
+            <p className="font-display text-sm font-semibold text-white">Your preferences</p>
+          </div>
+          <p className="text-xs text-muted leading-relaxed">
+            Write who this is for, what you already eat, anything medical, and how you want the
+            report written. Without it the analysis is generic.
+          </p>
+          {box}
+        </div>
+      );
+    }
 
     return (
       <div className="card overflow-hidden">
@@ -461,96 +510,17 @@ export default function WellnessMeals() {
           <div className="flex items-center gap-2 min-w-0">
             {contextOpen ? <ChevronDown size={14} className="text-muted shrink-0" /> : <ChevronRight size={14} className="text-muted shrink-0" />}
             <User size={14} className="text-hue-teal shrink-0" />
-            <span className="font-display text-sm font-semibold text-white shrink-0">Your profile</span>
-            <span className="text-xs text-muted truncate">
-              {contextSaved ? (contextSummary() || 'saved') : 'not set — the analysis will be generic without it'}
-            </span>
+            <span className="font-display text-sm font-semibold text-white shrink-0">Your preferences</span>
+            <span className="text-xs text-muted truncate">{contextSummary()}</span>
           </div>
-          {contextSaved
-            ? <span className="flex items-center gap-1 text-[10px] text-pos font-mono shrink-0"><Check size={10} /> saved</span>
-            : <span className="text-[10px] text-hue-amber font-mono shrink-0">add once</span>}
+          <span className="flex items-center gap-1 text-[10px] text-pos font-mono shrink-0">
+            <Check size={10} /> set
+          </span>
         </button>
 
         {contextOpen && (
           <div className="px-4 pb-4 space-y-3 border-t border-hairline/8 pt-3">
-            <p className="text-xs text-muted">
-              Saved once for this profile and reused for every weekly analysis — so the report is
-              written for your body, portions and needs instead of a generic adult.
-            </p>
-
-            <div>
-              <label className="label">Who this covers</label>
-              <input className="input w-full text-sm py-2"
-                placeholder="e.g. me and my partner — she is vegetarian, I also eat eggs and chicken"
-                value={context.household} onChange={set('household')} />
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Num k="age" label="Age" unit="yrs" />
-              <Pick k="sex" label="Sex" options={SEX_OPTIONS} />
-              <Num k="height_cm" label="Height" unit="cm" />
-              <Num k="weight_kg" label="Weight" unit="kg" />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Pick k="activity" label="Activity level" options={ACTIVITY_OPTIONS} />
-              <Pick k="goal"     label="Goal"           options={GOAL_OPTIONS} />
-              <Pick k="diet"     label="Dietary pattern" options={DIET_OPTIONS} />
-            </div>
-
-            <div>
-              <label className="label">Typical portions</label>
-              <textarea className="input w-full text-sm py-2 min-h-[56px] resize-y"
-                placeholder="e.g. 2 rotis and 1 katori dal per meal, 1 cup rice, tea twice a day"
-                value={context.portions} onChange={set('portions')} />
-            </div>
-
-            <div>
-              <label className="label">Everyday baseline</label>
-              <textarea className="input w-full text-sm py-2 min-h-[92px] resize-y"
-                placeholder={"What a normal week already includes, so it is never suggested back to you as missing.\n" +
-                  "e.g. Rotis are a mixed atta — khapli wheat, barley, jowar, ragi, kala chana, soy, makka, oats — 2–2.5 per person with a little ghee.\n" +
-                  "Sabzi is ~250g vegetables for two, in a spoon of mustard oil.\n" +
-                  "Fruit bowl most mornings: Greek yogurt, banana, apple, chia, pumpkin seeds, oats, pomegranate or blueberries.\n" +
-                  "5 soaked almonds and 2 walnuts each, about 5 days a week."}
-                value={context.staples} onChange={set('staples')} />
-              <p className="text-muted text-xs mt-1">
-                The analysis credits everything here and looks for the gap that is left.
-              </p>
-            </div>
-
-            <div>
-              <label className="label flex items-center gap-1.5">
-                <HeartPulse size={12} className="text-neg" /> Medical conditions
-              </label>
-              <textarea className="input w-full text-sm py-2 min-h-[56px] resize-y"
-                placeholder="e.g. type 2 diabetes, hypertension, PCOS, thyroid — or leave blank"
-                value={context.conditions} onChange={set('conditions')} />
-              <p className="text-muted text-xs mt-1">
-                Anything here is treated as the priority the week is judged against.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="label">Allergies / intolerances</label>
-                <input className="input w-full text-sm py-2" placeholder="e.g. lactose, peanuts"
-                  value={context.allergies} onChange={set('allergies')} />
-              </div>
-              <div>
-                <label className="label">Anything else</label>
-                <input className="input w-full text-sm py-2" placeholder="e.g. training for a 10k, night shifts"
-                  value={context.notes} onChange={set('notes')} />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button onClick={saveContext} disabled={contextSaving}
-                className="btn-primary text-sm px-3 py-2 flex items-center gap-1.5 shrink-0 whitespace-nowrap disabled:opacity-50">
-                <Save size={13} />{contextSaving ? 'Saving…' : 'Save profile'}
-              </button>
-              <span className="text-[10px] text-muted font-mono">Used by every analysis from now on</span>
-            </div>
+            {box}
           </div>
         )}
       </div>
@@ -785,6 +755,7 @@ export default function WellnessMeals() {
                 <Sparkles size={13} /> Analyse this week
               </div>
               <textarea
+                aria-label="Analysis instruction for this week"
                 className="input w-full text-sm py-2 min-h-[68px] resize-y"
                 placeholder="How should the week be analysed? e.g. Focus on protein intake and flag days low on vegetables. Suggest 3 swaps for next week."
                 value={analysePrompt}

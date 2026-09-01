@@ -397,24 +397,17 @@ const GUEST_MEAL_IDEAS = {
 // The saved profile preset behind the sample report — so a guest sees what the
 // analysis is being framed against, and can edit it before running their own.
 const GUEST_MEAL_CONTEXT = {
-  household: 'Me and my partner — both vegetarian, cooking at home on weekdays',
-  age: 31,
-  sex: 'Female',
-  height_cm: 162,
-  weight_kg: 58,
-  activity: 'Lightly active',
-  goal: 'General health',
-  diet: 'Vegetarian',
-  portions: '2 rotis and a katori of dal per meal, about a cup of rice at dinner, tea twice a day',
-  staples: [
-    'Rotis are a mixed atta — khapli wheat, barley, jowar, ragi, kala chana, soy, makka, oats — 2–2.5 per person with a little ghee.',
-    'Normal sabzi is ~250g vegetables for two, cooked in a spoon of mustard oil with the usual haldi, jeera, hing and coriander.',
-    'Fruit bowl most mornings: Greek yogurt, banana, apple, chia, pumpkin seeds, rolled oats, and pomegranate or blueberries about half the time.',
-    '5 soaked almonds and 2 walnuts each, roughly 5 days a week.',
+  preferences: [
+    'Me and my partner — both vegetarian, cooking at home on weekdays and usually ordering in on weekends.',
+    '',
+    "Our rotis are a mixed atta: khapli wheat, barley, jowar, ragi, kala chana, soy, makka and oats. 2–2.5 per person with a little ghee — that ghee is normal, don't flag it. Normal sabzi is about 250g of vegetables for the two of us in a spoon of mustard oil, with the usual haldi, jeera, hing and coriander.",
+    '',
+    "Fruit bowl most mornings: Greek yogurt, banana, apple, chia, pumpkin seeds, rolled oats, and pomegranate or blueberries about half the time. 5 soaked almonds and 2 walnuts each, roughly 5 days a week. We already eat all of this — don't suggest it back to us.",
+    '',
+    'I have borderline low haemoglobin, so iron is worth watching.',
+    '',
+    'Keep the report short and skip anything about calories.',
   ].join('\n'),
-  conditions: 'Borderline low haemoglobin — iron is worth watching',
-  allergies: '',
-  notes: 'Cooks on weekdays, orders in most weekends',
 };
 
 // A worked example of the weekly report, so a guest opening Track Meal sees
