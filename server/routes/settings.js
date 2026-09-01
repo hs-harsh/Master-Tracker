@@ -7,6 +7,12 @@ const TYPES = ['Income', 'Other Income', 'Major', 'Non-Recurring', 'Regular', 'E
 const ASSET_CLASSES = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'Crypto'];
 const SIDES = ['BUY', 'SELL'];
 
+// What a user sees before they pick anything in Settings. Kept in step with
+// the client fallbacks in Layout.jsx / Settings.jsx and the data-theme and
+// data-accent attributes on <html> in index.html, so the first paint matches.
+const DEFAULT_THEME  = 'light';
+const DEFAULT_ACCENT = 'teal';
+
 // Per-user settings keys (everything except anthropic key which is global/admin)
 const USER_KEYS = [
   'sheet_url_transactions', 'sheet_url_investments', 'sheet_url',
@@ -72,7 +78,7 @@ async function buildSettingsResponse(userId) {
     financeExportRecurringEnabled, financeExportRecurringEmail,
   ] = await Promise.all(USER_KEYS.map(get));
   const anthropicApiKey = await getGlobalSetting('anthropic_api_key');
-  const effectiveTheme = themeMode || 'dark';
+  const effectiveTheme = themeMode || DEFAULT_THEME;
   return {
     sheetUrlTransactions,
     sheetUrlInvestments,
@@ -80,7 +86,7 @@ async function buildSettingsResponse(userId) {
     defaultAccount: defaultAccount || '',
     themeMode: effectiveTheme,
     theme: effectiveTheme,
-    accent: accent || 'gold',
+    accent: accent || DEFAULT_ACCENT,
     currencyDisplay: currencyDisplay || 'INR',
     dashboardDefaultProfile: dashboardDefaultProfile || '',
     anthropicApiKeySet: !!anthropicApiKey.trim(),
@@ -127,11 +133,11 @@ router.put('/', auth, async (req, res) => {
       await setUserSetting(uid, 'default_account', typeof body.defaultAccount === 'string' ? body.defaultAccount.trim() : '');
     }
     if (body.themeMode !== undefined || body.theme !== undefined) {
-      const v = ['dark', 'light'].includes(body.themeMode || body.theme) ? (body.themeMode || body.theme) : 'dark';
+      const v = ['dark', 'light'].includes(body.themeMode || body.theme) ? (body.themeMode || body.theme) : DEFAULT_THEME;
       await setUserSetting(uid, 'theme_mode', v);
     }
     if (body.accent !== undefined) {
-      const v = ['gold', 'teal', 'blue', 'purple', 'rose'].includes(body.accent) ? body.accent : 'gold';
+      const v = ['gold', 'teal', 'blue', 'purple', 'rose'].includes(body.accent) ? body.accent : DEFAULT_ACCENT;
       await setUserSetting(uid, 'accent', v);
     }
     if (body.currencyDisplay !== undefined) {

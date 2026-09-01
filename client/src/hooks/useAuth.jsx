@@ -97,8 +97,8 @@ export function AuthProvider({ children }) {
   };
 
   // Guest demo session — creates a throwaway account pre-filled with sample data
-  const guestLogin = async (name) => {
-    const { data } = await api.post('/auth/guest', { name });
+  const guestLogin = async (name, pin) => {
+    const { data } = await api.post('/auth/guest', { name, pin });
     _setToken(data.token);
     return data;
   };

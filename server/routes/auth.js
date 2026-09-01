@@ -9,6 +9,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_GUEST_ACCOUNTS = 200;    // newest kept; older ones swept on each guest login
+// Gate on the guest demo so the link can be shared without it being open to
+// the whole internet. Checked server-side — the client never sees the value.
+// Override per deployment with GUEST_PIN rather than editing this default.
+const GUEST_PIN = (process.env.GUEST_PIN || '2250').trim();
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
 function generateOtp() {
@@ -206,6 +210,10 @@ router.post('/verify-otp', async (req, res) => {
 // user, so they can never see a real account's data.
 router.post('/guest', async (req, res) => {
   try {
+    const pin = String(req.body.pin || '').trim();
+    if (!pin) return res.status(400).json({ error: 'Enter the access PIN to continue' });
+    if (pin !== GUEST_PIN) return res.status(403).json({ error: 'Incorrect access PIN' });
+
     const rawName = (req.body.name || req.body.personName || '').trim();
     if (!rawName) return res.status(400).json({ error: 'Enter a name to continue' });
     if (rawName.length > 30) return res.status(400).json({ error: 'Name must be 30 characters or fewer' });

@@ -31,8 +31,8 @@ export default function Settings() {
 
   // ── Preferences / theme ──────────────────────────────────────────────────────
   const [defaultAccount,           setDefaultAccount]           = useState('');
-  const [themeMode,                setThemeMode]                = useState('dark');
-  const [accent,                   setAccent]                   = useState('gold');
+  const [themeMode,                setThemeMode]                = useState('light');
+  const [accent,                   setAccent]                   = useState('teal');
   const [currencyDisplay,          setCurrencyDisplay]          = useState('INR');
   const [dashboardDefaultProfile,  setDashboardDefaultProfile]  = useState('Both');
   const [anthropicApiKeySet,       setAnthropicApiKeySet]       = useState(false);
@@ -68,7 +68,7 @@ export default function Settings() {
       );
       setFinanceExportEnabled(!!d.financeExportRecurringEnabled);
       setFinanceExportEmail(d.financeExportRecurringEmail || '');
-      applyTheme(d.themeMode || 'dark', d.accent || 'gold');
+      applyTheme(d.themeMode || 'light', d.accent || 'teal');
     }).catch(() => {});
   };
 

@@ -70,6 +70,7 @@ export function OtpLoginForm() {
   // mode: 'signin' | 'otp-send' | 'otp-verify' | 'register' | 'guest'
   const [mode, setMode] = useState('signin');
   const [guestName, setGuestName] = useState('');
+  const [guestPin, setGuestPin] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -179,10 +180,11 @@ export function OtpLoginForm() {
   const handleGuestLogin = async (e) => {
     e.preventDefault();
     if (!guestName.trim()) { setError('Enter a name to continue'); return; }
+    if (guestPin.length !== 4) { setError('Enter the 4-digit access PIN'); return; }
     setError('');
     setLoading(true);
     try {
-      await guestLogin(guestName.trim());
+      await guestLogin(guestName.trim(), guestPin);
     } catch (err) {
       setError(err.response?.data?.error || 'Could not start a guest session');
     } finally {
@@ -239,7 +241,7 @@ export function OtpLoginForm() {
                 className="btn-ghost w-full justify-center flex text-sm text-soft hover:text-accent-ink border border-border hover:border-accent/30">
                 <Mail size={14} className="mr-2" />Sign in with code instead
               </button>
-              <button type="button" onClick={() => { setGuestName(''); reset('guest'); }}
+              <button type="button" onClick={() => { setGuestName(''); setGuestPin(''); reset('guest'); }}
                 className="btn-ghost w-full justify-center flex text-sm text-soft hover:text-accent-ink border border-border hover:border-accent/30">
                 <Compass size={14} className="mr-2" />Explore as guest
               </button>
@@ -360,8 +362,23 @@ export function OtpLoginForm() {
                 placeholder="e.g. Alex" autoComplete="off" maxLength={30} required autoFocus />
               <p className="text-muted text-xs mt-1">Names the demo profile your sample data sits under</p>
             </div>
+            <div>
+              <label className="label">Access PIN</label>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                placeholder="••••"
+                value={guestPin}
+                onChange={e => setGuestPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                className="input tracking-[0.4em] text-center"
+                required
+              />
+              <p className="text-muted text-xs mt-1">The 4-digit PIN shared with you</p>
+            </div>
             {error && <p className="text-rose text-sm">{error}</p>}
-            <button type="submit" disabled={loading || !guestName.trim()}
+            <button type="submit" disabled={loading || !guestName.trim() || guestPin.length !== 4}
               className="btn-primary w-full justify-center flex gap-2">
               {loading
                 ? <><Loader2 size={16} className="animate-spin" />Setting up your demo…</>

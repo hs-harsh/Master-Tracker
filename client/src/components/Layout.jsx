@@ -49,7 +49,7 @@ export default function Layout() {
     if (!isAuth) return;
     api.get('/settings').then(r => {
       const d = r.data;
-      applyTheme(d?.themeMode ?? d?.theme ?? 'dark', d?.accent ?? 'gold');
+      applyTheme(d?.themeMode ?? d?.theme ?? 'light', d?.accent ?? 'teal');
       if (d?.currencyDisplay) setCurrencySymbol(d.currencyDisplay);
       setSidebarFinanceEnabled(d?.sidebarFinanceEnabled !== false);
       setSidebarWellnessEnabled(d?.sidebarWellnessEnabled !== false);
